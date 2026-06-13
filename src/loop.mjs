@@ -33,20 +33,29 @@ function clip(obj, max = 6000) {
   return s.length > max ? s.slice(0, max) + `\n…[truncated ${s.length - max} chars]` : s;
 }
 
-export async function runLoop({ provider, tools, toolMap, systemPrompt, task, maxSteps = 14, onStep }) {
-  const messages = [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: `TASK:\n${task}\n\nBegin. Respond with ONE JSON tool call.` },
-  ];
+// onStep({step,tool,args,result})            — called AFTER a tool runs (back-compat).
+// beforeTool({step,tool,args})               — optional async hook called BEFORE a tool runs.
+//   Return { deny:true, reason } to skip execution (the loop feeds the denial back to the model
+//   so it can adapt). Used for the approval/safety layer. Returning falsy/undefined allows it.
+// messages can be SEEDED (multi-turn REPL): pass `seedMessages` to continue an existing thread;
+//   when present, only the new user turn (task) is appended and the system prompt is reused.
+export async function runLoop({ provider, tools, toolMap, systemPrompt, task, maxSteps = 14, onStep, beforeTool, seedMessages, signal }) {
+  const messages = seedMessages && seedMessages.length
+    ? seedMessages
+    : [{ role: "system", content: systemPrompt }];
+  messages.push({ role: "user", content: `TASK:\n${task}\n\nBegin. Respond with ONE JSON tool call.` });
   let turns = 0, editFailures = 0, done = false, summary = "";
   const trace = [];
 
+  let aborted = false;
   for (let step = 0; step < maxSteps; step++) {
+    if (signal?.aborted) { aborted = true; trace.push({ step, aborted: true }); break; }
     turns++;
     let resp;
     try {
-      resp = await provider.chat(messages);
+      resp = await provider.chat(messages, { signal });
     } catch (e) {
+      if (e.name === "AbortError" || signal?.aborted) { aborted = true; trace.push({ step, aborted: true }); break; }
       trace.push({ step, error: "PROVIDER_ERROR", detail: e.message });
       break;
     }
@@ -72,8 +81,22 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
       continue;
     }
 
+    // approval/safety gate: let the host veto a tool BEFORE it runs.
+    if (beforeTool) {
+      let gate;
+      try { gate = await beforeTool({ step, tool: call.tool, args: call.args || {} }); }
+      catch (e) { gate = { deny: true, reason: e.message }; }
+      if (gate && gate.deny) {
+        const result = { ok: false, denied: true, reason: gate.reason || "denied by user/policy" };
+        trace.push({ step, tool: call.tool, denied: true });
+        if (onStep) onStep({ step, tool: call.tool, args: call.args, result, denied: true });
+        messages.push({ role: "user", content: `RESULT (${call.tool}): DENIED — ${result.reason}. Do not retry this exact action; choose a different approach or call done.` });
+        continue;
+      }
+    }
+
     let result;
-    try { result = fn(call.args || {}); }
+    try { result = await fn(call.args || {}); }
     catch (e) { result = { ok: false, error: e.message }; }
 
     if ((call.tool === "edit_file" || call.tool === "write_file") && result && result.ok === false) {
@@ -85,5 +108,5 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     messages.push({ role: "user", content: `RESULT (${call.tool}):\n${clip(result)}` });
   }
 
-  return { done, summary, turns, editFailures, trace, totals: provider.totals() };
+  return { done, summary, turns, editFailures, trace, aborted, messages, totals: provider.totals() };
 }

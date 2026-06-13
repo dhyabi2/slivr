@@ -39,10 +39,11 @@ export function costUSD(model, promptTokens, completionTokens) {
 export class Provider {
   constructor(opts = {}) {
     this.model = opts.model || process.env.MODEL || "google/gemini-2.5-flash";
-    this.key = opts.key || loadKey();
+    this.key = opts.key || opts.apiKey || loadKey();
+    this.baseUrl = (opts.baseUrl || "https://openrouter.ai/api/v1").replace(/\/+$/, "");
     this.timeoutMs = opts.timeoutMs ?? 30000;
     this.maxRetries = opts.maxRetries ?? 2;
-    this.maxTokens = opts.maxTokens ?? 4000;
+    this.maxTokens = opts.maxTokens ?? opts.maxTokensPerTurn ?? 4000;
     // session accounting
     this.calls = 0;
     this.promptTokens = 0;
@@ -54,14 +55,18 @@ export class Provider {
   hasKey() { return !!this.key; }
 
   // messages: [{role, content}]. Returns { text, usage, raw }.
-  async chat(messages, { temperature = 0.2 } = {}) {
+  async chat(messages, { temperature = 0.2, signal } = {}) {
     if (!this.key) throw new Error("NO_OPENROUTER_KEY");
+    if (signal?.aborted) { const e = new Error("aborted"); e.name = "AbortError"; throw e; }
     let lastErr;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
+      // chain the caller's abort signal (e.g. Ctrl-C in the REPL) into this request
+      const onAbort = () => ctrl.abort();
+      if (signal) { if (signal.aborted) ctrl.abort(); else signal.addEventListener("abort", onAbort, { once: true }); }
       try {
-        const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        const r = await fetch(this.baseUrl + "/chat/completions", {
           method: "POST",
           headers: { Authorization: "Bearer " + this.key, "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -70,6 +75,7 @@ export class Provider {
           signal: ctrl.signal,
         });
         clearTimeout(timer);
+        if (signal) signal.removeEventListener?.("abort", onAbort);
         const d = await r.json();
         if (!r.ok) {
           lastErr = new Error(`API ${r.status}: ${JSON.stringify(d).slice(0, 200)}`);
@@ -93,6 +99,9 @@ export class Provider {
         return { text, usage, raw: d };
       } catch (e) {
         clearTimeout(timer);
+        if (signal) signal.removeEventListener?.("abort", onAbort);
+        // a caller abort (Ctrl-C) must propagate immediately, not retry
+        if (signal?.aborted || e.name === "AbortError") { const a = new Error("aborted"); a.name = "AbortError"; throw a; }
         lastErr = e;
         if (e.message === "NO_OPENROUTER_KEY" || /API 4/.test(e.message)) throw e;
         await sleep(500 * (attempt + 1));

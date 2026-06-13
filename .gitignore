@@ -1,2 +1,5 @@
 node_modules/
 *.log
+# npm-link symlink artifact (bin name without .mjs); the real entry is bin/cc-alt.mjs
+/bin/cc-alt
+.cc-alt.json

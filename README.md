@@ -1,8 +1,72 @@
 # cc-alt — a configurable-LLM Claude Code alternative
 
-`cc-alt` is a real CLI coding agent: it explores a repo, makes edits, runs checks, and stops when
-the task is verifiably done — driven by **any** model you plug in behind a `MODEL` env var
-(default `google/gemini-2.5-flash`, also tested with `anthropic/claude-sonnet-4`), over OpenRouter.
+`cc-alt` is a real, daily-use CLI coding agent: an **interactive REPL** (and one-shot mode) that
+explores a repo, makes **compact anchor-based edits** with a **live colored diff**, runs checks,
+asks before risky actions, and stops when the task is verifiably done — driven by **any** model you
+plug in (Claude / GPT / Gemini) over OpenRouter.
+
+## Quickstart (daily use)
+
+```bash
+# 1. install (global `cc-alt` command)
+git clone https://github.com/dhyabi2/cc-alt && cd cc-alt
+npm link                         # provides the global `cc-alt` binary (uses the shebang in bin/)
+
+# 2. set your key (preferred: env var)
+export OPENROUTER_API_KEY=sk-or-...
+
+# 3. (optional) configure the model + defaults for this repo
+cc-alt --init                    # writes a starter ./.cc-alt.json
+cc-alt config                    # show the resolved config and where each value came from
+
+# 4. work
+cc-alt                                                  # interactive REPL in the current repo
+cc-alt "add input validation to src/calc.js"            # one-shot in the current dir
+cc-alt "fix the failing test" ./myrepo --auto           # one-shot, no approval prompts
+cc-alt --model anthropic/claude-sonnet-4                # REPL on Claude
+```
+
+### The REPL
+Running `cc-alt` with no task opens a multi-turn session. **Conversation + tool results persist
+across turns** — ask a follow-up and the agent still has the context. As it works it streams each
+step (`✓ edit src/foo.js +3 -1`) with a compact colored unified diff of every change. **Ctrl-C**
+interrupts the current turn without killing the session; a second Ctrl-C at the prompt exits.
+
+REPL commands: `/help` · `/model <id>` (switch model mid-session) · `/cost` (session tokens + $) ·
+`/reset` (clear context, keep cost totals) · `/exit`.
+
+### Config (`cc-alt config`, `--init`)
+Resolved with precedence **flags > `./.cc-alt.json` > `~/.cc-alt.json` > env > defaults**. Keys:
+`model`, `apiKey` (prefer the `OPENROUTER_API_KEY` env var), `baseUrl` (default OpenRouter),
+`approval` (`auto`|`edits`|`all`), `maxSteps`, `maxTokensPerTurn`. **The model is fully
+configurable** — any OpenRouter id works: `anthropic/claude-sonnet-4`, `openai/gpt-4o`,
+`google/gemini-2.5-flash`, etc.
+
+### Safety / approval modes
+- `auto` — never prompts (trusted flows / CI). **Destructive commands are still hard-blocked.**
+- `edits` (default) — asks `y/N` before every `run_command` and every file edit, showing a diff
+  preview for edits.
+- `all` — same as `edits` (prompts for every mutating/effecting action).
+
+Regardless of mode, an always-on blocklist **hard-refuses** obviously destructive commands
+(`rm -rf /`, fork bombs, `curl … | sh` from the network, `git push --force`, `dd`/`mkfs` to a
+disk, `sudo`, machine shutdown, …). `run_command` is also sandboxed to the working directory.
+
+### CLI reference
+```
+cc-alt                       interactive REPL in the current directory
+cc-alt "<task>" [dir]        one-shot
+cc-alt config                print resolved config
+cc-alt --init                write a starter ./.cc-alt.json
+flags: --model <id>  --approval <auto|edits|all>  --auto  --dir <path>  --max-steps <n>
+       --baseline (one-shot full-rewrite harness, for the benchmark)  --help  --version
+```
+
+(`node bin/agent.mjs "<task>" <dir> [--baseline]` is still supported for the original benchmark.)
+
+---
+
+## Why it exists (the harness-level claim)
 
 It exists to test ONE claim at the **harness level** (not model-vs-model, not model-building):
 
@@ -10,12 +74,6 @@ It exists to test ONE claim at the **harness level** (not model-vs-model, not mo
 > **compact anchor-based edit protocol** matches task success at **lower session cost** than the
 > naive **full-file rewrite** protocol that Claude-Code-style harnesses use. The win grows with
 > file size and multi-edit sessions.
-
-```
-node bin/agent.mjs "add input validation to add/sub/mul in src/calc.js" ./myrepo
-node bin/agent.mjs "...same task..." ./myrepo --baseline     # the Claude-Code-style harness
-MODEL=anthropic/claude-sonnet-4 node bin/agent.mjs "..." ./myrepo
-```
 
 ## The two harnesses (only one thing differs)
 | | cc-alt | baseline (Claude-Code-style) |
@@ -104,15 +162,24 @@ sessions), neutral-to-slightly-worse on trivial edits.*
 - The applier is correctness-first but JS/code-shaped; it is not a general semantic refactor engine.
 
 ## Layout
-- `src/provider.mjs` `src/tools.mjs` `src/loop.mjs` `src/agent.mjs` `src/baseline.mjs` `src/seal.mjs` (vendored)
-- `bin/agent.mjs` — CLI · `demo.mjs` — live side-by-side on one fixture · `selftest.mjs` — deterministic (no LLM)
+- core: `src/provider.mjs` `src/tools.mjs` `src/loop.mjs` `src/agent.mjs` (`Session`) `src/baseline.mjs` `src/seal.mjs` (vendored)
+- daily-use layer: `src/config.mjs` (layered config) · `src/repl.mjs` (interactive session) ·
+  `src/diff.mjs` (unified-diff renderer) · `src/safety.mjs` (blocklist + approval) · `src/ui.mjs` (colors/footer)
+- `bin/cc-alt.mjs` — main CLI · `bin/agent.mjs` — original benchmark CLI · `demo.mjs` — live side-by-side · `selftest.mjs` — deterministic (no LLM)
 - `bench/tasks.mjs` `bench/run.mjs` `bench/results.json` · `SPEC.md`
 
 ## Run it
 ```
-node selftest.mjs                                   # deterministic, no API key
+node selftest.mjs                                   # 60 deterministic tests, no API key
+cc-alt                                              # REPL (after `npm link`)
+node bin/cc-alt.mjs "<task>" ./repo --auto          # one-shot without install
 MODEL=google/gemini-2.5-flash node demo.mjs         # live side-by-side (needs OPENROUTER_API_KEY)
-MODEL=google/gemini-2.5-flash node bench/run.mjs     # full head-to-head
-CCALT_TASKS=fix-bug-largefile node bench/run.mjs     # one task
+MODEL=google/gemini-2.5-flash node bench/run.mjs     # full head-to-head benchmark
 ```
-Reads `OPENROUTER_API_KEY` from `web/.env.local` if not in the environment.
+Reads `OPENROUTER_API_KEY` from the environment, or falls back to `web/.env.local`.
+
+### Tests
+`selftest.mjs` is fully deterministic (no LLM) and covers: the SEAL edit protocol, the tool
+sandbox, the stubbed agent loop, **config resolution/merge precedence**, the **destructive-command
+blocklist**, the **diff renderer**, **REPL command parsing**, UI formatting, and the **approval
+gate**. 60 checks, all green.
