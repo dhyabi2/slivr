@@ -1,4 +1,5 @@
 // large utility module
+/** A helper function. */
 export function helper0(x){ return x + 0; }
 export function helper1(x){ return x + 1; }
 export function helper2(x){ return x + 2; }

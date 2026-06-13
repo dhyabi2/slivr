@@ -88,8 +88,27 @@ export function loadConfig({ flags = {}, cwd = process.cwd(), env = process.env 
   const homePath = path.join(os.homedir(), ".cc-alt.json");
   const local = readJSONSafe(localPath);
   const home = readJSONSafe(homePath);
-  const { config, sources } = resolveConfig({ flags, local, home, env });
+  // Portable key fallback: if no key in env, read OPENROUTER_API_KEY from a cwd .env/.env.local
+  // so `cc-alt config` reflects the SAME key the provider will actually use (no silent mismatch).
+  let env2 = env;
+  if (!env.OPENROUTER_API_KEY && !env.CCALT_API_KEY) {
+    const k = readDotenvKey(cwd);
+    if (k) env2 = { ...env, OPENROUTER_API_KEY: k };
+  }
+  const { config, sources } = resolveConfig({ flags, local, home, env: env2 });
   return { config, sources, paths: { local: localPath, home: homePath } };
+}
+
+function readDotenvKey(cwd) {
+  for (const f of [".env.local", ".env"]) {
+    try {
+      for (const l of fs.readFileSync(path.join(cwd, f), "utf8").split("\n")) {
+        const m = l.match(/^\s*OPENROUTER_API_KEY\s*=\s*(.*)$/);
+        if (m) return m[1].trim().replace(/^["']|["']$/g, "");
+      }
+    } catch { /* try next */ }
+  }
+  return "";
 }
 
 // Starter config written by `--init`. Comments-as-strings since JSON has no comments.

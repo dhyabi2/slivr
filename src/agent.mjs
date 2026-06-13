@@ -19,6 +19,11 @@ You work ONE tool call at a time. Respond with EXACTLY ONE JSON object, nothing 
   {"tool":"run_command","args":{"command":"node check.js"}}
   {"tool":"edit_file","args":{"path":"f.js","anchor":"<verbatim existing lines>","replacement":"<new lines>","op":"replace"}}
   {"tool":"create_file","args":{"path":"new.js","content":"<full content of a brand-NEW file>"}}
+  {"tool":"edit_files","args":{"edits":[{"path":"a.js","anchor":"...","replacement":"...","op":"replace"},{"path":"b.js","anchor":"...","replacement":"..."}]}}
+  {"tool":"git_status","args":{}}
+  {"tool":"git_diff","args":{"path":"optional/file"}}
+  {"tool":"git_log","args":{"n":10}}
+  {"tool":"git_commit","args":{"message":"clear commit message"}}
   {"tool":"done","args":{"summary":"what you did"}}
 
 EDIT PROTOCOL (important — this is how you keep edits cheap and correct):
@@ -26,6 +31,10 @@ EDIT PROTOCOL (important — this is how you keep edits cheap and correct):
   file (enough lines to be unique, but no more). "replacement" is the new text for that snippet.
 - op is "replace" (default), "insert_after", or "insert_before".
 - Do NOT rewrite whole files. Make targeted edits with edit_file.
+- For SEVERAL edits at once (across one or more files), prefer edit_files — it applies them
+  ATOMICALLY (all-or-nothing) in fewer turns; same anchor rules. If any edit fails, none apply
+  and you get repair packets for the failing ones.
+- git_* tools inspect the repo and can commit; cc-alt NEVER pushes.
 - To create a NEW file that does not exist yet, use create_file (there is no anchor to match yet).
   Use edit_file (NOT create_file) for any file that already exists.
 - If an edit fails you get a compact repair packet with the nearest real spans. Fix your anchor
@@ -44,6 +53,11 @@ export function makeAgent(workdir, opts = {}) {
     run_command: (a) => tools.run_command(a),
     edit_file: (a) => tools.edit_file(a),
     create_file: (a) => tools.create_file(a),
+    edit_files: (a) => tools.edit_files(a),
+    git_status: (a) => tools.git_status(a),
+    git_diff: (a) => tools.git_diff(a),
+    git_log: (a) => tools.git_log(a),
+    git_commit: (a) => tools.git_commit(a),
   };
   return { provider, tools, toolMap };
 }
@@ -96,6 +110,11 @@ export class Session {
       run_command: (a) => t.run_command(a),
       edit_file: captureEdit("edit_file", (a) => t.edit_file(a)),
       create_file: captureEdit("create_file", (a) => t.create_file(a)),
+      edit_files: (a) => { const r = t.edit_files(a); this.lastDiff = null; return r; },
+      git_status: (a) => t.git_status(a),
+      git_diff: (a) => t.git_diff(a),
+      git_log: (a) => t.git_log(a),
+      git_commit: (a) => t.git_commit(a),
     };
   }
 

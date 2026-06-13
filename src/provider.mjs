@@ -6,16 +6,18 @@
 
 import fs from "node:fs";
 
-const ENV_LOCAL = "/Users/mac/methadology_invent/web/.env.local";
-
+// Portable key fallback: OPENROUTER_API_KEY env, then a .env / .env.local in the CURRENT dir.
+// (config.apiKey — resolved from env / flags / ~/.cc-alt.json — is the primary path via opts.)
 function loadKey() {
   if (process.env.OPENROUTER_API_KEY) return process.env.OPENROUTER_API_KEY.trim();
-  try {
-    for (const l of fs.readFileSync(ENV_LOCAL, "utf8").split("\n")) {
-      const m = l.match(/^OPENROUTER_API_KEY=(.*)$/);
-      if (m) return m[1].trim();
-    }
-  } catch { /* fall through */ }
+  for (const f of [".env.local", ".env"]) {
+    try {
+      for (const l of fs.readFileSync(f, "utf8").split("\n")) {
+        const m = l.match(/^\s*OPENROUTER_API_KEY\s*=\s*(.*)$/);
+        if (m) return m[1].trim().replace(/^["']|["']$/g, "");
+      }
+    } catch { /* try next */ }
+  }
   return "";
 }
 

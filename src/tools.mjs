@@ -10,7 +10,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import { applyEdit } from "./seal.mjs";
 
 export class Tools {
@@ -122,5 +122,46 @@ export class Tools {
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, content);
     return { ok: true, path: rel, bytes: Buffer.byteLength(content) };
+  }
+
+  // edit_files (cc-alt): apply MANY compact edits ATOMICALLY (all-or-nothing) — fewer turns for
+  // multi-file/multi-edit changes. edits = [{path, anchor, replacement, op}]. Edits to the same
+  // file apply IN ORDER on the evolving buffer. If ANY edit fails to apply uniquely, NOTHING is
+  // written and per-edit repair packets are returned (so the model fixes and resends all edits).
+  edit_files({ edits }) {
+    if (!Array.isArray(edits) || edits.length === 0) return { ok: false, error: "NO_EDITS", hint: "Pass edits: [{path, anchor, replacement, op}]" };
+    const buffers = new Map();          // rel -> working content
+    const failures = [], applied = [];
+    edits.forEach((e, i) => {
+      const rel = e && e.path;
+      let abs;
+      try { abs = this._resolve(rel); } catch (err) { failures.push({ index: i, path: rel, error: err.message }); return; }
+      if (!buffers.has(rel)) {
+        if (!fs.existsSync(abs)) { failures.push({ index: i, path: rel, error: "FILE_NOT_FOUND" }); return; }
+        buffers.set(rel, fs.readFileSync(abs, "utf8"));
+      }
+      const res = applyEdit(buffers.get(rel), { anchor: e.anchor, replacement: e.replacement, op: e.op || "replace" });
+      if (!res.ok) { failures.push({ index: i, path: rel, repair: res.repair }); return; }
+      buffers.set(rel, res.content);
+      applied.push({ index: i, path: rel, tier: res.tier });
+    });
+    if (failures.length) return { ok: false, error: "ATOMIC_ABORT", failures, note: "No files were written — fix the failing edits and resend ALL edits in one edit_files call." };
+    for (const [rel, content] of buffers) fs.writeFileSync(this._resolve(rel), content);
+    return { ok: true, applied, files: [...buffers.keys()] };
+  }
+
+  // --- git: read tools + a GUARDED commit. Never pushes (push/force is also hard-blocked upstream).
+  _git(argv) {
+    try { const out = execFileSync("git", argv, { cwd: this.workdir, timeout: 15000, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }); return { ok: true, out: (out || "").slice(-4000) }; }
+    catch (e) { return { ok: false, error: ((e.stderr || e.message || "") + "").slice(-1000) }; }
+  }
+  git_status() { const r = this._git(["status", "--porcelain=v1", "-b"]); return r.ok ? { ok: true, status: r.out || "(clean)" } : r; }
+  git_diff({ path: rel = "", staged = false } = {}) { const a = ["diff"]; if (staged) a.push("--staged"); if (rel) a.push("--", rel); const r = this._git(a); return r.ok ? { ok: true, diff: r.out || "(no changes)" } : r; }
+  git_log({ n = 10 } = {}) { const r = this._git(["log", "--oneline", "-n", String(Math.max(1, Math.min(50, (n | 0) || 10)))]); return r.ok ? { ok: true, log: r.out } : r; }
+  git_commit({ message }) {
+    if (!message || !String(message).trim()) return { ok: false, error: "NO_MESSAGE", hint: "Pass a commit message." };
+    const add = this._git(["add", "-A"]); if (!add.ok) return add;
+    const r = this._git(["commit", "-m", String(message).slice(0, 500)]);   // args array -> no shell injection; never pushes
+    return r.ok ? { ok: true, committed: r.out } : r;
   }
 }
