@@ -1,0 +1,13 @@
+{
+  "name": "cc-alt",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A configurable-LLM Claude Code alternative: a coding-agent harness whose compact-edit protocol matches task success at lower session cost than a Claude-Code-style full-rewrite baseline, on the same swappable model.",
+  "bin": { "cc-alt": "bin/agent.mjs" },
+  "scripts": {
+    "selftest": "node selftest.mjs",
+    "demo": "node demo.mjs",
+    "bench": "node bench/run.mjs"
+  },
+  "license": "AGPL-3.0"
+}

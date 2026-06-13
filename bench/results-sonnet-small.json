@@ -1,0 +1,127 @@
+{
+  "ts": "2026-06-13T23:23:21.099Z",
+  "model": "anthropic/claude-sonnet-4",
+  "rows": [
+    {
+      "task": "validate-3-funcs",
+      "kind": "small-multi",
+      "harness": "cc-alt",
+      "success": true,
+      "turns": 7,
+      "editFailures": 0,
+      "tokens": 7537,
+      "promptTokens": 6755,
+      "completionTokens": 782,
+      "cost": 0.031995,
+      "wallMs": 18989,
+      "error": null
+    },
+    {
+      "task": "validate-3-funcs",
+      "kind": "small-multi",
+      "harness": "baseline",
+      "success": true,
+      "turns": 9,
+      "editFailures": 0,
+      "tokens": 10117,
+      "promptTokens": 9134,
+      "completionTokens": 983,
+      "cost": 0.042147,
+      "wallMs": 27312,
+      "error": null
+    },
+    {
+      "task": "add-endpoint",
+      "kind": "small-multi",
+      "harness": "cc-alt",
+      "success": true,
+      "turns": 8,
+      "editFailures": 0,
+      "tokens": 8458,
+      "promptTokens": 7791,
+      "completionTokens": 667,
+      "cost": 0.033378,
+      "wallMs": 19356,
+      "error": null
+    },
+    {
+      "task": "add-endpoint",
+      "kind": "small-multi",
+      "harness": "baseline",
+      "success": true,
+      "turns": 7,
+      "editFailures": 0,
+      "tokens": 5430,
+      "promptTokens": 4901,
+      "completionTokens": 529,
+      "cost": 0.022638,
+      "wallMs": 20569,
+      "error": null
+    },
+    {
+      "task": "fix-offbyone",
+      "kind": "small-single",
+      "harness": "cc-alt",
+      "success": true,
+      "turns": 7,
+      "editFailures": 0,
+      "tokens": 6839,
+      "promptTokens": 6307,
+      "completionTokens": 532,
+      "cost": 0.026901,
+      "wallMs": 15839,
+      "error": null
+    },
+    {
+      "task": "fix-offbyone",
+      "kind": "small-single",
+      "harness": "baseline",
+      "success": true,
+      "turns": 8,
+      "editFailures": 0,
+      "tokens": 7042,
+      "promptTokens": 6448,
+      "completionTokens": 594,
+      "cost": 0.028254,
+      "wallMs": 17082,
+      "error": null
+    }
+  ],
+  "summary": {
+    "model": "anthropic/claude-sonnet-4",
+    "ccalt": {
+      "harness": "cc-alt",
+      "n": 3,
+      "successRate": 1,
+      "successes": 3,
+      "totalTokens": 22834,
+      "totalCost": 0.092274,
+      "totalTurns": 22,
+      "totalEditFailures": 0
+    },
+    "baseline": {
+      "harness": "baseline",
+      "n": 3,
+      "successRate": 1,
+      "successes": 3,
+      "totalTokens": 22589,
+      "totalCost": 0.093039,
+      "totalTurns": 24,
+      "totalEditFailures": 0
+    },
+    "byKind": [
+      {
+        "kind": "small-multi",
+        "ccaltCost": 0.065373,
+        "baselineCost": 0.064785,
+        "costSavedPct": -0.9
+      },
+      {
+        "kind": "small-single",
+        "ccaltCost": 0.026901,
+        "baselineCost": 0.028254,
+        "costSavedPct": 4.8
+      }
+    ]
+  }
+}
