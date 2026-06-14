@@ -16,7 +16,7 @@ import { isDestructive, needsApproval } from "./src/safety.mjs";
 import { unifiedDiff, diffStat, diffLines } from "./src/diff.mjs";
 import { parseCommand } from "./src/repl.mjs";
 import { describeStep, makePalette, footer, colorEnabled, renderTasks, renderPlan } from "./src/ui.mjs";
-import { parallelSubAgents, planGate, MUTATING_TOOLS, extractFindings } from "./src/agent.mjs";
+import { parallelSubAgents, pipelineSubAgents, planGate, MUTATING_TOOLS, extractFindings } from "./src/agent.mjs";
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra = "") {
@@ -961,6 +961,62 @@ console.log("== 24. repo symbol index — find_symbol / repo_map (Block 3) ==");
   ok("tool: find_symbol wired", tools.find_symbol({ name: "runLoop" }).matches[0].file === "loop.mjs");
   ok("tool: repo_map wired", tools.repo_map().symbols > 100);
   ok("tool: find_symbol missing name errors", tools.find_symbol({}).ok === false);
+}
+
+console.log("== 25. pipeline — dependency-aware orchestration (no LLM) ==");
+{
+  // Injectable runner: identifies the task by its "do X" token, records order + concurrency, sleeps
+  // briefly so overlaps are observable, returns a summary the orchestrator must pass to dependents.
+  const mkRunner = (fail = new Set()) => {
+    const order = [], prompts = {}; const live = { cur: 0, max: 0 };
+    const runner = async (prompt) => {
+      const id = (prompt.match(/\bdo ([A-Z])\b/) || [])[1] || "?";
+      prompts[id] = prompt; order.push(id);
+      live.cur++; live.max = Math.max(live.max, live.cur);
+      await new Promise(r => setTimeout(r, 15));
+      live.cur--;
+      if (fail.has(id)) return { done: false, summary: `FAIL_${id}`, turns: 1, messages: [] };
+      return { done: true, summary: `RES_${id}`, turns: 1, messages: [] };
+    };
+    return { runner, order, prompts, live };
+  };
+
+  // Diamond: A → {B, C} → D
+  const diamond = [
+    { id: "A", task: "do A", deps: [] },
+    { id: "B", task: "do B", deps: ["A"] },
+    { id: "C", task: "do C", deps: ["A"] },
+    { id: "D", task: "do D", deps: ["B", "C"] },
+  ];
+  const h = mkRunner();
+  const r = await pipelineSubAgents({ tasks: diamond }, tmp, {}, h.runner);
+  ok("pipeline: all tasks completed", r.ok && r.results.every(x => x.status === "done"));
+  ok("pipeline: ran in 3 dependency waves", r.waves === 3, "waves=" + r.waves);
+  ok("pipeline: A ran first, D ran last", h.order[0] === "A" && h.order[h.order.length - 1] === "D");
+  ok("pipeline: B and C ran concurrently (overlap)", h.live.max >= 2, "maxConcurrent=" + h.live.max);
+  // MEASUREMENT: D received BOTH upstream results as context (flat `parallel` cannot do this).
+  ok("pipeline: passes dependency results downstream", /RES_B/.test(h.prompts.D || "") && /RES_C/.test(h.prompts.D || ""));
+
+  // Cycle is rejected up front
+  const cyc = await pipelineSubAgents({ tasks: [{ id: "a", task: "do A", deps: ["b"] }, { id: "b", task: "do B", deps: ["a"] }] }, tmp, {}, mkRunner().runner);
+  ok("pipeline: rejects a dependency cycle", cyc.ok === false && cyc.error === "CYCLE");
+
+  // Unknown dependency is rejected
+  const unk = await pipelineSubAgents({ tasks: [{ id: "a", task: "do A", deps: ["zzz"] }] }, tmp, {}, mkRunner().runner);
+  ok("pipeline: rejects an unknown dependency", unk.ok === false && unk.error === "UNKNOWN_DEP");
+
+  // A failed dependency cascade-SKIPS its dependents (never run on broken inputs)
+  const h2 = mkRunner(new Set(["A"]));
+  const r2 = await pipelineSubAgents({ tasks: diamond }, tmp, {}, h2.runner);
+  ok("pipeline: failed dep marks A failed", r2.results.find(x => x.id === "A").status === "failed");
+  ok("pipeline: dependents of a failed dep are skipped", ["B", "C", "D"].every(id => r2.results.find(x => x.id === id).status === "skipped"));
+  ok("pipeline: skipped tasks never ran (only A executed)", h2.order.length === 1 && h2.order[0] === "A");
+  ok("pipeline: reports failed/skipped counts", r2.failed === 1 && r2.skipped === 3);
+
+  // No-deps behaves like parallel: one wave, all concurrent
+  const h3 = mkRunner();
+  const r3 = await pipelineSubAgents({ tasks: [{ id: "X", task: "do X", deps: [] }, { id: "Y", task: "do Y", deps: [] }, { id: "Z", task: "do Z", deps: [] }] }, tmp, {}, h3.runner);
+  ok("pipeline: independent tasks run in a single wave", r3.waves === 1 && h3.live.max >= 2);
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
