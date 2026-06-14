@@ -180,7 +180,8 @@ export async function parallelSubAgents(a, workdir, opts, runner = runAgent) {
     }
   };
   await Promise.all(Array.from({ length: Math.min(cap, tasks.length) }, worker));
-  return { ok: true, cap, count: tasks.length, results };
+  const failed = results.filter(r => r && (r.error || !r.done)).length;
+  return { ok: true, cap, count: tasks.length, failed, results };
 }
 
 // delegate: run a focused SUB-TASK in a fresh agent (one level deep only — no recursion runaway).
@@ -225,7 +226,9 @@ export class Session {
     this.messages = null; // seeded on first run; persists across turns
     this.maxSteps = opts.maxSteps ?? 16;
     // diff capture: edit tools record { path, before, after } on the session for the UI to read.
+    // lastDiff = single-file edits; lastDiffs = the per-file list for a batch edit_files.
     this.lastDiff = null;
+    this.lastDiffs = null;
     // MCP state (populated by connectMCP, optional): connected clients + discovered tool catalog.
     this.mcpClients = [];
     this.mcpCatalog = [];
@@ -269,6 +272,22 @@ export class Session {
       } else {
         this.lastDiff = null;
       }
+      this.lastDiffs = null;
+      return res;
+    };
+    // edit_files: capture a before snapshot of every distinct path, then a per-file diff after, so
+    // the UI can show what a batch edit changed (and the approval gate can preview it).
+    const captureEdits = (a) => {
+      const edits = Array.isArray(a?.edits) ? a.edits : [];
+      const paths = [...new Set(edits.map(e => e && e.path).filter(Boolean))];
+      const before = new Map(paths.map(rel => [rel, this._readSafe(rel).content ?? ""]));
+      const res = t.edit_files(a);
+      if (res && res.ok) {
+        this.lastDiffs = paths.map(rel => ({ path: rel, before: before.get(rel) ?? "", after: this._readSafe(rel).content ?? "" }));
+      } else {
+        this.lastDiffs = null;
+      }
+      this.lastDiff = null;
       return res;
     };
     return {
@@ -278,7 +297,7 @@ export class Session {
       run_command: (a) => t.run_command(a),
       edit_file: captureEdit("edit_file", (a) => t.edit_file(a)),
       create_file: captureEdit("create_file", (a) => t.create_file(a)),
-      edit_files: (a) => { const r = t.edit_files(a); this.lastDiff = null; return r; },
+      edit_files: captureEdits,
       git_status: (a) => t.git_status(a),
       git_diff: (a) => t.git_diff(a),
       git_log: (a) => t.git_log(a),

@@ -37,7 +37,15 @@ const VERSION = (() => {
 function parseArgs(argv) {
   const flags = {};
   const positional = [];
+  const unknown = [];      // flags we don't recognize (warned about, not silently dropped)
+  const missing = [];      // value-flags given with no following value
   let baseline = false, init = false, help = false, version = false, auto = false, plan = false;
+  // consume the value after a value-flag; record it as missing if absent (or another flag follows).
+  const val = (i, name) => {
+    const next = argv[i + 1];
+    if (next === undefined || (typeof next === "string" && next.startsWith("--"))) { missing.push(name); return [undefined, i]; }
+    return [next, i + 1];
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--help" || a === "-h") help = true;
@@ -46,25 +54,41 @@ function parseArgs(argv) {
     else if (a === "--baseline") baseline = true;
     else if (a === "--plan") plan = true;
     else if (a === "--auto") { auto = true; flags.approval = "auto"; }
-    else if (a === "--model") flags.model = argv[++i];
-    else if (a === "--approval") flags.approval = argv[++i];
-    else if (a === "--dir") flags.dir = argv[++i];
-    else if (a === "--max-steps") flags.maxSteps = Number(argv[++i]);
-    else if (a === "--in") flags.in = argv[++i];
-    else if (a === "--at") flags.at = argv[++i];
-    else if (a === "--cron") flags.cron = argv[++i];
-    else if (a === "--every") flags.every = argv[++i];
+    else if (a === "--model") { [flags.model, i] = val(i, "--model"); }
+    else if (a === "--approval") { [flags.approval, i] = val(i, "--approval"); }
+    else if (a === "--dir") { [flags.dir, i] = val(i, "--dir"); }
+    else if (a === "--prompt" || a === "-p") { [flags.promptTask, i] = val(i, "--prompt"); }
+    else if (a === "--max-steps") { let v; [v, i] = val(i, "--max-steps"); flags.maxSteps = Number(v); }
+    else if (a === "--in") { [flags.in, i] = val(i, "--in"); }
+    else if (a === "--at") { [flags.at, i] = val(i, "--at"); }
+    else if (a === "--cron") { [flags.cron, i] = val(i, "--cron"); }
+    else if (a === "--every") { [flags.every, i] = val(i, "--every"); }
     else if (a === "--watch") flags.watch = true;
     else if (a === "--daemon") flags.daemon = true;
     else if (a === "--__daemon-child") flags.daemonChild = true;
-    else if (a === "--__bg-run") flags.bgRun = argv[++i];
+    else if (a === "--__bg-run") { [flags.bgRun, i] = val(i, "--__bg-run"); }
     else if (a.startsWith("--model=")) flags.model = a.slice(8);
     else if (a.startsWith("--approval=")) flags.approval = a.slice(11);
     else if (a.startsWith("--dir=")) flags.dir = a.slice(6);
-    else if (a.startsWith("--")) { /* ignore unknown flags */ }
+    else if (a.startsWith("--prompt=")) flags.promptTask = a.slice(9);
+    else if (a.startsWith("--max-steps=")) flags.maxSteps = Number(a.slice(12));
+    else if (a.startsWith("-") && a !== "-") unknown.push(a);   // unrecognized flag -> reported
     else positional.push(a);
   }
-  return { flags, positional, baseline, init, help, version, auto, plan };
+  return { flags, positional, baseline, init, help, version, auto, plan, unknown, missing };
+}
+
+// Known first-positional subcommands — used to catch typos before a stray word is sent to the model.
+const SUBCOMMANDS = ["config", "upgrade", "update", "mcp", "skills", "skill", "bg", "jobs", "logs", "schedule", "scheduler", "help", "version"];
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) => i);
+  for (let j = 1; j <= n; j++) {
+    let prev = dp[0]; dp[0] = j;
+    for (let i = 1; i <= m; i++) { const tmp = dp[i]; dp[i] = Math.min(dp[i] + 1, dp[i - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = tmp; }
+  }
+  return dp[m];
 }
 
 const HELP = `slivr — configurable-LLM coding agent (any Claude/GPT/Gemini model via OpenRouter)
@@ -122,11 +146,14 @@ async function runOneShot(task, dir, config, palette, { auto, plan }) {
     model: config.model, apiKey: config.apiKey, baseUrl: config.baseUrl,
     maxSteps: config.maxSteps, maxTokensPerTurn: config.maxTokensPerTurn,
     planMode: !!plan,
+    notify: (m) => process.stderr.write(p.dim(`  … ${m}\n`)),
   });
   if (!session.provider.hasKey()) {
-    process.stderr.write(p.yellow("no API key found — the agent cannot call the model.\n"));
+    // Stop here rather than running a turn that's guaranteed to fail with a misleading 0-token footer.
+    process.stderr.write(p.red("no API key — the agent cannot call the model.\n"));
     process.stderr.write(p.dim("  fix: export OPENROUTER_API_KEY=sk-or-...   (or put \"apiKey\" in .slivr.json, or OPENROUTER_API_KEY in a .env)\n"));
     process.stderr.write(p.dim("  get one at https://openrouter.ai/keys\n"));
+    return 3;
   }
   // Connect any configured MCP servers; their tools become callable as mcp__<server>__<tool>.
   if (config.mcpServers) {
@@ -183,13 +210,23 @@ async function runOneShot(task, dir, config, palette, { auto, plan }) {
     if ((tool === "edit_file" || tool === "create_file") && result?.ok && session.lastDiff) {
       const s = diffStat(session.lastDiff.before, session.lastDiff.after);
       extra = `+${s.add} -${s.del}` + (result.tier ? ` (${result.tier})` : "");
+    } else if (tool === "edit_files" && result?.ok && session.lastDiffs) {
+      let add = 0, del = 0;
+      for (const d of session.lastDiffs) { const s = diffStat(d.before, d.after); add += s.add; del += s.del; }
+      extra = `${session.lastDiffs.length} file${session.lastDiffs.length === 1 ? "" : "s"} +${add} -${del}`;
     } else if (tool === "run_command") extra = result?.ok ? "exit 0" : `exit ${result?.exitCode ?? "?"}`;
-    else if (tool === "parallel") extra = result?.ok ? `${result.count} subtasks @${result.cap}` : (result?.error || "");
+    else if (tool === "parallel") extra = result?.ok ? `${result.count} subtasks @${result.cap}${result.failed ? `, ${result.failed} failed` : ""}` : (result?.error || "");
     else if (tool === "plan") extra = result?.ok ? `${result.steps?.length || 0} steps` : "";
     process.stderr.write(stepLine({ tool, args, status, extra, palette: p }) + "\n");
     if ((tool === "edit_file" || tool === "create_file") && result?.ok && session.lastDiff) {
       const d = renderDiff(session.lastDiff.before, session.lastDiff.after, { color: p.enabled, path: session.lastDiff.path });
       if (d) process.stderr.write(d.split("\n").map(l => "    " + l).join("\n") + "\n");
+    }
+    if (tool === "edit_files" && result?.ok && session.lastDiffs) {
+      for (const dd of session.lastDiffs) {
+        const d = renderDiff(dd.before, dd.after, { color: p.enabled, path: dd.path });
+        if (d) process.stderr.write(d.split("\n").map(l => "    " + l).join("\n") + "\n");
+      }
     }
     if (tool === "parallel" && result?.ok) {
       for (const r of result.results) process.stderr.write(p.dim(`    ↳ ${r.done ? "✓" : "·"} ${r.task.slice(0, 60)} — ${(r.summary || r.findings || r.error || "").replace(/\s+/g, " ").slice(0, 120)}\n`));
@@ -207,10 +244,18 @@ async function runOneShot(task, dir, config, palette, { auto, plan }) {
   } finally {
     session.closeMCP();
   }
-  process.stderr.write("\n" + (res.summary ? res.summary + "\n" : ""));
+  // Surface the outcome explicitly (a provider error / step-limit must not look like a silent finish).
+  let footerStatus = "ok";
+  if (res.error) { process.stderr.write(p.red(`\n✗ ${res.error}\n`)); footerStatus = "error"; }
+  else {
+    if (res.summary) process.stderr.write("\n" + res.summary + "\n");
+    if (res.stopped) { process.stderr.write(p.yellow(`\n∅ ${res.stopped}\n`)); footerStatus = "incomplete"; }
+    else if (!res.summary) process.stderr.write(p.dim("\n(done — no summary)\n"));
+  }
   if (session.tools.tasks.length) process.stderr.write("\n" + renderTasks(session.tools.tasks, p) + "\n");
-  process.stderr.write(footer({ turns: res.turns, totalTokens: res.totals.totalTokens, cost: res.totals.cost, model: session.provider.model }, p) + "\n");
-  return res.done ? 0 : 1;
+  process.stderr.write(footer({ turns: res.turns, totalTokens: res.totals.totalTokens, cost: res.totals.cost, model: session.provider.model, status: footerStatus }, p) + "\n");
+  // exit 0 only on a clean finish; nonzero when errored or stopped short.
+  return res.error ? 1 : (res.done ? 0 : 1);
 }
 
 // Run a task in-process for a background job, writing all step output to `log` (a write stream).
@@ -240,6 +285,8 @@ async function runOneShotInProcess(task, dir, log) {
   let res;
   try { res = await session.runTurn(task, { onStep, beforeTool }); }
   catch (e) { w(`error: ${e?.message || e}\n`); return 1; }
+  if (res.error) w(`\nERROR: ${res.error}\n`);
+  if (res.stopped) w(`\nSTOPPED: ${res.stopped}\n`);
   w("\nSUMMARY:\n" + (res.summary || "(no summary)") + "\n");
   const t = res.totals;
   w(`\n${res.turns} turns · ${t.totalTokens} tok · $${t.cost.toFixed(4)} · ${session.provider.model}\n`);
@@ -383,7 +430,7 @@ async function runMcpCommand(args, config, p) {
 
 // ---- main -------------------------------------------------------------------
 async function main() {
-  const { flags, positional, baseline, init, help, version, auto, plan } = parseArgs(process.argv.slice(2));
+  const { flags, positional, baseline, init, help, version, auto, plan, unknown, missing } = parseArgs(process.argv.slice(2));
   const palette = makePalette(colorEnabled());
   const p = palette;
 
@@ -393,8 +440,17 @@ async function main() {
     return runBackgroundJob(flags.bgRun, { loadConfig, runOneShotInProcess });
   }
 
-  if (version) { process.stdout.write(`slivr ${VERSION}\n`); return 0; }
-  if (help) { process.stdout.write(HELP + "\n"); return 0; }
+  // A value-flag with no value is a usage error — fail loudly instead of silently using a default.
+  if (missing.length) {
+    process.stderr.write(p.red(`missing value for: ${missing.join(", ")}\n`) + p.dim("  see `slivr --help`\n"));
+    return 2;
+  }
+  // Unrecognized flags are reported (not silently ignored) so a typo'd override can't pass unnoticed.
+  for (const u of unknown) process.stderr.write(p.yellow(`warning: unknown flag ${u} (ignored) — see \`slivr --help\`\n`));
+
+  // Accept bare `help` / `version` words in addition to the --flags.
+  if (version || positional[0] === "version") { process.stdout.write(`slivr ${VERSION}\n`); return 0; }
+  if (help || positional[0] === "help") { process.stdout.write(HELP + "\n"); return 0; }
 
   if (init) {
     const r = writeStarterConfig(process.cwd());
@@ -405,7 +461,9 @@ async function main() {
 
   // Resolve config (flags win). dir comes from --dir, the 2nd positional, or cwd.
   const subcommand = positional[0];
-  const { config, sources, paths } = loadConfig({ flags });
+  const { config, sources, paths, warnings } = loadConfig({ flags });
+  // Tell the user when a config file/value was ignored, instead of silently falling back.
+  for (const w of (warnings || [])) process.stderr.write(p.yellow(`config warning: ${w}\n`));
 
   if (subcommand === "config") {
     process.stdout.write(p.bold("resolved config") + p.dim("  (precedence: flags > local > home > env > defaults)") + "\n");
@@ -500,7 +558,8 @@ async function main() {
         const when = j.status === "done" ? "(done)" : typeof j.dueAt === "number" ? new Date(j.dueAt).toISOString() : "(done)";
         return `  ${p.gray(j.id)}  ${p.cyan((j.spec || j.kind || "?").padEnd(16))} next:${p.dim(when)}  ${String(j.task).replace(/\s+/g, " ").slice(0, 48)}\n`;
       };
-      process.stdout.write(p.bold("scheduled") + p.dim("  (run the poller: slivr scheduler --daemon)") + "\n");
+      const running = schedulerStatus().running;
+      process.stdout.write(p.bold("scheduled") + (running ? p.green("  (scheduler running)") : p.yellow("  (scheduler NOT running — active jobs will not fire: slivr scheduler --daemon)")) + "\n");
       if (active.length) { process.stdout.write(p.bold("\n  active\n")); for (const j of active) process.stdout.write(row(j)); }
       if (done.length) { process.stdout.write(p.dim("\n  done") + p.dim("  (prune: slivr schedule clear)") + "\n"); for (const j of done) process.stdout.write(row(j)); }
       return 0;
@@ -512,7 +571,14 @@ async function main() {
     if (!r.ok) { process.stderr.write(p.red(`schedule error: ${r.error}${r.value ? ` (${r.value})` : ""}\n`)); return 1; }
     addScheduled(r.rec);
     process.stdout.write(p.green(`scheduled job ${r.rec.id}`) + p.dim(` — ${r.rec.spec}, next ${new Date(r.rec.dueAt).toISOString()}\n`));
-    process.stdout.write(p.dim("  run the poller to fire it: slivr scheduler\n"));
+    // A scheduled job only fires while the poller runs. Make that explicit instead of leaving the
+    // user thinking it's armed — this is the #1 "my scheduled task never ran" footgun.
+    if (!schedulerStatus().running) {
+      process.stdout.write(p.yellow("  ⚠ the scheduler is NOT running — this job will NOT fire until you start it:\n"));
+      process.stdout.write(p.dim("     slivr scheduler --daemon    (background)   ·   slivr scheduler   (foreground)\n"));
+    } else {
+      process.stdout.write(p.dim("  the scheduler is running and will fire it.\n"));
+    }
     return 0;
   }
   if (subcommand === "scheduler") {
@@ -543,19 +609,30 @@ async function main() {
     return 0;
   }
 
-  // One-shot vs REPL: a task string => one-shot. No task => REPL.
-  const hasTask = !!subcommand;
-  const dir = flags.dir || (hasTask ? positional[1] : undefined) || process.cwd();
+  // One-shot vs REPL. An explicit `-p/--prompt` is always a task. Otherwise the first positional is
+  // the task — but if it's a SINGLE word that looks like a mistyped subcommand, refuse (so a typo
+  // like `slivr confgi` doesn't silently become a paid model call) and suggest the fix.
+  if (!flags.promptTask && subcommand && !/\s/.test(subcommand) && !SUBCOMMANDS.includes(subcommand)) {
+    const near = SUBCOMMANDS.find(s => levenshtein(subcommand, s) <= 2 && Math.abs(s.length - subcommand.length) <= 2);
+    if (near) {
+      process.stderr.write(p.yellow(`unknown command "${subcommand}" — did you mean \`slivr ${near}\`?\n`));
+      process.stderr.write(p.dim(`  to run "${subcommand}" as a task instead, use: slivr -p "${subcommand}"\n`));
+      return 2;
+    }
+  }
+  const task = flags.promptTask || subcommand;
+  const hasTask = !!task;
+  const dir = flags.dir || (subcommand && !flags.promptTask ? positional[1] : undefined) || process.cwd();
   if (!fs.existsSync(dir)) { process.stderr.write(p.red(`directory not found: ${dir}\n`)); return 2; }
 
   if (hasTask) {
     if (baseline) {
       process.stderr.write(p.dim(`slivr --baseline · model ${config.model}\n`));
-      const res = await runBaseline(subcommand, dir, { model: config.model, apiKey: config.apiKey, baseUrl: config.baseUrl, maxSteps: config.maxSteps });
+      const res = await runBaseline(task, dir, { model: config.model, apiKey: config.apiKey, baseUrl: config.baseUrl, maxSteps: config.maxSteps });
       process.stderr.write(`\ndone=${res.done} turns=${res.turns} ${JSON.stringify(res.totals)}\n`);
       return res.done ? 0 : 1;
     }
-    return runOneShot(subcommand, dir, config, palette, { auto, plan });
+    return runOneShot(task, dir, config, palette, { auto, plan });
   }
 
   // REPL

@@ -36,6 +36,12 @@ npx github:dhyabi2/slivr --help
 git clone https://github.com/dhyabi2/slivr && cd slivr && npm link
 ```
 
+> **Pin a version.** The one-liner tracks `main` by default. To install a specific tag/commit, set
+> `REF`: `REF=v1.2.3 curl -fsSL https://raw.githubusercontent.com/dhyabi2/slivr/main/install.sh | bash`.
+> Prefer to read before you run? Download `install.sh` and inspect it first, then run it locally.
+> If `/usr/local/bin` isn't writable the installer falls back to `~/.local/bin` and appends that
+> directory to your shell rc (`.zshrc`/`.bashrc`/`.profile`); it prints the exact install path.
+
 **Upgrading.** If you installed via the one-liner (or a clone), update in place:
 
 ```bash
@@ -65,7 +71,10 @@ reliability, and openness. ([the honest, measured scope](INVENTION.md).)
 ## Quickstart (daily use)
 
 ```bash
-# 1. set your key (preferred: env var)
+# 1. install (see Install above) — one line:
+curl -fsSL https://raw.githubusercontent.com/dhyabi2/slivr/main/install.sh | bash
+
+# 2. set your key (preferred: env var)
 export OPENROUTER_API_KEY=sk-or-...
 
 # 3. (optional) configure the model + defaults for this repo
@@ -95,11 +104,27 @@ Resolved with precedence **flags > `./.slivr.json` > `~/.slivr.json` > env > def
 [MCP](#mcp--connect-external-tool-servers)). **The model is fully configurable** — any OpenRouter id
 works: `anthropic/claude-sonnet-4`, `openai/gpt-4o`, `google/gemini-2.5-flash`, etc.
 
+**Environment variables.** Every scalar config key can be set from the environment (env sits below
+config files and flags in precedence):
+
+| Env var | Config key | Notes |
+|---|---|---|
+| `OPENROUTER_API_KEY` | `apiKey` | preferred way to supply your key |
+| `SLIVR_API_KEY` | `apiKey` | alternative key var; **overrides** `OPENROUTER_API_KEY` if both set |
+| `MODEL` | `model` | back-compat with the original benchmark CLI |
+| `SLIVR_MODEL` | `model` | **overrides** `MODEL` if both set |
+| `SLIVR_BASE_URL` | `baseUrl` | default `https://openrouter.ai/api/v1` |
+| `SLIVR_APPROVAL` | `approval` | one of `auto` \| `edits` \| `all` |
+| `SLIVR_MAX_STEPS` | `maxSteps` | integer (default 16) |
+| `SLIVR_MAX_TOKENS` | `maxTokensPerTurn` | integer (default 4000) |
+
 ### Safety / approval modes
+There are **two real behaviors**:
 - `auto` — never prompts (trusted flows / CI). **Destructive commands are still hard-blocked.**
-- `edits` (default) — asks `y/N` before every `run_command` and every file edit, showing a diff
-  preview for edits.
-- `all` — same as `edits` (prompts for every mutating/effecting action).
+- `edits` (default) — asks `y/N` before every `run_command` and every file edit/create, showing a
+  diff preview for edits.
+- `all` — **an alias of `edits`**: it prompts for exactly the same mutating/effecting actions (file
+  edits/creates and `run_command`). It is *not* a stricter mode; it's kept for clarity/back-compat.
 
 Regardless of mode, an always-on blocklist **hard-refuses** obviously destructive commands
 (`rm -rf /`, fork bombs, `curl … | sh` from the network, `git push --force`, `dd`/`mkfs` to a

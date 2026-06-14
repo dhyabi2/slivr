@@ -87,18 +87,55 @@ const C = {
   red: "\x1b[31m", green: "\x1b[32m", cyan: "\x1b[36m", dim: "\x1b[2m", reset: "\x1b[0m",
 };
 
-// Colorize a unified-diff string. `color=false` returns it unchanged.
-export function renderDiff(oldStr, newStr, { context = 2, path = "", color = true } = {}) {
+// Heuristic: treat content with a NUL byte as binary (don't try to diff/print it raw).
+function looksBinary(s) {
+  return typeof s === "string" && s.indexOf("\x00") !== -1;
+}
+
+// Replace control characters (except tab) with a visible caret/escape so a diff of a file
+// containing stray ESC/CR/BEL bytes can't corrupt or hijack the terminal.
+function sanitizeControl(s) {
+  return s.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, (ch) => {
+    const code = ch.charCodeAt(0);
+    return code === 0x7f ? "^?" : "^" + String.fromCharCode(code + 64);
+  });
+}
+
+// Default color detection when the caller doesn't force it: only color a real TTY with NO_COLOR unset.
+function autoColor() {
+  if (process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== "") return false;
+  if (process.env.FORCE_COLOR) return true;
+  return !!(process.stdout && process.stdout.isTTY);
+}
+
+// Colorize a unified-diff string. Pass color:false to force plain, color:true to force ANSI;
+// omit it and the renderer auto-detects (TTY + NO_COLOR). maxLines caps runaway output.
+export function renderDiff(oldStr, newStr, { context = 2, path = "", color, maxLines = 200 } = {}) {
+  if (looksBinary(oldStr) || looksBinary(newStr)) {
+    return `${path ? path + ": " : ""}(binary content — diff omitted)`;
+  }
   const raw = unifiedDiff(oldStr, newStr, { context, path });
   if (!raw) return "";
-  if (!color) return raw;
-  return raw.split("\n").map(line => {
-    if (line.startsWith("@@")) return C.cyan + line + C.reset;
-    if (line.startsWith("+++") || line.startsWith("---")) return C.dim + line + C.reset;
-    if (line.startsWith("+")) return C.green + line + C.reset;
-    if (line.startsWith("-")) return C.red + line + C.reset;
-    return C.dim + line + C.reset;
-  }).join("\n");
+  const useColor = color === undefined ? autoColor() : color;
+  let lines = raw.split("\n").map(sanitizeControl);
+  let truncatedNote = "";
+  if (lines.length > maxLines) {
+    const hidden = lines.length - maxLines;
+    lines = lines.slice(0, maxLines);
+    truncatedNote = `…(${hidden} more diff line${hidden === 1 ? "" : "s"} truncated)`;
+  }
+  if (useColor) {
+    lines = lines.map(line => {
+      if (line.startsWith("@@")) return C.cyan + line + C.reset;
+      if (line.startsWith("+++") || line.startsWith("---")) return C.cyan + line + C.reset;
+      if (line.startsWith("+")) return C.green + line + C.reset;
+      if (line.startsWith("-")) return C.red + line + C.reset;
+      return C.dim + line + C.reset;
+    });
+    if (truncatedNote) truncatedNote = C.dim + truncatedNote + C.reset;
+  }
+  if (truncatedNote) lines.push(truncatedNote);
+  return lines.join("\n");
 }
 
 // Compact one-line summary of an edit's magnitude, e.g. "+3 -1".

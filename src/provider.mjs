@@ -47,6 +47,9 @@ export class Provider {
     this.timeoutMs = opts.timeoutMs ?? 30000;
     this.maxRetries = opts.maxRetries ?? 2;
     this.maxTokens = opts.maxTokens ?? opts.maxTokensPerTurn ?? 4000;
+    // optional UI hook: called with a short string on transient events (retry/timeout) so the
+    // user isn't staring at a silent hang. No-op by default.
+    this.notify = typeof opts.notify === "function" ? opts.notify : () => {};
     // session accounting
     this.calls = 0;
     this.promptTokens = 0;
@@ -70,7 +73,8 @@ export class Provider {
     let lastErr;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
+      let timedOut = false;
+      const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, this.timeoutMs);
       // chain the caller's abort signal (e.g. Ctrl-C in the REPL) into this request
       const onAbort = () => ctrl.abort();
       if (signal) { if (signal.aborted) ctrl.abort(); else signal.addEventListener("abort", onAbort, { once: true }); }
@@ -88,9 +92,10 @@ export class Provider {
         if (signal) signal.removeEventListener?.("abort", onAbort);
         const d = await r.json();
         if (!r.ok) {
-          lastErr = new Error(`API ${r.status}: ${JSON.stringify(d).slice(0, 200)}`);
+          lastErr = new Error(humanizeApiError(r.status, d));
           // 4xx (except 429) won't get better on retry
-          if (r.status >= 400 && r.status < 500 && r.status !== 429) throw lastErr;
+          if (r.status >= 400 && r.status < 500 && r.status !== 429) { lastErr.noRetry = true; throw lastErr; }
+          if (attempt < this.maxRetries) this.notify(`model returned ${r.status}; retrying (${attempt + 2}/${this.maxRetries + 1})…`);
           await sleep(500 * (attempt + 1));
           continue;
         }
@@ -111,9 +116,18 @@ export class Provider {
         clearTimeout(timer);
         if (signal) signal.removeEventListener?.("abort", onAbort);
         // a caller abort (Ctrl-C) must propagate immediately, not retry
-        if (signal?.aborted || e.name === "AbortError") { const a = new Error("aborted"); a.name = "AbortError"; throw a; }
+        if (signal?.aborted) { const a = new Error("aborted"); a.name = "AbortError"; throw a; }
+        // OUR timeout fired (not a user abort): a distinct, clearly-worded, retryable failure so it
+        // is never confused with the user pressing Ctrl-C.
+        if (timedOut) {
+          lastErr = new Error(`request timed out after ${Math.round(this.timeoutMs / 1000)}s`);
+          if (attempt < this.maxRetries) { this.notify(`request timed out; retrying (${attempt + 2}/${this.maxRetries + 1})…`); await sleep(500 * (attempt + 1)); continue; }
+          throw lastErr;
+        }
+        if (e.name === "AbortError") { const a = new Error("aborted"); a.name = "AbortError"; throw a; }
         lastErr = e;
-        if (e.message === "NO_OPENROUTER_KEY" || /API 4/.test(e.message)) throw e;
+        if (e.message === "NO_OPENROUTER_KEY" || e.noRetry) throw e;
+        if (attempt < this.maxRetries) this.notify(`network error (${e.message}); retrying (${attempt + 2}/${this.maxRetries + 1})…`);
         await sleep(500 * (attempt + 1));
       }
     }
@@ -143,3 +157,18 @@ export class Provider {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Turn an OpenRouter error response into a short, human-readable message instead of dumping raw
+// JSON at the user. Falls back to the provider's own message, then a generic status line.
+export function humanizeApiError(status, body) {
+  const detail = body?.error?.message || body?.message || "";
+  const hint = {
+    401: "authentication failed — check your OPENROUTER_API_KEY",
+    402: "payment required — your OpenRouter account is out of credits",
+    403: "forbidden — your key may not have access to this model",
+    404: "not found — check the model id",
+    429: "rate limited — too many requests, slow down or try later",
+  }[status];
+  const base = hint || (status >= 500 ? "the model provider had a server error" : `request failed (HTTP ${status})`);
+  return `API ${status}: ${base}${detail ? ` — ${detail.slice(0, 160)}` : ""}`;
+}

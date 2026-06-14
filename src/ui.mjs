@@ -30,13 +30,18 @@ export function makePalette(enabled) {
   };
 }
 
+// Truncate to `max` chars with a single-char ellipsis so the user can tell output was cut.
+function clip(s, max) {
+  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
+
 // Pretty-print a tool target, e.g. edit src/foo.js, run `node test.js`, grep "TODO".
 export function describeStep({ tool, args = {} }) {
   switch (tool) {
     case "read_file": return `read ${args.path ?? "?"}`;
     case "list_dir": return `list ${args.path ?? "."}`;
-    case "grep": return `grep ${JSON.stringify(args.pattern ?? "")}${args.path && args.path !== "." ? " in " + args.path : ""}`;
-    case "run_command": return `run \`${(args.command ?? "").slice(0, 80)}\``;
+    case "grep": return `grep ${clip(String(args.pattern ?? ""), 60)}${args.path && args.path !== "." ? " in " + args.path : ""}`;
+    case "run_command": return `run \`${clip(String(args.command ?? ""), 80)}\``;
     case "edit_file": return `edit ${args.path ?? "?"}`;
     case "create_file": return `create ${args.path ?? "?"}`;
     case "write_file": return `write ${args.path ?? "?"}`;
@@ -59,16 +64,36 @@ export function formatNumber(n) {
   return Number(n || 0).toLocaleString("en-US");
 }
 
+// Format a USD cost without collapsing real spend to "$0.0000". Below the 4-decimal floor we show
+// "<$0.0001" so a nonzero cost is never displayed as exactly zero.
+export function formatCost(cost) {
+  const c = Number(cost || 0);
+  if (c <= 0) return "$0.0000";
+  if (c < 0.0001) return "<$0.0001";
+  return "$" + c.toFixed(4);
+}
+
 // Per-turn footer, e.g.  · 4 turns · 5,912 tok · $0.0021
-export function footer({ turns, totalTokens, cost, model }, palette) {
+// status: 'ok' (default) | 'error' | 'interrupted' | 'incomplete' — tints the leading marker so a
+// failed/aborted turn doesn't read as a successful one.
+export function footer({ turns, totalTokens, cost, model, status = "ok" }, palette) {
   const p = palette;
   const parts = [
     `${turns} turn${turns === 1 ? "" : "s"}`,
     `${formatNumber(totalTokens)} tok`,
-    `$${Number(cost || 0).toFixed(4)}`,
+    formatCost(cost),
   ];
   if (model) parts.push(p.gray(model));
-  return p.dim("· " + parts.join(" · "));
+  const body = parts.join(" · ");
+  if (status === "error") return p.red("✗") + " " + p.dim(body);
+  if (status === "interrupted" || status === "incomplete") return p.yellow("∅") + " " + p.dim(body);
+  return p.dim("· " + body);
+}
+
+// Keep a path from blowing past the terminal width by eliding the middle of long paths.
+function shortPath(cwd, max = 48) {
+  const s = String(cwd || "");
+  return s.length > max ? "…" + s.slice(-(max - 1)) : s;
 }
 
 // Banner shown when the REPL starts.
@@ -76,7 +101,8 @@ export function banner({ model, approval, cwd }, palette) {
   const p = palette;
   return [
     p.bold("slivr") + p.dim(" — interactive coding agent"),
-    p.gray(`model ${model} · approval ${approval} · ${cwd}`),
+    p.gray(`model ${model} · approval ${approval}`),
+    p.gray(`dir ${shortPath(cwd)}`),
     p.gray("type a request, or /help for commands. /exit to quit."),
   ].join("\n");
 }
@@ -88,7 +114,8 @@ export function renderPlan(plan, palette) {
   const p = palette || makePalette(false);
   if (!plan || !Array.isArray(plan.steps) || !plan.steps.length) return p.dim("(no plan)");
   const head = p.bold("plan") + p.dim(` (${plan.steps.length} step${plan.steps.length === 1 ? "" : "s"})`);
-  const body = plan.steps.map((s, i) => `  ${p.cyan(String(i + 1) + ".")} ${s}`).join("\n");
+  const width = String(plan.steps.length).length; // right-align numbers so 1..10+ stay aligned
+  const body = plan.steps.map((s, i) => `  ${p.cyan(String(i + 1).padStart(width) + ".")} ${s}`).join("\n");
   return head + "\n" + body;
 }
 
@@ -109,47 +136,76 @@ export function renderTasks(tasks, palette) {
   return p.bold("tasks") + p.dim(` (${done}/${tasks.length})`) + "\n" + lines.join("\n");
 }
 
+// Consistent wording for prompts that can't run without a TTY.
+const NON_INTERACTIVE = "(non-interactive — defaulting to no)";
+
+// Ask a single question. When `rl` is provided we REUSE it (so we don't open a second readline on
+// the same stdin, which tangles keystrokes); otherwise we open and close a throwaway interface.
+function ask(query, { input = process.stdin, output = process.stdout, rl } = {}) {
+  return new Promise((resolve) => {
+    if (rl) return rl.question(query, (ans) => resolve(ans));
+    const tmp = readline.createInterface({ input, output });
+    tmp.question(query, (ans) => { tmp.close(); resolve(ans); });
+  });
+}
+
 // Three-way plan prompt: yes / edit / no. Returns "yes" | "edit" | "no". Non-TTY -> "no".
-// (auto-approval is handled by the caller before this is ever invoked.)
-export function planPrompt(question, { input = process.stdin, output = process.stdout } = {}) {
-  return new Promise((resolve) => {
-    if (!input.isTTY) { output.write(question + " [auto: non-interactive]\n"); return resolve("no"); }
-    const rl = readline.createInterface({ input, output });
-    rl.question(question + " [y]es / [e]dit / [n]o: ", (ans) => {
-      rl.close();
-      const a = (ans || "").trim().toLowerCase();
-      if (/^e/.test(a)) return resolve("edit");
-      if (/^n/.test(a)) return resolve("no");
-      resolve("yes"); // default yes
-    });
-  });
+// (auto-approval is handled by the caller before this is ever invoked.) Capital letter = default.
+export async function planPrompt(question, opts = {}) {
+  const { input = process.stdin, output = process.stdout } = opts;
+  if (!input.isTTY) { output.write(question + " " + NON_INTERACTIVE + "\n"); return "no"; }
+  const ans = (await ask(question + " [y]es / [e]dit / [n]o: ", opts) || "").trim().toLowerCase();
+  if (/^e/.test(ans)) return "edit";
+  if (/^n/.test(ans)) return "no";
+  return "yes"; // default yes (Enter)
 }
 
-// Read a multi-line revised plan from the user (one step per line; blank line ends). Returns [steps].
-export function readPlanEdit({ input = process.stdin, output = process.stdout } = {}) {
+// Read a multi-line revised plan from the user (one step per line; blank line ends). Returns an
+// array of steps, or `null` if the user CANCELS (first line is blank, or "q"/"cancel") — callers
+// must treat null as "go back / do not silently approve". `existing` is shown for reference.
+export function readPlanEdit({ input = process.stdin, output = process.stdout, rl, existing = [] } = {}) {
   return new Promise((resolve) => {
-    if (!input.isTTY) return resolve([]);
-    output.write("enter revised plan, one step per line; blank line to finish:\n");
-    const rl = readline.createInterface({ input, output });
+    if (!input.isTTY) return resolve(null);
+    if (existing.length) output.write("current plan:\n" + existing.map((s, i) => `  ${i + 1}. ${s}`).join("\n") + "\n");
+    output.write("enter revised plan, one step per line; blank line on the FIRST line cancels, blank line after steps finishes:\n");
     const steps = [];
-    rl.prompt && rl.setPrompt("  · ");
-    rl.on("line", (line) => {
-      if (!line.trim()) { rl.close(); return; }
-      steps.push(line.trim());
-    });
-    rl.on("close", () => resolve(steps));
+    const own = !rl;
+    const r = rl || readline.createInterface({ input, output });
+    r.setPrompt && r.setPrompt("  · ");
+    const onLine = (line) => {
+      const t = line.trim();
+      if (!t) { finish(); return; }
+      if (steps.length === 0 && /^(q|cancel)$/i.test(t)) { steps.cancelled = true; finish(); return; }
+      steps.push(t);
+      r.prompt && r.prompt();
+    };
+    const finish = () => {
+      r.removeListener("line", onLine);
+      if (own) r.close();
+      resolve(steps.cancelled || steps.length === 0 ? null : steps);
+    };
+    r.on("line", onLine);
+    r.prompt && r.prompt();
   });
 }
 
-// y/N confirmation on a fresh readline (used outside the main REPL rl to avoid event tangles).
-// Returns a Promise<boolean>. Default is NO. Honors a non-TTY stdin by returning false.
-export function confirm(question, { input = process.stdin, output = process.stdout } = {}) {
-  return new Promise((resolve) => {
-    if (!input.isTTY) { output.write(question + " [auto-deny: non-interactive]\n"); return resolve(false); }
-    const rl = readline.createInterface({ input, output });
-    rl.question(question + " [y/N] ", (ans) => {
-      rl.close();
-      resolve(/^y(es)?$/i.test((ans || "").trim()));
-    });
-  });
+// y/N confirmation. Returns a Promise<boolean>. Default is NO. Non-TTY -> false.
+export async function confirm(question, opts = {}) {
+  const { input = process.stdin, output = process.stdout } = opts;
+  if (!input.isTTY) { output.write(question + " " + NON_INTERACTIVE + "\n"); return false; }
+  const ans = (await ask(question + " [y/N] ", opts) || "").trim();
+  return /^y(es)?$/i.test(ans);
+}
+
+// Approval prompt with batch controls. Returns "yes" | "no" | "all" | "stop":
+//   y = allow this   ·   n/Enter = deny this   ·   a = allow all like this for the rest of the turn
+//   s = stop (deny this and everything else this turn). Non-TTY -> "no".
+export async function approvalPrompt(question, opts = {}) {
+  const { input = process.stdin, output = process.stdout } = opts;
+  if (!input.isTTY) { output.write(question + " " + NON_INTERACTIVE + "\n"); return "no"; }
+  const ans = (await ask(question + " [y]es / [N]o / [a]ll / [s]top: ", opts) || "").trim().toLowerCase();
+  if (/^a/.test(ans)) return "all";
+  if (/^s/.test(ans)) return "stop";
+  if (/^y(es)?$/.test(ans)) return "yes";
+  return "no"; // default deny
 }

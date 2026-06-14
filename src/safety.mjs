@@ -35,9 +35,11 @@ const RULES = [
                  /\bgit\s+push\b[^|;&]*\+/.test(c),
   },
   {
-    name: "git hard reset to remote / clean -fdx",
-    why: "discards all local work irrecoverably",
-    test: (c) => /\bgit\s+clean\b[^|;&]*-[a-z]*f[a-z]*d[a-z]*x?|-[a-z]*d[a-z]*f/.test(c),
+    name: "git clean -fd (force-remove untracked)",
+    why: "force-removes untracked files/dirs irrecoverably",
+    // Anchored to `git clean`; require a force flag bundle containing fd/df (e.g. -fd, -fdx).
+    // (Earlier this had an unanchored `-[a-z]*d[a-z]*f` branch that wrongly matched any `-df` flag.)
+    test: (c) => /\bgit\s+clean\b[^|;&]*-[a-z]*(fd|df)[a-z]*/.test(c),
   },
   {
     name: "disk overwrite",
@@ -60,7 +62,9 @@ const RULES = [
     name: "kill all processes",
     why: "killing all processes / shutting down the machine",
     test: (c) => /\bkill(all)?\b[^|;&]*-9\s+-1\b|\bkill\b[^|;&]*\s-1\b/.test(c) ||
-                 /\b(shutdown|reboot|halt|poweroff)\b/.test(c),
+                 // Only when it's the command being INVOKED (start, or after a separator) — so
+                 // `grep shutdown log` / `echo "app shutdown"` are NOT blocked.
+                 /(^|[|;&]\s*)(shutdown|reboot|halt|poweroff)\b/.test(c),
   },
 ];
 
@@ -79,9 +83,9 @@ export function isDestructive(command) {
 //   'auto'  : never prompt (trusted). run_command still hard-blocked if destructive.
 //   'edits' : prompt before run_command AND before edits/creates.
 //   'all'   : prompt before every mutating/effecting action (run_command, edit, create).
-// kind ∈ {'run_command','edit_file','create_file','write_file', other}.
+// kind ∈ {'run_command','edit_file','edit_files','create_file','write_file', other}.
 export function needsApproval(kind, mode = "edits") {
-  const mutating = kind === "edit_file" || kind === "create_file" || kind === "write_file";
+  const mutating = kind === "edit_file" || kind === "edit_files" || kind === "create_file" || kind === "write_file";
   const effecting = kind === "run_command";
   if (mode === "auto") return false;
   if (mode === "all") return mutating || effecting;

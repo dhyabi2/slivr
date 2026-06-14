@@ -46,8 +46,13 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     ? seedMessages
     : [{ role: "system", content: systemPrompt }];
   messages.push({ role: "user", content: `TASK:\n${task}\n\nBegin. Respond with ONE JSON tool call.` });
-  let turns = 0, editFailures = 0, done = false, summary = "";
+  let turns = 0, editFailures = 0, done = false, summary = "", error = null, stopped = null;
   const trace = [];
+
+  // Bail out of a stuck loop: if the model keeps emitting non-JSON / unknown-tool calls it makes no
+  // progress and just burns paid turns. Count consecutive wasted steps and stop after a few.
+  let noProgress = 0;
+  const NO_PROGRESS_CAP = 4;
 
   let aborted = false;
   for (let step = 0; step < maxSteps; step++) {
@@ -58,6 +63,11 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
       resp = await provider.chat(messages, { signal });
     } catch (e) {
       if (e.name === "AbortError" || signal?.aborted) { aborted = true; trace.push({ step, aborted: true }); break; }
+      // Surface the failure to the caller instead of swallowing it. A bare "NO_OPENROUTER_KEY"
+      // or "API 401/4xx" otherwise renders as a silent "1 turn · 0 tok" footer with no explanation.
+      error = e.message === "NO_OPENROUTER_KEY"
+        ? "no API key — set OPENROUTER_API_KEY (or apiKey in ~/.slivr.json)"
+        : `provider error: ${e.message}`;
       trace.push({ step, error: "PROVIDER_ERROR", detail: e.message });
       break;
     }
@@ -67,6 +77,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     if (!call || !call.tool) {
       messages.push({ role: "user", content: 'Your message was not a valid JSON tool call. Respond with exactly one JSON object: {"tool":"...","args":{...}}.' });
       trace.push({ step, badCall: clip(resp.text, 300) });
+      if (++noProgress >= NO_PROGRESS_CAP) { stopped = `the model did not produce a valid tool call after ${noProgress} attempts`; break; }
       continue;
     }
 
@@ -80,8 +91,10 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     if (!fn) {
       messages.push({ role: "user", content: `Unknown tool "${call.tool}". Available: ${Object.keys(toolMap).join(", ")}, done.` });
       trace.push({ step, unknownTool: call.tool });
+      if (++noProgress >= NO_PROGRESS_CAP) { stopped = `the model kept calling unknown tools (last: ${call.tool})`; break; }
       continue;
     }
+    noProgress = 0; // a real, known tool call — making progress again
 
     // approval/safety gate: let the host veto a tool BEFORE it runs.
     if (beforeTool) {
@@ -122,5 +135,10 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     messages.push({ role: "user", content: `RESULT (${call.tool}):\n${clip(result)}` });
   }
 
-  return { done, summary, turns, editFailures, trace, aborted, messages, totals: provider.totals() };
+  // If we fell out of the loop without finishing, aborting, or erroring, we hit the step cap.
+  if (!done && !aborted && !error && !stopped) {
+    stopped = `reached the ${maxSteps}-step limit before finishing — raise --max-steps or narrow the task`;
+  }
+
+  return { done, summary, turns, editFailures, trace, aborted, error, stopped, messages, totals: provider.totals() };
 }

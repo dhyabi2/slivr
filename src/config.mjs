@@ -37,18 +37,22 @@ function fromEnv(env) {
   return out;
 }
 
-// Keep only known keys with defined, sane values. Coerces numeric strings. Drops junk silently.
-function sanitize(obj, source) {
+// Keep only known keys with defined, sane values. Coerces numeric strings. Drops junk silently,
+// but records a warning (via `warn`) when a KNOWN key has an invalid value, so the user learns
+// their setting was ignored instead of it vanishing without a trace.
+function sanitize(obj, source, warn) {
   const out = {};
   if (!obj || typeof obj !== "object") return out;
+  const note = (msg) => { if (typeof warn === "function") warn(`${source}: ${msg}`); };
   for (const k of KNOWN_KEYS) {
     if (obj[k] === undefined || obj[k] === null || obj[k] === "") continue;
     let v = obj[k];
     if (k === "maxSteps" || k === "maxTokensPerTurn") {
-      v = Number(v);
-      if (!Number.isFinite(v) || v <= 0) continue;
+      const num = Number(v);
+      if (!Number.isFinite(num) || num <= 0) { note(`ignored ${k}=${JSON.stringify(v)} (must be a positive number)`); continue; }
+      v = num;
     }
-    if (k === "approval" && !APPROVAL_MODES.includes(v)) continue;
+    if (k === "approval" && !APPROVAL_MODES.includes(v)) { note(`ignored approval=${JSON.stringify(v)} (use one of: ${APPROVAL_MODES.join(", ")})`); continue; }
     out[k] = v;
   }
   // mcpServers is a structured passthrough (not a scalar): keep it verbatim if it's an object.
@@ -61,12 +65,14 @@ function sanitize(obj, source) {
 // PURE merge. layers are passed lowest→highest priority; later wins. Returns { config, sources }.
 // sources records which layer supplied each final value (handy for `config` output / debugging).
 export function resolveConfig({ flags = {}, local = {}, home = {}, env = {} } = {}) {
+  const warnings = [];
+  const warn = (m) => warnings.push(m);
   const layers = [
     { name: "default", data: DEFAULTS },
-    { name: "env", data: sanitize(fromEnv(env), "env") },
-    { name: "home", data: sanitize(home, "home") },
-    { name: "local", data: sanitize(local, "local") },
-    { name: "flags", data: sanitize(flags, "flags") },
+    { name: "env", data: sanitize(fromEnv(env), "env", warn) },
+    { name: "home", data: sanitize(home, "~/.slivr.json", warn) },
+    { name: "local", data: sanitize(local, "./.slivr.json", warn) },
+    { name: "flags", data: sanitize(flags, "flags", warn) },
   ];
   const config = {};
   const sources = {};
@@ -76,22 +82,27 @@ export function resolveConfig({ flags = {}, local = {}, home = {}, env = {} } = 
       sources[k] = layer.name;
     }
   }
-  return { config, sources };
+  return { config, sources, warnings };
 }
 
-function readJSONSafe(file) {
+function readJSONSafe(file, warn) {
   try {
     if (!fs.existsSync(file)) return {};
     return JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch { return {}; } // malformed config never crashes the tool
+  } catch (e) {
+    // malformed config never crashes the tool — but tell the user it was ignored.
+    if (typeof warn === "function") warn(`${file}: could not parse (${e.message}) — this file was IGNORED`);
+    return {};
+  }
 }
 
 // Wire resolveConfig to the real environment. cwd defaults to process.cwd().
 export function loadConfig({ flags = {}, cwd = process.cwd(), env = process.env } = {}) {
+  const fileWarnings = [];
   const localPath = path.join(cwd, ".slivr.json");
   const homePath = path.join(os.homedir(), ".slivr.json");
-  const local = readJSONSafe(localPath);
-  const home = readJSONSafe(homePath);
+  const local = readJSONSafe(localPath, (m) => fileWarnings.push(m));
+  const home = readJSONSafe(homePath, (m) => fileWarnings.push(m));
   // Portable key fallback: if no key in env, read OPENROUTER_API_KEY from a cwd .env/.env.local
   // so `slivr config` reflects the SAME key the provider will actually use (no silent mismatch).
   let env2 = env;
@@ -99,8 +110,8 @@ export function loadConfig({ flags = {}, cwd = process.cwd(), env = process.env 
     const k = readDotenvKey(cwd);
     if (k) env2 = { ...env, OPENROUTER_API_KEY: k };
   }
-  const { config, sources } = resolveConfig({ flags, local, home, env: env2 });
-  return { config, sources, paths: { local: localPath, home: homePath } };
+  const { config, sources, warnings } = resolveConfig({ flags, local, home, env: env2 });
+  return { config, sources, warnings: [...fileWarnings, ...warnings], paths: { local: localPath, home: homePath } };
 }
 
 function readDotenvKey(cwd) {

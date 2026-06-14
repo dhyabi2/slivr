@@ -782,6 +782,71 @@ console.log("== 20. robustness: malformed config/skill/job never crash + web_sea
   ok("recordExternalUsage updates session totals", tot.totalTokens === 150 && tot.cost >= 0.001);
 }
 
+console.log("== 21. UX hardening regressions ==");
+{
+  // loop surfaces a step-limit stop instead of ending silently
+  const t = new Tools(tmp);
+  fs.writeFileSync(path.join(tmp, "z.js"), "x\n");
+  const neverDone = { chat: async () => ({ text: JSON.stringify({ tool: "read_file", args: { path: "z.js" } }), usage: {}, raw: {} }), totals: () => ({ model: "s", calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const r = await runLoop({ provider: neverDone, tools: t, toolMap: { read_file: (a) => t.read_file(a) }, systemPrompt: "s", task: "x", maxSteps: 3 });
+  ok("loop reports step-limit stop", !r.done && /step limit/.test(r.stopped || ""));
+
+  // loop bails out of a stuck no-progress (always non-JSON) loop before the step cap
+  const garbage = { chat: async () => ({ text: "not json", usage: {}, raw: {} }), totals: () => ({ model: "s", calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const r2 = await runLoop({ provider: garbage, tools: t, toolMap: {}, systemPrompt: "s", task: "x", maxSteps: 50 });
+  ok("loop bails out of a stuck non-JSON loop", !r2.done && /valid tool call/.test(r2.stopped || "") && r2.turns < 10);
+
+  // footer status styling
+  const { footer: f, formatCost, banner } = await import("./src/ui.mjs");
+  const pOn = makePalette(true);
+  ok("footer error status is marked", f({ turns: 1, totalTokens: 0, cost: 0, status: "error" }, pOn).includes("✗"));
+  ok("footer ok status is not marked error", !f({ turns: 1, totalTokens: 0, cost: 0 }, pOn).includes("✗"));
+
+  // formatCost never collapses a real cost to $0.0000
+  ok("tiny cost shows <$0.0001", formatCost(0.00000004) === "<$0.0001");
+  ok("zero cost shows $0.0000", formatCost(0) === "$0.0000");
+  ok("normal cost shows 4 decimals", formatCost(0.0021) === "$0.0021");
+
+  // diff: binary content is not dumped raw; huge diffs are truncated
+  const { renderDiff } = await import("./src/diff.mjs");
+  ok("binary content not diffed raw", renderDiff("a\x00b", "c\x00d", { color: false }).includes("binary content"));
+  const big = Array.from({ length: 500 }, (_, i) => "old" + i).join("\n");
+  const big2 = Array.from({ length: 500 }, (_, i) => "new" + i).join("\n");
+  ok("huge diff is truncated", renderDiff(big, big2, { color: false, maxLines: 50 }).includes("truncated"));
+  ok("control chars are escaped in diff", !renderDiff("a\x1b[31mX", "b\x1b[31mY", { color: false }).includes("\x1b[31m"));
+
+  // provider error messages are humanized
+  const { humanizeApiError } = await import("./src/provider.mjs");
+  ok("401 humanized", /authentication failed/.test(humanizeApiError(401, {})));
+  ok("402 humanized", /credits/.test(humanizeApiError(402, {})));
+
+  // edit_files now requires approval like other mutating tools
+  ok("edit_files needs approval in edits mode", needsApproval("edit_files", "edits") === true);
+  ok("edit_files needs approval in all mode", needsApproval("edit_files", "all") === true);
+  ok("edit_files never prompts in auto", needsApproval("edit_files", "auto") === false);
+
+  // safety: 'shutdown' as an argument is no longer a false-positive block; as a command it still is
+  ok("shutdown command still blocked", isDestructive("shutdown -h now").blocked === true);
+  ok("shutdown as an argument NOT blocked", isDestructive("grep shutdown /var/log/sys.log").blocked === false);
+  ok("echo mentioning shutdown NOT blocked", isDestructive('echo "scheduling app shutdown"').blocked === false);
+  ok("ls -df no longer wrongly blocked (git clean regex)", isDestructive("ls -df somedir").blocked === false);
+  ok("git clean -fdx still blocked", isDestructive("git clean -fdx").blocked === true);
+
+  // config surfaces warnings for invalid known values (instead of silently dropping them)
+  const cw = resolveConfig({ local: { approval: "nope", maxSteps: -1 } });
+  ok("config reports invalid approval", cw.warnings.some(w => /approval/.test(w)));
+  ok("config reports invalid maxSteps", cw.warnings.some(w => /maxSteps/.test(w)));
+  ok("config has no warnings when clean", resolveConfig({ local: { approval: "auto" } }).warnings.length === 0);
+
+  // approval prompt parsing: yes-to-all / stop verbs (non-TTY defaults to "no")
+  const { approvalPrompt } = await import("./src/ui.mjs");
+  const ap = await approvalPrompt("apply?", { input: { isTTY: false }, output: { write() {} } });
+  ok("approvalPrompt non-TTY denies", ap === "no");
+
+  // banner elides a very long cwd
+  ok("banner shortens long cwd", banner({ model: "m", approval: "edits", cwd: "/a/".repeat(60) }, makePalette(false)).includes("…"));
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);
