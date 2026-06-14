@@ -1019,6 +1019,46 @@ console.log("== 25. pipeline — dependency-aware orchestration (no LLM) ==");
   ok("pipeline: independent tasks run in a single wave", r3.waves === 1 && h3.live.max >= 2);
 }
 
+console.log("== 26. dynamic re-planning on failure (no LLM) ==");
+{
+  // replan tool: revises remaining steps, keeps a revision count + history; errors with no plan.
+  const t = new Tools(tmp);
+  ok("replan: errors when no plan exists", t.replan_tool({ steps: ["x"] }).ok === false);
+  t.plan_tool({ steps: ["step one", "step two"] });
+  const rp = t.replan_tool({ reason: "two failed", steps: ["revised step", "next"] });
+  ok("replan: revises the plan", rp.ok && t.plan.steps.join("|") === "revised step|next");
+  ok("replan: tracks revision count + reason", t.plan.revisions === 1 && t.plan.history[0].reason === "two failed");
+  ok("replan: keeps the original steps in history", t.plan.history[0].replaced.join("|") === "step one|step two");
+
+  // loop nudge: a step FAILS while a plan exists ⇒ the loop nudges the agent to replan; it does, then finishes.
+  const t2 = new Tools(tmp);
+  fs.writeFileSync(path.join(tmp, "p.js"), "export const A = 1;\n");
+  const toolMap = { plan: (a) => t2.plan_tool(a), replan: (a) => t2.replan_tool(a), edit_file: (a) => t2.edit_file(a) };
+  const script = [
+    JSON.stringify({ tool: "plan", args: { steps: ["edit p.js", "finish"] } }),
+    JSON.stringify({ tool: "edit_file", args: { path: "p.js", anchor: "NOT_PRESENT", replacement: "x" } }), // fails
+    JSON.stringify({ tool: "replan", args: { reason: "anchor was wrong", steps: ["re-read then edit p.js"] } }),
+    JSON.stringify({ tool: "done", args: { summary: "adapted the plan and finished" } }),
+  ];
+  let i = 0;
+  const provider = { chat: async () => ({ text: script[i++] ?? '{"tool":"done","args":{}}', usage: {}, raw: {} }), totals: () => ({ model: "s", calls: i, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const res = await runLoop({ provider, tools: t2, toolMap, systemPrompt: "s", task: "x", maxSteps: 10 });
+  ok("replan-loop: a failure with a plan nudges to replan", res.trace.some(s => s.replanNudge) && res.messages.some(m => typeof m.content === "string" && /call replan/.test(m.content)));
+  ok("replan-loop: the agent revised the plan and finished", res.done === true && t2.plan.revisions === 1);
+
+  // no plan ⇒ no replan nudge (no false trigger when the agent never planned)
+  const t3 = new Tools(tmp);
+  const toolMap3 = { edit_file: (a) => t3.edit_file(a) };
+  let k = 0;
+  const script3 = [
+    JSON.stringify({ tool: "edit_file", args: { path: "p.js", anchor: "NOPE", replacement: "x" } }),
+    JSON.stringify({ tool: "done", args: { summary: "no plan" } }),
+  ];
+  const provider3 = { chat: async () => ({ text: script3[k++] ?? '{"tool":"done","args":{}}', usage: {}, raw: {} }), totals: () => ({ model: "s", calls: k, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const res3 = await runLoop({ provider: provider3, tools: t3, toolMap: toolMap3, systemPrompt: "s", task: "x", maxSteps: 5 });
+  ok("replan-loop: no nudge when there is no plan", !res3.trace.some(s => s.replanNudge));
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

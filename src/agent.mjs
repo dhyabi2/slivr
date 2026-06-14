@@ -29,6 +29,7 @@ You work ONE tool call at a time. Respond with EXACTLY ONE JSON object, nothing 
   {"tool":"parallel","args":{"tasks":["independent subtask A","independent subtask B"]}}
   {"tool":"pipeline","args":{"tasks":[{"id":"a","task":"do A","deps":[]},{"id":"b","task":"do B using A","deps":["a"]}]}}
   {"tool":"plan","args":{"steps":["step 1","step 2","step 3"]}}
+  {"tool":"replan","args":{"reason":"step 2 failed because X","steps":["revised remaining step","next step"]}}
   {"tool":"task_write","args":{"tasks":[{"id":"1","subject":"do X","status":"in_progress"},{"subject":"then Y","status":"pending"}]}}
   {"tool":"edit_file","args":{"path":"f.js","anchor":"<verbatim existing lines>","replacement":"<new lines>","op":"replace"}}
   {"tool":"create_file","args":{"path":"new.js","content":"<full content of a brand-NEW file>"}}
@@ -77,6 +78,8 @@ ORCHESTRATION (parallel):
 PLANNING (plan): when plan-mode is on you MUST call "plan" with a numbered list of concrete steps
   BEFORE any edit/create/run_command — those are blocked until a plan exists and is approved.
   Even when plan-mode is off, calling plan first on a multi-step task helps you stay on track.
+  RE-PLANNING (replan): when a step fails or you learn something that breaks your plan, call "replan"
+  with the revised REMAINING steps and a brief reason — adapt the plan instead of forcing the old one.
 
 TASK MANAGEMENT (task_write): for any multi-step task, call "task_write" up front to lay out the
   steps as a checklist, then update it as you go. status ∈ pending|in_progress|completed. Keep
@@ -118,6 +121,7 @@ export function makeAgent(workdir, opts = {}) {
     parallel: (a) => parallelSubAgents(a, workdir, opts),
     pipeline: (a) => pipelineSubAgents(a, workdir, opts),
     plan: (a) => tools.plan_tool(a),
+    replan: (a) => tools.replan_tool(a),
     task_write: (a) => tools.task_write(a),
   };
   return { provider, tools, toolMap };
@@ -394,6 +398,7 @@ export class Session {
       parallel: (a) => parallelSubAgents(a, this.workdir, this.opts),
       pipeline: (a) => pipelineSubAgents(a, this.workdir, this.opts),
       plan: (a) => t.plan_tool(a),
+      replan: (a) => t.replan_tool(a),
       task_write: (a) => t.task_write(a),
     };
   }

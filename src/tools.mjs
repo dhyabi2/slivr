@@ -36,8 +36,27 @@ export class Tools {
     if (!Array.isArray(arr) || arr.length === 0) return { ok: false, error: "NO_STEPS", hint: 'Pass steps: ["step 1","step 2", ...]' };
     const clean = arr.map(s => String(s).trim()).filter(Boolean).slice(0, 50);
     if (!clean.length) return { ok: false, error: "NO_STEPS" };
-    this.plan = { steps: clean, approved: false };
+    this.plan = { steps: clean, approved: false, revisions: 0, history: [] };
     return { ok: true, steps: clean, note: "Plan recorded. In plan-mode it must be approved before edits/commands run." };
+  }
+
+  // replan (slivr, Block 5): dynamic re-planning. When a step fails or the situation changes, revise
+  // the REMAINING steps locally instead of abandoning the plan. Keeps a revision count + history.
+  replan_tool({ reason, steps } = {}) {
+    if (!this.plan) return { ok: false, error: "NO_PLAN", hint: "Call plan first; replan revises an existing plan." };
+    let arr = steps;
+    if (typeof arr === "string") arr = arr.split("\n").map(s => s.trim()).filter(Boolean);
+    if (!Array.isArray(arr) || !arr.length) return { ok: false, error: "NO_STEPS", hint: 'Pass the revised remaining steps: ["step 1", ...]' };
+    const clean = arr.map(s => String(s).trim()).filter(Boolean).slice(0, 50);
+    if (!clean.length) return { ok: false, error: "NO_STEPS" };
+    const prev = this.plan.steps;
+    this.plan = {
+      steps: clean,
+      approved: this.plan.approved,   // keep approval — this is adapting an already-running plan
+      revisions: (this.plan.revisions || 0) + 1,
+      history: [...(this.plan.history || []), { reason: String(reason || "").slice(0, 300), replaced: prev }],
+    };
+    return { ok: true, steps: clean, revisions: this.plan.revisions, note: "Plan revised." };
   }
 
   // task_write (slivr): replace/update the live task checklist. tasks = [{id?, subject, status}],

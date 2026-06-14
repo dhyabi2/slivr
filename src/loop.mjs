@@ -65,6 +65,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
   // recovery hint, then a clean stop. (NO_PROGRESS_CAP above only covers non-JSON / unknown-tool calls.)
   let lastFp = null, repeatCount = 0, finalNudged = false;
   const SPIN_HINT = 3, SPIN_STOP = 5;
+  let replanNudged = false;   // Block 5: nudge to re-plan once per failure streak (when a plan exists)
 
   let aborted = false;
   for (let step = 0; step < maxSteps; step++) {
@@ -173,6 +174,19 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     }
 
     messages.push({ role: "user", content: `RESULT (${call.tool}):\n${clip(result)}` });
+
+    // DYNAMIC RE-PLAN (Block 5): a step FAILED and a plan exists ⇒ nudge the agent to revise its plan
+    // (once per failure streak) rather than blindly executing a plan that no longer fits. Reset on a
+    // successful step so each new failure streak gets exactly one nudge.
+    if (result && result.ok === false && tools && tools.plan) {
+      if (!replanNudged) {
+        messages.push({ role: "user", content: `That step FAILED${result.error ? `: ${clip(result.error, 200)}` : ""}. If your plan no longer fits, call replan with the revised remaining steps and a brief reason; otherwise fix the issue and continue.` });
+        replanNudged = true;
+        trace.push({ step, replanNudge: true });
+      }
+    } else if (result && result.ok) {
+      replanNudged = false;
+    }
 
     // PROGRESS SENTINEL: same tool + same args repeated with no new result ⇒ the agent is spinning.
     // Escalate: a one-time recovery hint, then a clean stop (never burn the whole budget spinning).
