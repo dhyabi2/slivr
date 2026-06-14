@@ -118,6 +118,20 @@ config files and flags in precedence):
 | `SLIVR_MAX_STEPS` | `maxSteps` | integer (default 16) |
 | `SLIVR_MAX_TOKENS` | `maxTokensPerTurn` | integer (default 4000) |
 
+### Verify-and-repair (`--verify`)
+Give slivr a check and it won't finish until the check passes. When the agent calls `done`, slivr runs
+your verification command; if it fails, the output is fed back and the agent must fix it and finish
+again (up to `--repair N`, default 3). It never finishes "green" on a failing check.
+
+```bash
+slivr "make the failing tests pass" --auto --verify "npm test"
+slivr "fix the type errors" --auto --verify "tsc --noEmit" --repair 5
+```
+
+On a measured A/B over real [LiveCodeBench](bench/LIVECODEBENCH.md) problems this roughly **doubled
+pass@1** (3/7 → 6/7 with `google/gemini-2.5-flash`) — the agent runs its own code, reads the failure,
+and repairs it. See [docs/INVENTION-block1-verify-repair.md](docs/INVENTION-block1-verify-repair.md).
+
 ### Safety / approval modes
 There are **two real behaviors**:
 - `auto` — never prompts (trusted flows / CI). **Destructive commands are still hard-blocked.**

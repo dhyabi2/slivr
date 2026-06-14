@@ -13,7 +13,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { loadConfig, writeStarterConfig } from "../src/config.mjs";
 import { Session, planGate } from "../src/agent.mjs";
 import { runBaseline } from "../src/baseline.mjs";
@@ -58,6 +58,8 @@ function parseArgs(argv) {
     else if (a === "--approval") { [flags.approval, i] = val(i, "--approval"); }
     else if (a === "--dir") { [flags.dir, i] = val(i, "--dir"); }
     else if (a === "--prompt" || a === "-p") { [flags.promptTask, i] = val(i, "--prompt"); }
+    else if (a === "--verify") { [flags.verify, i] = val(i, "--verify"); }
+    else if (a === "--repair") { let v; [v, i] = val(i, "--repair"); flags.repair = Number(v); }
     else if (a === "--max-steps") { let v; [v, i] = val(i, "--max-steps"); flags.maxSteps = Number(v); }
     else if (a === "--in") { [flags.in, i] = val(i, "--in"); }
     else if (a === "--at") { [flags.at, i] = val(i, "--at"); }
@@ -120,6 +122,9 @@ OPTIONS
   --auto                       shorthand for --approval auto (no prompts; destructive cmds still blocked)
   --plan                       plan-mode: agent must produce + get approval for a numbered plan before editing
   --dir <path>                 working directory (default: cwd or the 2nd positional arg)
+  --verify "<cmd>"             after the agent finishes, run <cmd>; if it fails, feed the output back
+                               and make the agent fix it (verify-and-repair loop)
+  --repair <n>                 max repair attempts for --verify (default 3)
   --max-steps <n>              cap tool-calls per turn
   --in/--at/--cron <v>         scheduling timing for "slivr schedule"
   --every <secs>               scheduler poll interval (default 30)
@@ -136,11 +141,12 @@ EXAMPLES
   slivr                                              # REPL, default model
   slivr "add input validation to src/calc.js"        # one-shot in cwd
   slivr "fix the failing test" ./myrepo --auto       # one-shot, no prompts
+  slivr "make tests pass" --auto --verify "npm test" # run npm test, auto-repair until it passes
   slivr --model anthropic/claude-sonnet-4            # REPL on Claude
   slivr config                                       # show resolved config`;
 
 // ---- one-shot ---------------------------------------------------------------
-async function runOneShot(task, dir, config, palette, { auto, plan }) {
+async function runOneShot(task, dir, config, palette, { auto, plan, verify, repair }) {
   const p = palette;
   const session = new Session(dir, {
     model: config.model, apiKey: config.apiKey, baseUrl: config.baseUrl,
@@ -148,6 +154,16 @@ async function runOneShot(task, dir, config, palette, { auto, plan }) {
     planMode: !!plan,
     notify: (m) => process.stderr.write(p.dim(`  … ${m}\n`)),
   });
+  // verify-and-repair: when --verify "<cmd>" is given, slivr runs that command when the agent
+  // finishes; if it exits non-zero the output is fed back and the agent must fix it and finish again.
+  const verifyFn = verify ? async () => {
+    const r = spawnSync(verify, { cwd: dir, shell: true, encoding: "utf8", timeout: 120000, maxBuffer: 8 << 20 });
+    if (!r.error && r.status === 0) return { ok: true };
+    const out = ((r.stdout || "") + (r.stderr || "")).trim();
+    process.stderr.write(p.yellow(`  ⟳ verify failed (exit ${r.status ?? "?"}) — repairing…\n`));
+    return { ok: false, feedback: `The verification command \`${verify}\` failed (exit ${r.status ?? "?"}).\n\n${out.slice(-2500) || r.error?.message || "(no output)"}` };
+  } : undefined;
+  const maxRepairs = verify ? (Number.isFinite(repair) && repair >= 0 ? repair : 3) : 0;
   if (!session.provider.hasKey()) {
     // Stop here rather than running a turn that's guaranteed to fail with a misleading 0-token footer.
     process.stderr.write(p.red("no API key — the agent cannot call the model.\n"));
@@ -240,7 +256,7 @@ async function runOneShot(task, dir, config, palette, { auto, plan }) {
 
   let res;
   try {
-    res = await session.runTurn(task, { onStep, beforeTool });
+    res = await session.runTurn(task, { onStep, beforeTool, verify: verifyFn, maxRepairs });
   } finally {
     session.closeMCP();
   }
@@ -252,10 +268,16 @@ async function runOneShot(task, dir, config, palette, { auto, plan }) {
     if (res.stopped) { process.stderr.write(p.yellow(`\n∅ ${res.stopped}\n`)); footerStatus = "incomplete"; }
     else if (!res.summary) process.stderr.write(p.dim("\n(done — no summary)\n"));
   }
+  // Report verification outcome when --verify was used.
+  if (verifyFn) {
+    if (res.verified === true) process.stderr.write(p.green(`✓ verification passed${res.repairs ? ` (after ${res.repairs} repair${res.repairs === 1 ? "" : "s"})` : ""}\n`));
+    else if (res.verified === false) { process.stderr.write(p.red(`✗ verification still failing after ${res.repairs} repair attempt(s)\n`)); footerStatus = "error"; }
+  }
   if (session.tools.tasks.length) process.stderr.write("\n" + renderTasks(session.tools.tasks, p) + "\n");
   process.stderr.write(footer({ turns: res.turns, totalTokens: res.totals.totalTokens, cost: res.totals.cost, model: session.provider.model, status: footerStatus }, p) + "\n");
-  // exit 0 only on a clean finish; nonzero when errored or stopped short.
-  return res.error ? 1 : (res.done ? 0 : 1);
+  // exit 0 only on a clean finish AND (if verifying) a passing verification.
+  if (res.error || res.verified === false) return 1;
+  return res.done ? 0 : 1;
 }
 
 // Run a task in-process for a background job, writing all step output to `log` (a write stream).
@@ -499,7 +521,7 @@ async function main() {
     if (!r.ok) { process.stderr.write(p.yellow(`no skill "${name}". available: ${r.available.join(", ") || "(none)"}\n`)); return 1; }
     const dir = flags.dir || process.cwd();
     process.stderr.write(p.dim(`skill: ${name}\n`));
-    return runOneShot(r.prompt, dir, config, palette, { auto, plan });
+    return runOneShot(r.prompt, dir, config, palette, { auto, plan, verify: flags.verify, repair: flags.repair });
   }
 
   // ---- background jobs --------------------------------------------------------
@@ -632,7 +654,7 @@ async function main() {
       process.stderr.write(`\ndone=${res.done} turns=${res.turns} ${JSON.stringify(res.totals)}\n`);
       return res.done ? 0 : 1;
     }
-    return runOneShot(task, dir, config, palette, { auto, plan });
+    return runOneShot(task, dir, config, palette, { auto, plan, verify: flags.verify, repair: flags.repair });
   }
 
   // REPL

@@ -211,6 +211,7 @@ export async function runAgent(task, workdir, opts = {}) {
   return runLoop({
     provider, tools, toolMap, systemPrompt: SYSTEM, task,
     maxSteps: opts.maxSteps ?? 16, onStep: opts.onStep,
+    verify: opts.verify, maxRepairs: opts.maxRepairs,
   });
 }
 
@@ -327,8 +328,8 @@ export class Session {
 
   totals() { return this.provider.totals(); }
 
-  // Run ONE user turn against the persistent thread. opts: { onStep, beforeStep, signal }.
-  async runTurn(task, { onStep, beforeTool, signal } = {}) {
+  // Run ONE user turn against the persistent thread. opts: { onStep, beforeStep, signal, verify }.
+  async runTurn(task, { onStep, beforeTool, signal, verify, maxRepairs } = {}) {
     const res = await runLoop({
       provider: this.provider,
       tools: this.tools,
@@ -340,6 +341,8 @@ export class Session {
       onStep,
       beforeTool,
       signal,
+      verify,
+      maxRepairs,
     });
     this.messages = res.messages; // persist the thread for the next turn
     return res;

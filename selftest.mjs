@@ -847,6 +847,50 @@ console.log("== 21. UX hardening regressions ==");
   ok("banner shortens long cwd", banner({ model: "m", approval: "edits", cwd: "/a/".repeat(60) }, makePalette(false)).includes("…"));
 }
 
+console.log("== 22. verify-and-repair loop (no LLM) ==");
+{
+  // A scripted "model": done -> (verify fails) -> edit -> done -> (verify passes).
+  const t = new Tools(tmp);
+  fs.writeFileSync(path.join(tmp, "v.js"), "export const V = 1;\n");
+  const toolMap = { edit_file: (a) => t.edit_file(a), read_file: (a) => t.read_file(a) };
+  const script = [
+    JSON.stringify({ tool: "done", args: { summary: "first attempt" } }),
+    JSON.stringify({ tool: "edit_file", args: { path: "v.js", anchor: "export const V = 1;", replacement: "export const V = 2;" } }),
+    JSON.stringify({ tool: "done", args: { summary: "fixed it" } }),
+  ];
+  let i = 0;
+  const provider = {
+    chat: async () => ({ text: script[i++] ?? '{"tool":"done","args":{}}', usage: {}, raw: {} }),
+    totals: () => ({ model: "stub", calls: i, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }),
+  };
+  // verify fails until the file says V = 2 (i.e. until the repair lands).
+  let verifyCalls = 0;
+  const verify = async () => {
+    verifyCalls++;
+    const ok = t.read_file({ path: "v.js" }).content.includes("V = 2");
+    return ok ? { ok: true } : { ok: false, feedback: "expected V = 2 but file still has V = 1" };
+  };
+  const res = await runLoop({ provider, tools: t, toolMap, systemPrompt: "s", task: "set V to 2", maxSteps: 10, verify, maxRepairs: 3 });
+  ok("verify-repair: finished verified", res.done === true && res.verified === true, JSON.stringify({ done: res.done, verified: res.verified }));
+  ok("verify-repair: took exactly one repair", res.repairs === 1, "repairs=" + res.repairs);
+  ok("verify-repair: verify ran twice (fail then pass)", verifyCalls === 2, "verifyCalls=" + verifyCalls);
+  ok("verify-repair: the repair edit landed", t.read_file({ path: "v.js" }).content.includes("V = 2"));
+  ok("verify-repair: trace records a failed then passing verify", res.trace.filter(s => s.tool === "verify").length === 2);
+
+  // Bounded by maxRepairs: a verify that NEVER passes must stop (not loop forever) and not lie green.
+  let j = 0;
+  const provider2 = { chat: async () => ({ text: JSON.stringify({ tool: "done", args: { summary: "done " + (j++) } }), usage: {}, raw: {} }), totals: () => ({ model: "s", calls: j, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const res2 = await runLoop({ provider: provider2, tools: t, toolMap, systemPrompt: "s", task: "x", maxSteps: 20, verify: async () => ({ ok: false, feedback: "always fails" }), maxRepairs: 2 });
+  ok("verify-repair: stops after maxRepairs", res2.repairs === 2 && res2.verified === false);
+  ok("verify-repair: surfaces unverified status (no silent green)", /verification still failing/.test(res2.stopped || ""));
+
+  // No verify supplied => behaves exactly as before (done finishes immediately, verified stays null).
+  let k = 0;
+  const provider3 = { chat: async () => ({ text: JSON.stringify({ tool: "done", args: { summary: "ok" } }), usage: {}, raw: {} }), totals: () => ({ model: "s", calls: k, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const res3 = await runLoop({ provider: provider3, tools: t, toolMap, systemPrompt: "s", task: "x", maxSteps: 5 });
+  ok("verify-repair: opt-out leaves behavior unchanged", res3.done === true && res3.verified === null && res3.repairs === 0);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

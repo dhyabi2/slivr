@@ -41,12 +41,18 @@ function clip(obj, max = 6000) {
 //   so it can adapt). Used for the approval/safety layer. Returning falsy/undefined allows it.
 // messages can be SEEDED (multi-turn REPL): pass `seedMessages` to continue an existing thread;
 //   when present, only the new user turn (task) is appended and the system prompt is reused.
-export async function runLoop({ provider, tools, toolMap, systemPrompt, task, maxSteps = 14, onStep, beforeTool, seedMessages, signal }) {
+// verify (optional): an async gate run when the model calls `done`. It returns { ok, feedback }.
+//   ok:true  → the work passed; the turn finishes.
+//   ok:false → the work failed; `feedback` (e.g. test output) is fed back and the model must REPAIR
+//   and call done again, up to `maxRepairs` times (the progress guard). This is what turns slivr from
+//   a blind one-shot agent into a self-verifying one — it never finishes "green" on a failing check.
+export async function runLoop({ provider, tools, toolMap, systemPrompt, task, maxSteps = 14, onStep, beforeTool, seedMessages, signal, verify, maxRepairs = 3 }) {
   const messages = seedMessages && seedMessages.length
     ? seedMessages
     : [{ role: "system", content: systemPrompt }];
   messages.push({ role: "user", content: `TASK:\n${task}\n\nBegin. Respond with ONE JSON tool call.` });
   let turns = 0, editFailures = 0, done = false, summary = "", error = null, stopped = null;
+  let verified = null, repairs = 0;   // verify-and-repair accounting
   const trace = [];
 
   // Bail out of a stuck loop: if the model keeps emitting non-JSON / unknown-tool calls it makes no
@@ -82,7 +88,29 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     }
 
     if (call.tool === "done") {
-      done = true; summary = call.args?.summary || "";
+      summary = call.args?.summary || "";
+      // VERIFY-AND-REPAIR gate: before accepting `done`, run the verification (if any). If it fails,
+      // feed the failure back and make the model repair instead of finishing — bounded by maxRepairs.
+      if (verify) {
+        let v;
+        try { v = await verify({ messages, summary }); }
+        catch (e) { v = { ok: false, feedback: `the verification step itself errored: ${e.message}` }; }
+        trace.push({ step, tool: "verify", ok: !!v.ok, repair: repairs });
+        if (onStep) onStep({ step, tool: "verify", args: {}, result: { ok: !!v.ok, note: v.ok ? "passed" : clip(v.feedback || "failed", 200) } });
+        if (v.ok) { verified = true; done = true; trace.push({ step, tool: "done", summary }); break; }
+        verified = false;
+        if (repairs >= maxRepairs) {
+          done = true;   // accept the (unverified) result, but say so loudly — never a silent green.
+          stopped = `verification still failing after ${repairs} repair attempt${repairs === 1 ? "" : "s"}`;
+          trace.push({ step, tool: "done", summary, unverified: true });
+          break;
+        }
+        repairs++;
+        noProgress = 0;   // repairing IS progress
+        messages.push({ role: "user", content: `VERIFICATION FAILED (repair attempt ${repairs}/${maxRepairs}). Do NOT call done yet — fix the problem and try again.\n\n${clip(v.feedback || "the verification check failed", 2500)}` });
+        continue;
+      }
+      done = true;
       trace.push({ step, tool: "done", summary });
       break;
     }
@@ -140,5 +168,5 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     stopped = `reached the ${maxSteps}-step limit before finishing — raise --max-steps or narrow the task`;
   }
 
-  return { done, summary, turns, editFailures, trace, aborted, error, stopped, messages, totals: provider.totals() };
+  return { done, summary, turns, editFailures, trace, aborted, error, stopped, verified, repairs, messages, totals: provider.totals() };
 }

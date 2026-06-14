@@ -37,7 +37,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 // ---- args -------------------------------------------------------------------
 function parseArgs(argv) {
-  const o = { data: null, limit: Infinity, model: process.env.MODEL || "google/gemini-2.5-flash", maxSteps: 8, mock: false };
+  const o = { data: null, limit: Infinity, model: process.env.MODEL || "google/gemini-2.5-flash", maxSteps: 8, mock: false, repair: 0 };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--mock") o.mock = true;
@@ -45,6 +45,7 @@ function parseArgs(argv) {
     else if (a === "--limit") o.limit = parseInt(argv[++i], 10) || Infinity;
     else if (a === "--model") o.model = argv[++i];
     else if (a === "--max-steps") o.maxSteps = parseInt(argv[++i], 10) || 8;
+    else if (a === "--repair") o.repair = parseInt(argv[++i], 10) || 0;   // verify-and-repair rounds (0 = off)
   }
   return o;
 }
@@ -94,10 +95,30 @@ async function solveWithSlivr(prob, opts) {
   const io = prob.func
     ? `This is a function-style problem: implement \`${prob.func}\` (use this starter signature exactly):\n\n${prob.starter || "(no starter provided)"}\n\nPut the full class/function in solution.py.`
     : `This is a standard-IO problem: read input from STDIN and write the answer to STDOUT. Put a runnable script in solution.py.`;
+  // With --repair, slivr's verify-and-repair loop runs solution.py against the tests when the agent
+  // calls done; on a failing test it gets the failure and must fix solution.py — the whole point.
+  const repairNote = opts.repair
+    ? ` Your solution.py will be executed against the tests; if a test fails you'll be shown the failing case and must fix solution.py and call done again.`
+    : "";
   const task =
-    `Solve this competitive-programming problem in Python 3. Create a file named solution.py containing ONLY the final runnable solution (use the create_file tool). Do not run it.\n\n` +
-    `# ${prob.title}\n\n${prob.content}\n\n${io}\n\nAfter creating solution.py, call done.`;
-  await runAgent(task, dir, { model: opts.model, apiKey: process.env.OPENROUTER_API_KEY, maxSteps: opts.maxSteps });
+    `Solve this competitive-programming problem in Python 3. Create a file named solution.py containing ONLY the final runnable solution (use the create_file tool).\n\n` +
+    `# ${prob.title}\n\n${prob.content}\n\n${io}\n\nAfter creating solution.py, call done.${repairNote}`;
+  const verify = opts.repair
+    ? async () => {
+        let code = "";
+        try { code = fs.readFileSync(solPath, "utf8"); } catch { /* not created yet */ }
+        const f = firstFailure(code, prob);
+        if (!f) return { ok: true };
+        let fb = `solution.py failed a test.\n`;
+        if (f.input != null) fb += `Input:\n${f.input}\n`;
+        if (f.expected != null) fb += `Expected output:\n${f.expected}\n`;
+        if (f.got != null) fb += `Your output:\n${f.got}\n`;
+        if (f.stderr) fb += `Error:\n${f.stderr}\n`;
+        if (f.why && f.got == null) fb += `(${f.why})\n`;
+        return { ok: false, feedback: fb + `Fix solution.py so this passes.` };
+      }
+    : undefined;
+  await runAgent(task, dir, { model: opts.model, apiKey: process.env.OPENROUTER_API_KEY, maxSteps: opts.maxSteps, verify, maxRepairs: opts.repair || 0 });
   let code = "";
   try { code = fs.readFileSync(solPath, "utf8"); } catch { /* agent may have written elsewhere */ }
   // Fallback: if solution.py is still the placeholder, grab the largest .py file the agent created.
@@ -162,6 +183,16 @@ function grade(code, prob) {
   return { pass: passed === prob.tests.length && prob.tests.length > 0, passed, total: prob.tests.length };
 }
 
+// Return the FIRST failing test (with expected vs got) as repair feedback, or null if all pass.
+function firstFailure(code, prob) {
+  if (!code || !code.trim()) return { why: "solution.py is empty — write the solution first." };
+  for (const t of prob.tests) {
+    const res = (t.testtype === "functional" || prob.func) ? runFunctional(code, t, prob.func) : runStdin(code, t);
+    if (!res.ok) return { input: t.input, expected: String(t.output).trim(), got: res.got, why: res.why, stderr: res.stderr };
+  }
+  return null;
+}
+
 // ---- main -------------------------------------------------------------------
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
@@ -173,7 +204,7 @@ async function main() {
   if (pyv.error) { console.error(`error: ${PY} not found — needed to execute candidate solutions. Set PYTHON=...`); process.exit(4); }
 
   const problems = loadProblems(dataFile).slice(0, opts.limit);
-  console.log(`LiveCodeBench · ${problems.length} problem(s) · ${opts.mock ? "MOCK (reference solutions)" : "model " + opts.model} · ${pyv.stdout.trim()}`);
+  console.log(`LiveCodeBench · ${problems.length} problem(s) · ${opts.mock ? "MOCK (reference solutions)" : "model " + opts.model} · repair=${opts.repair} · ${pyv.stdout.trim()}`);
   console.log("");
 
   const results = [];

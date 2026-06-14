@@ -22,7 +22,27 @@ node bench/livecodebench.mjs --data lcb.jsonl --limit 20 --model google/gemini-2
 ```
 
 Flags: `--data <file.jsonl>` (one problem per line), `--limit N`, `--model <id>`, `--max-steps N`,
-`--mock`. Results are written to `bench/results-livecodebench.json`.
+`--repair N`, `--mock`. Results are written to `bench/results-livecodebench.json`.
+
+## Verify-and-repair (`--repair N`)
+
+With `--repair N`, the harness wires each problem's tests into slivr's **verify-and-repair loop**:
+when the agent calls `done`, its `solution.py` is executed against the tests; on a failing test the
+agent is shown the failing case (input / expected / got) and must fix the code and finish again, up
+to `N` times. This is the difference between a blind one-shot agent and a self-correcting one — and
+it roughly doubled pass@1 in a measured A/B on real problems:
+
+```
+7 real release_v6 AtCoder problems · google/gemini-2.5-flash
+  --repair 0  (baseline, one-shot):  pass@1 3/7 = 42.9%
+  --repair 3  (verify-and-repair):   pass@1 6/7 = 85.7%
+```
+
+Both *hard* problems and a *medium* one flipped fail→pass once the agent could run its own code and
+read the failure. Use a higher `--max-steps` with `--repair` so there's room to iterate
+(`--max-steps 14 --repair 3`). Note: here the verify tests and the graded tests are the same public
+set, so this measures self-correction-to-the-given-tests (the real-world value of an iterate-on-tests
+agent); grade against hidden tests via the official Python runner for a leaderboard-clean figure.
 
 ## Getting the dataset into `--data` shape
 
