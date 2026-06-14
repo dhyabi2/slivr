@@ -41,19 +41,9 @@ git clone https://github.com/dhyabi2/slivr && cd slivr && npm link
 A high-level snapshot of terminal-first coding agents (mid-2026 — check each tool's docs for the
 latest; `~` = partial / varies).
 
-| | **Slivr** | Claude Code | Aider | OpenHands | Cursor |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Runs in your **terminal** | ✅ | ✅ | ✅ | ✅ | ❌ (editor/IDE) |
-| **Any model** (provider-agnostic) | ✅ via OpenRouter | ❌ Claude only | ✅ many | ✅ many | ~ a few |
-| **Bring-your-own-key** (no subscription) | ✅ | ❌ | ✅ | ✅ | ❌ |
-| **Precise edits** — never re-sends whole files | ✅ anchor engine | ✅ | ~ edit-blocks | ~ | ~ |
-| **Large-file edit cost** | **lowest** — measured 65–89% < full-rewrite | — | — | — | — |
-| **MCP** servers | ✅ | ✅ | ~ | ✅ | ✅ |
-| **Multimodal** (images / PDFs) | ✅ | ✅ | ~ images | ~ | ✅ |
-| **Plan mode** | ✅ | ✅ | ❌ | ~ | ~ |
-| **Parallel sub-agents** | ✅ | ✅ | ❌ | ~ | ❌ |
-| **Background / scheduled** jobs | ✅ | ~ | ❌ | ~ | ❌ |
-| **Skills / slash-commands** | ✅ | ✅ | ~ | ~ | ✅ |
+<p align="center">
+  <img src="assets/comparison.svg" width="940" alt="Coding-agent feature comparison: Slivr vs Claude Code, Aider, OpenHands, Cursor — terminal, any-model, BYO-key, precise edits, lowest large-file edit cost, MCP, multimodal, plan-mode, orchestration, background jobs.">
+</p>
 
 Slivr's distinctive combination: **provider-agnostic + bring-your-own-key + the lowest measured
 large-file edit cost** (its anchor-edit engine), with the full modern toolbox (MCP, multimodal,
