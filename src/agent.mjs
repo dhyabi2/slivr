@@ -20,6 +20,7 @@ You work ONE tool call at a time. Respond with EXACTLY ONE JSON object, nothing 
   {"tool":"glob","args":{"pattern":"src/**/*.js"}}
   {"tool":"repo_map","args":{}}
   {"tool":"find_symbol","args":{"name":"functionOrClassName"}}
+  {"tool":"find_refs","args":{"name":"functionOrClassName"}}
   {"tool":"run_command","args":{"command":"node check.js"}}
   {"tool":"web_search","args":{"query":"how to X in library Y"}}
   {"tool":"web_fetch","args":{"url":"https://..."}}
@@ -87,8 +88,9 @@ TASK MANAGEMENT (task_write): for any multi-step task, call "task_write" up fron
   drives the live checklist the user sees.
 
 CODE NAVIGATION: to find WHERE something is defined, prefer find_symbol (jumps straight to the
-  definition's file:line + signature) over grep (which returns every mention). Use repo_map to get a
-  compact overview of an unfamiliar repo's files and their top-level symbols before reading files.
+  definition's file:line + signature) over grep (which returns every mention). Use find_refs to find
+  WHO USES a symbol (call-sites) — run it before changing a function's signature so you update every
+  caller. Use repo_map for a compact overview of an unfamiliar repo before reading files.
 
 Workflow: (plan if asked) → task_write a checklist → explore (repo_map/find_symbol/read_file/grep) → make
 targeted edits (fan out independent work with parallel) → run the check script to verify → keep
@@ -105,6 +107,7 @@ export function makeAgent(workdir, opts = {}) {
     glob: (a) => tools.glob(a),
     repo_map: (a) => tools.repo_map(a),
     find_symbol: (a) => tools.find_symbol(a),
+    find_refs: (a) => tools.find_refs(a),
     run_command: (a) => tools.run_command(a),
     edit_file: (a) => tools.edit_file(a),
     create_file: (a) => tools.create_file(a),
@@ -145,7 +148,7 @@ const SUBAGENT_BRIEF =
 // the caller gets the actual content even if the model wrote a terse summary. We surface only
 // READ/INFORMATIONAL tools (not edits/commits), de-noised and length-capped.
 const FINDING_TOOLS = new Set([
-  "read_file", "list_dir", "grep", "glob", "repo_map", "find_symbol", "run_command", "web_search",
+  "read_file", "list_dir", "grep", "glob", "repo_map", "find_symbol", "find_refs", "run_command", "web_search",
   "web_fetch", "view_pdf", "view_image", "git_status", "git_diff", "git_log",
 ]);
 export function extractFindings(sub, maxTotal = 2000) {
@@ -381,6 +384,7 @@ export class Session {
       grep: (a) => t.grep(a),
       repo_map: (a) => t.repo_map(a),
       find_symbol: (a) => t.find_symbol(a),
+      find_refs: (a) => t.find_refs(a),
       run_command: (a) => t.run_command(a),
       edit_file: captureEdit("edit_file", (a) => t.edit_file(a)),
       create_file: captureEdit("create_file", (a) => t.create_file(a)),

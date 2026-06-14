@@ -110,6 +110,7 @@ export function buildSymbolIndex(workdir, { maxFiles = 5000, maxBytes = 600_000 
   const root = path.resolve(workdir);
   const symbols = [];
   const files = [];
+  const allFiles = [];
   for (const abs of walk(root, root, { maxFiles })) {
     let stat;
     try { stat = fs.statSync(abs); } catch { continue; }
@@ -117,6 +118,7 @@ export function buildSymbolIndex(workdir, { maxFiles = 5000, maxBytes = 600_000 
     let text;
     try { text = fs.readFileSync(abs, "utf8"); } catch { continue; }
     const rel = path.relative(root, abs);
+    allFiles.push(rel);
     const lang = LANG_BY_EXT[path.extname(abs)];
     const syms = extractSymbols(text, lang).map(s => ({ ...s, file: rel }));
     if (syms.length) files.push({ file: rel, count: syms.length });
@@ -127,7 +129,7 @@ export function buildSymbolIndex(workdir, { maxFiles = 5000, maxBytes = 600_000 
     if (!byName.has(s.name)) byName.set(s.name, []);
     byName.get(s.name).push(s);
   }
-  return { root, files, symbols, byName };
+  return { root, files, symbols, byName, allFiles };
 }
 
 // On-demand detail: exact definition location(s) for a name. Falls back to case-insensitive and then
@@ -139,6 +141,34 @@ export function findSymbol(index, name) {
   const ci = index.symbols.filter(s => s.name.toLowerCase() === lower);
   if (ci.length) return ci;
   return index.symbols.filter(s => s.name.toLowerCase().includes(lower)).slice(0, 25);
+}
+
+// TIER-2 (Block 6): on-demand call-site / reference locator. Where is `name` USED (not defined)?
+// Scans source for word-boundary identifier matches (so "run" doesn't match "rerun"/"running"),
+// strips `//` line comments to cut commented-out noise, and EXCLUDES the symbol's own definition
+// lines. Each hit is tagged isCall when it's `name(` (an actual invocation). This is what you need
+// before changing a signature — find every caller. Far more precise than a substring grep.
+export function findReferences(index, name, { max = 200 } = {}) {
+  if (!index || !name || !index.allFiles) return [];
+  const esc = String(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const wordRe = new RegExp(`\\b${esc}\\b`);
+  const callRe = new RegExp(`\\b${esc}\\s*\\(`);
+  const defLines = new Set((index.byName.get(name) || []).map(s => `${s.file}:${s.line}`));
+  const out = [];
+  for (const rel of index.allFiles) {
+    let text;
+    try { text = fs.readFileSync(path.join(index.root, rel), "utf8"); } catch { continue; }
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i];
+      const code = raw.replace(/\/\/.*$/, "");   // drop trailing // comment for matching
+      if (!wordRe.test(code)) continue;
+      if (defLines.has(`${rel}:${i + 1}`)) continue;   // this line IS the definition, not a use
+      out.push({ file: rel, line: i + 1, isCall: callRe.test(code), text: raw.trim().slice(0, 160) });
+      if (out.length >= max) return out;
+    }
+  }
+  return out;
 }
 
 // Shallow global map: each file with its top symbols, compact and token-cheap.

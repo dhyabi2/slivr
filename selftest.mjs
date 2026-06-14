@@ -1059,6 +1059,29 @@ console.log("== 26. dynamic re-planning on failure (no LLM) ==");
   ok("replan-loop: no nudge when there is no plan", !res3.trace.some(s => s.replanNudge));
 }
 
+console.log("== 27. find_refs — call-site / reference locator (Block 6) ==");
+{
+  const { buildSymbolIndex, findReferences } = await import("./src/repomap.mjs");
+  const idx = buildSymbolIndex("src");
+
+  // runLoop is defined in loop.mjs and called from agent.mjs (twice) + baseline.mjs.
+  const refs = findReferences(idx, "runLoop");
+  const byFile = new Set(refs.map(r => r.file));
+  ok("find_refs: finds the real call-sites", byFile.has("agent.mjs") && byFile.has("baseline.mjs"));
+  ok("find_refs: EXCLUDES the definition line", !refs.some(r => r.file === "loop.mjs" && r.line === idx.byName.get("runLoop").find(s => s.kind === "function").line));
+  ok("find_refs: tags invocations as calls", refs.filter(r => r.isCall).length >= 2);
+
+  // word-boundary precision: a query for "run" must not match "runLoop"/"runAgent"/"rerun".
+  const fp = findReferences(idx, "run");
+  ok("find_refs: word-boundary (no substring false positives)", !fp.some(r => /\brunLoop\b|\brunAgent\b/.test(r.text) && !/\brun\b/.test(r.text)));
+
+  // tool wiring + empty-name guard
+  const tools = new Tools(path.resolve("src"));
+  const tr = tools.find_refs({ name: "needsApproval" });
+  ok("tool: find_refs wired + counts calls", tr.ok && tr.count >= 1 && tr.references.every(r => r.file && r.line));
+  ok("tool: find_refs requires a name", tools.find_refs({}).ok === false);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

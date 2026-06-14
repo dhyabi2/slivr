@@ -42,6 +42,7 @@ export function describeStep({ tool, args = {} }) {
     case "list_dir": return `list ${args.path ?? "."}`;
     case "grep": return `grep ${clip(String(args.pattern ?? ""), 60)}${args.path && args.path !== "." ? " in " + args.path : ""}`;
     case "find_symbol": return `find_symbol ${args.name ?? "?"}`;
+    case "find_refs": return `find_refs ${args.name ?? "?"}`;
     case "repo_map": return `repo_map`;
     case "run_command": return `run \`${clip(String(args.command ?? ""), 80)}\``;
     case "edit_file": return `edit ${args.path ?? "?"}`;

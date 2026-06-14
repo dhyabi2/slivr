@@ -14,7 +14,7 @@ import { execSync, execFileSync } from "node:child_process";
 import { applyEdit } from "./seal.mjs";
 import { localPdfText } from "./pdftext.mjs";
 import { costUSD } from "./provider.mjs";
-import { buildSymbolIndex, findSymbol, repoOverview } from "./repomap.mjs";
+import { buildSymbolIndex, findSymbol, findReferences, repoOverview } from "./repomap.mjs";
 
 export class Tools {
   constructor(workdir, opts = {}) {
@@ -285,6 +285,15 @@ export class Tools {
     const hits = findSymbol(this._index(), name);
     if (!hits.length) return { ok: true, name, matches: [], note: `no symbol named "${name}" found — try repo_map or grep` };
     return { ok: true, name, matches: hits.slice(0, 25).map(s => ({ file: s.file, line: s.line, kind: s.kind, signature: s.signature })) };
+  }
+
+  // find_refs: who USES this symbol (call-sites / references), excluding its definition. Run this
+  // before changing a signature so you can update every caller.
+  find_refs({ name } = {}) {
+    if (!name) return { ok: false, error: "NO_NAME", hint: 'pass {"name":"functionOrClassName"}' };
+    const refs = findReferences(this._index(), name);
+    const calls = refs.filter(r => r.isCall).length;
+    return { ok: true, name, count: refs.length, calls, references: refs.slice(0, 100) };
   }
 
   // web_fetch: GET a URL and return readable text (scripts/styles/tags stripped).
