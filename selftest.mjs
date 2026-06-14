@@ -390,6 +390,148 @@ console.log("== 13. MCP stdio client (against local stub server, no network) =="
   }
 }
 
+console.log("== 14. multimodal message-block construction (no LLM) ==");
+{
+  const { buildMultimodalContent, hasPdfInContext, PDF_PLUGIN } = await import("./src/multimodal.mjs");
+  const { Tools } = await import("./src/tools.mjs");
+
+  // fixture: a tiny real PNG (1x1) + a tiny "pdf" file, viewed through the actual tools.
+  const png1x1 = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC", "base64");
+  fs.writeFileSync(path.join(tmp, "px.png"), png1x1);
+  fs.writeFileSync(path.join(tmp, "doc.pdf"), "%PDF-1.4\n%fake\n");
+  const t = new Tools(tmp);
+
+  const vi = t.view_image({ path: "px.png" });
+  ok("view_image ok + carries multimodal marker", vi.ok && vi.multimodal && vi.multimodal.kind === "image" && vi.multimodal.dataUrl.startsWith("data:image/png;base64,"), JSON.stringify(vi).slice(0, 80));
+  const ib = buildMultimodalContent(vi.multimodal);
+  ok("image content is [text, image_url] array", Array.isArray(ib) && ib[0].type === "text" && ib[1].type === "image_url" && ib[1].image_url.url === vi.multimodal.dataUrl);
+
+  const vp = t.view_pdf({ path: "doc.pdf" });
+  ok("view_pdf ok + carries pdf marker", vp.ok && vp.multimodal.kind === "pdf" && vp.multimodal.dataUrl.startsWith("data:application/pdf;base64,"));
+  const pb = buildMultimodalContent(vp.multimodal);
+  ok("pdf content is [text, file] array with filename+file_data", Array.isArray(pb) && pb[0].type === "text" && pb[1].type === "file" && pb[1].file.filename === "doc.pdf" && pb[1].file.file_data === vp.multimodal.dataUrl);
+
+  // rejections
+  ok("view_image rejects unsupported ext", t.view_image({ path: "doc.pdf" }).error === "UNSUPPORTED_IMAGE");
+  ok("view_image rejects missing file", t.view_image({ path: "nope.png" }).error === "FILE_NOT_FOUND");
+  ok("view_pdf rejects non-pdf", t.view_pdf({ path: "px.png" }).error === "NOT_A_PDF");
+  let escaped = false;
+  try { t.view_image({ path: "../x.png" }); } catch { escaped = true; }
+  ok("view_image sandboxed", t.view_image({ path: "../../x.png" }).error?.includes("SANDBOX") || escaped);
+
+  // hasPdfInContext detects a pdf file block; PDF_PLUGIN shape is correct
+  ok("hasPdfInContext true when pdf block present", hasPdfInContext([{ role: "user", content: pb }]) === true);
+  ok("hasPdfInContext false for plain text", hasPdfInContext([{ role: "user", content: "hi" }, { role: "user", content: ib }]) === false);
+  ok("PDF_PLUGIN is the file-parser/pdf-text plugin", PDF_PLUGIN.id === "file-parser" && PDF_PLUGIN.pdf.engine === "pdf-text");
+  ok("buildMultimodalContent(null) -> null", buildMultimodalContent(null) === null && buildMultimodalContent({ kind: "x" }) === null);
+}
+
+console.log("== 15. skills: discovery + arg substitution (no LLM) ==");
+{
+  const { parseSkill, substituteArgs, discoverSkills, renderSkill, listSkills } = await import("./src/skills.mjs");
+
+  // parse: frontmatter + comment description + # title + body
+  const a = parseSkill("---\ntitle: Greeter\ndescription: says hi\n---\nHello $1 from $ARGS");
+  ok("parseSkill reads frontmatter title/desc", a.title === "Greeter" && a.description === "says hi" && a.body === "Hello $1 from $ARGS");
+  const b = parseSkill("# My Skill\n<!-- description: does a thing -->\nBody here {{args}}");
+  ok("parseSkill reads # title + comment desc", b.title === "My Skill" && b.description === "does a thing" && b.body === "Body here {{args}}");
+
+  // substitution: $ARGS / {{args}} whole, $1 $2 positional
+  ok("substituteArgs $ARGS whole string", substituteArgs("run $ARGS now", "a b c") === "run a b c now");
+  ok("substituteArgs {{args}} whole string", substituteArgs("x {{args}} y", ["p", "q"]) === "x p q y");
+  ok("substituteArgs positional $1 $2", substituteArgs("$1 then $2", ["foo", "bar"]) === "foo then bar");
+  ok("substituteArgs missing positional -> empty", substituteArgs("[$1][$2]", ["only"]) === "[only][]");
+
+  // discovery from a temp project dir (project shadows user is exercised by 'project wins' ordering)
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), "ccskills-"));
+  fs.mkdirSync(path.join(proj, ".cc-alt", "skills"), { recursive: true });
+  fs.writeFileSync(path.join(proj, ".cc-alt", "skills", "echo.md"), "# Echo\n<!-- description: echoes -->\nSay: $ARGS");
+  fs.writeFileSync(path.join(proj, ".cc-alt", "skills", "noop.md"), "do nothing");
+  const map = discoverSkills(proj);
+  ok("discoverSkills finds project skills", map.has("echo") && map.has("noop"));
+  ok("discovered skill has name+description+body", map.get("echo").description === "echoes" && map.get("echo").body === "Say: $ARGS");
+  ok("listSkills sorted by name", listSkills(proj).map(s => s.name).join(",") === "echo,noop");
+
+  const r = renderSkill("echo", ["hi", "there"], proj);
+  ok("renderSkill substitutes args into body", r.ok && r.prompt === "Say: hi there");
+  const miss = renderSkill("ghost", [], proj);
+  ok("renderSkill reports missing + available list", !miss.ok && miss.error === "SKILL_NOT_FOUND" && miss.available.includes("echo"));
+  fs.rmSync(proj, { recursive: true, force: true });
+}
+
+console.log("== 16. jobs + schedule store + duration parsing (no LLM) ==");
+{
+  const jobs = await import("./src/jobs.mjs");
+  const { tickScheduler } = await import("./src/scheduler.mjs");
+
+  // duration parsing
+  ok("parseDuration 30m", jobs.parseDuration("30m") === 1800000);
+  ok("parseDuration 2h", jobs.parseDuration("2h") === 7200000);
+  ok("parseDuration 45s", jobs.parseDuration("45s") === 45000);
+  ok("parseDuration bare = seconds", jobs.parseDuration("90") === 90000);
+  ok("parseDuration 1d", jobs.parseDuration("1d") === 86400000);
+  ok("parseDuration garbage -> null", jobs.parseDuration("soon") === null && jobs.parseDuration("") === null);
+
+  // makeScheduled timing variants
+  const inj = jobs.makeScheduled({ task: "t", in: "10m" });
+  ok("makeScheduled --in sets future dueAt + once", inj.ok && inj.rec.kind === "once" && inj.rec.dueAt > Date.now());
+  const atj = jobs.makeScheduled({ task: "t", at: "2030-01-01T00:00:00Z" });
+  ok("makeScheduled --at parses ISO", atj.ok && atj.rec.dueAt === Date.parse("2030-01-01T00:00:00Z"));
+  const crj = jobs.makeScheduled({ task: "t", cron: "*/5 * * * *" });
+  ok("makeScheduled --cron computes next dueAt", crj.ok && crj.rec.kind === "cron" && typeof crj.rec.dueAt === "number");
+  ok("makeScheduled rejects no-task", !jobs.makeScheduled({ in: "5m" }).ok);
+  ok("makeScheduled rejects bad duration", jobs.makeScheduled({ task: "t", in: "nope" }).error === "BAD_DURATION");
+  ok("makeScheduled rejects no timing", jobs.makeScheduled({ task: "t" }).error === "NO_TIMING");
+
+  // cron next-time computation
+  const base = Date.parse("2026-06-14T12:02:00Z");
+  const n = jobs.nextCron("*/5 * * * *", base);
+  ok("nextCron */5 lands on a 5-min boundary", n != null && new Date(n).getUTCMinutes() % 5 === 0 && n > base);
+  ok("nextCron rejects malformed", jobs.nextCron("not a cron", base) === null && jobs.nextCron("* * *", base) === null);
+
+  // dueJobs filtering
+  const sched = [
+    { id: "a", dueAt: Date.now() - 1000, status: "scheduled" },
+    { id: "b", dueAt: Date.now() + 1e9, status: "scheduled" },
+    { id: "c", dueAt: Date.now() - 1000, status: "running" },
+  ];
+  const due = jobs.dueJobs(sched, Date.now());
+  ok("dueJobs returns only past+non-running", due.length === 1 && due[0].id === "a");
+
+  // tickScheduler with an injected spawner (no real child process): fires due, reschedules cron,
+  // marks once done. Uses the REAL schedule file under a temp HOME so we don't touch ~/.cc-alt.
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "cchome-"));
+  const realHome = process.env.HOME;
+  process.env.HOME = fakeHome;
+  try {
+    jobs.writeSchedule([
+      { id: "once1", task: "o", dir: ".", kind: "once", dueAt: Date.now() - 1000, status: "scheduled" },
+      { id: "cron1", task: "c", dir: ".", kind: "cron", cron: "*/5 * * * *", dueAt: Date.now() - 1000, status: "scheduled" },
+      { id: "future", task: "f", dir: ".", kind: "once", dueAt: Date.now() + 1e9, status: "scheduled" },
+    ]);
+    const fired = [];
+    const fakeSpawn = (task) => { fired.push(task); };
+    const got = tickScheduler(Date.now(), fakeSpawn);
+    ok("tickScheduler fires the two due jobs", got.length === 2 && fired.length === 2);
+    const after = jobs.readSchedule();
+    const once = after.find(j => j.id === "once1"), cron = after.find(j => j.id === "cron1"), fut = after.find(j => j.id === "future");
+    ok("tickScheduler marks once-job done", once.status === "done");
+    ok("tickScheduler reschedules cron-job to future", cron.status === "scheduled" && cron.dueAt > Date.now());
+    ok("tickScheduler leaves future job untouched", fut.status === "scheduled");
+
+    // background job record round-trip
+    const rec = jobs.newJobRecord({ task: "do x", dir: "/tmp" });
+    jobs.writeJob({ ...rec, status: "queued" });
+    jobs.updateJob(rec.id, { status: "done", exitCode: 0 });
+    const back = jobs.readJob(rec.id);
+    ok("job record write/update/read round-trips", back.status === "done" && back.exitCode === 0 && back.task === "do x");
+    ok("listJobs includes the written job", jobs.listJobs().some(j => j.id === rec.id));
+  } finally {
+    process.env.HOME = realHome;
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

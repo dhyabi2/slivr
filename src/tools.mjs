@@ -255,6 +255,34 @@ export class Tools {
     } catch (e) { return { ok: false, error: String(e.message || e), url }; }
   }
 
+  // --- multimodal: let the model SEE images / READ pdfs ---
+  // view_image / view_pdf only READ + validate the file here and return a small marker; the LOOP
+  // detects { multimodal: ... } in the result and pushes a user message whose `content` is an
+  // ARRAY of blocks (text + image_url / file) so the model actually receives the bytes.
+  view_image({ path: rel } = {}) {
+    if (!rel) return { ok: false, error: "NO_PATH", hint: "Pass path: rel/to/image.png" };
+    let abs; try { abs = this._resolve(rel); } catch (e) { return { ok: false, error: e.message }; }
+    if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
+    const ext = path.extname(abs).slice(1).toLowerCase();
+    const MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", bmp: "image/bmp" };
+    const mime = MIME[ext];
+    if (!mime) return { ok: false, error: "UNSUPPORTED_IMAGE", ext, hint: "png/jpg/jpeg/gif/webp/bmp" };
+    let b64; try { b64 = fs.readFileSync(abs).toString("base64"); } catch (e) { return { ok: false, error: String(e.message || e) }; }
+    const bytes = Buffer.byteLength(b64, "utf8");
+    // marker the loop turns into an image block; result stays small in the trace.
+    return { ok: true, path: rel, multimodal: { kind: "image", path: rel, mime, dataUrl: `data:${mime};base64,${b64}` }, note: `image loaded (${ext}, ~${Math.round((bytes * 3) / 4)} bytes); shown to the model` };
+  }
+
+  view_pdf({ path: rel } = {}) {
+    if (!rel) return { ok: false, error: "NO_PATH", hint: "Pass path: rel/to/file.pdf" };
+    let abs; try { abs = this._resolve(rel); } catch (e) { return { ok: false, error: e.message }; }
+    if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
+    if (path.extname(abs).toLowerCase() !== ".pdf") return { ok: false, error: "NOT_A_PDF", path: rel, hint: "view_pdf expects a .pdf file" };
+    let b64; try { b64 = fs.readFileSync(abs).toString("base64"); } catch (e) { return { ok: false, error: String(e.message || e) }; }
+    const name = path.basename(abs);
+    return { ok: true, path: rel, multimodal: { kind: "pdf", path: rel, filename: name, dataUrl: `data:application/pdf;base64,${b64}` }, note: `pdf loaded (${name}); sent to the model via OpenRouter's file-parser plugin` };
+  }
+
   // web_search: grounded web search via OpenRouter's `web` plugin (uses the same key; counts tokens
   // against your OpenRouter account, separate from the agent's own accounting).
   async web_search({ query, max = 5 }) {

@@ -21,6 +21,8 @@ You work ONE tool call at a time. Respond with EXACTLY ONE JSON object, nothing 
   {"tool":"run_command","args":{"command":"node check.js"}}
   {"tool":"web_search","args":{"query":"how to X in library Y"}}
   {"tool":"web_fetch","args":{"url":"https://..."}}
+  {"tool":"view_image","args":{"path":"shot.png"}}
+  {"tool":"view_pdf","args":{"path":"spec.pdf"}}
   {"tool":"delegate","args":{"task":"a focused, self-contained sub-task to run in a fresh sub-agent"}}
   {"tool":"parallel","args":{"tasks":["independent subtask A","independent subtask B"]}}
   {"tool":"plan","args":{"steps":["step 1","step 2","step 3"]}}
@@ -43,6 +45,11 @@ EDIT PROTOCOL (important — this is how you keep edits cheap and correct):
   ATOMICALLY (all-or-nothing) in fewer turns; same anchor rules. If any edit fails, none apply
   and you get repair packets for the failing ones.
 - git_* tools inspect the repo and can commit; cc-alt NEVER pushes.
+
+MULTIMODAL: use view_image to LOOK at a screenshot/diagram/photo (png/jpg/gif/webp), and view_pdf
+  to READ a PDF. After you call one, the file is attached to the conversation and you can describe
+  or reason about its contents on your next turn. Use these instead of trying to read binary files
+  with read_file (which only handles text).
 - To create a NEW file that does not exist yet, use create_file (there is no anchor to match yet).
   Use edit_file (NOT create_file) for any file that already exists.
 - If an edit fails you get a compact repair packet with the nearest real spans. Fix your anchor
@@ -87,6 +94,8 @@ export function makeAgent(workdir, opts = {}) {
     git_commit: (a) => tools.git_commit(a),
     web_fetch: (a) => tools.web_fetch(a),
     web_search: (a) => tools.web_search(a),
+    view_image: (a) => tools.view_image(a),
+    view_pdf: (a) => tools.view_pdf(a),
     delegate: (a) => delegateSubAgent(a, workdir, opts),
     parallel: (a) => parallelSubAgents(a, workdir, opts),
     plan: (a) => tools.plan_tool(a),
@@ -231,6 +240,8 @@ export class Session {
       glob: (a) => t.glob(a),
       web_fetch: (a) => t.web_fetch(a),
       web_search: (a) => t.web_search(a),
+      view_image: (a) => t.view_image(a),
+      view_pdf: (a) => t.view_pdf(a),
       delegate: (a) => delegateSubAgent(a, this.workdir, this.opts),
       parallel: (a) => parallelSubAgents(a, this.workdir, this.opts),
       plan: (a) => t.plan_tool(a),

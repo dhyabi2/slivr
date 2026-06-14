@@ -160,6 +160,81 @@ When the REPL/one-shot starts it connects every enabled server, surfaces their t
 child processes cleanly on exit**. A broken or missing server is reported and skipped — it never blocks
 the rest. If no `mcpServers` are configured, nothing changes and cc-alt behaves exactly as before.
 
+### Multimodal — let the model SEE images and READ PDFs
+
+cc-alt can attach images and PDFs to the conversation so a vision model actually looks at them. Two
+tools (both sandboxed to the workdir):
+
+- `view_image({path})` — png/jpg/jpeg/gif/webp/bmp. The loop pushes a user message whose `content`
+  is a block array `[{type:'text'},{type:'image_url',image_url:{url:'data:image/<ext>;base64,…'}}]`.
+- `view_pdf({path})` — the loop pushes `[{type:'text'},{type:'file',file:{filename,file_data:'data:application/pdf;base64,…'}}]`
+  and the provider auto-attaches OpenRouter's `file-parser` plugin (`{id:'file-parser',pdf:{engine:'pdf-text'}}`)
+  whenever a PDF is in context, so the PDF text is extracted for the model.
+
+Use a **multimodal model** (e.g. `google/gemini-2.5-flash`). Just ask in plain language:
+```
+cc-alt "view_image screenshot.png and describe the error dialog" --auto
+cc-alt "view_pdf spec.pdf and summarize section 3" --auto
+```
+Verified live: the agent read the word in a generated PNG and the colors, and extracted text from a
+PDF via the file-parser plugin. **Rough edge:** PDF support depends on OpenRouter's plugin and the
+chosen model; `pdf-text` handles text PDFs (not scanned-image PDFs — those need an OCR engine). If a
+model can't ingest the file block it will say so rather than hallucinate; fall back to extracting
+text yourself (`pdftotext`) and pasting it.
+
+### Skills — reusable prompt templates (`/skills`, slash-commands)
+
+A skill is a Markdown file = a saved prompt you can run by name. Discovery order: **`./.cc-alt/skills/*.md`
+(project)** then **`~/.cc-alt/skills/*.md` (user)**; a project skill shadows a user skill of the same
+name. Each file: an optional `# Title`, an optional `<!-- description: … -->` (or `---`/frontmatter),
+and a body where `$ARGS` / `{{args}}` is replaced by the user's args and `$1 $2 …` by positional words.
+
+```
+cc-alt skills                       # list discovered skills (name + description)
+cc-alt skill review                 # run a skill one-shot
+cc-alt skill commit "context here"  # args fill $ARGS / $1 …
+```
+In the REPL:
+```
+/skills              list skills
+/run review          run a skill as a turn
+/review              same — /<name> runs a skill if it isn't a built-in command
+```
+Ships with three examples under [`.cc-alt/skills/`](.cc-alt/skills/): `review.md` (review the staged
+diff), `test.md` (find + run the suite, fix failures), `commit.md` (write a message + commit). Drop
+your own `.md` files in `./.cc-alt/skills/` to add more — no code changes.
+
+Example skill (`.cc-alt/skills/review.md`):
+```markdown
+# Review staged diff
+<!-- description: review the staged git diff for bugs and issues -->
+Review the staged git changes for bugs and edge cases. Extra focus: $ARGS
+Report concrete findings; do NOT edit anything.
+```
+
+### Background & scheduled tasks
+
+Run a task in a **detached** process (it keeps running after the command returns), or schedule one
+for later. State lives under `~/.cc-alt/` (`jobs/<id>.json` + `jobs/<id>.log`, and `schedule.json`).
+
+```
+cc-alt bg "fix the failing test and commit" ./repo   # detached; runs cc-alt one-shot --auto
+cc-alt jobs                                           # list jobs: id, status (queued/running/done/failed), task
+cc-alt jobs --watch                                   # repaint every 2s
+cc-alt logs <id>                                      # print that job's captured log
+
+cc-alt schedule "run the nightly check" --in 2h       # also: --at <ISO>  or  --cron "*/5 * * * *"
+cc-alt schedule list                                  # list scheduled jobs + next run time
+cc-alt scheduler                                      # foreground poller that fires due jobs
+```
+**Honest about the design:** `cc-alt bg` spawns a real detached child (`spawn(..., {detached:true,
+stdio:'ignore'})`) on **macOS/Linux** — it has not been hardened for Windows. `cc-alt scheduler` is a
+**simple foreground sleep-loop poller** (default every 30s; `--every <sec>` to change), **not a system
+daemon**: scheduled jobs only fire while the poller is running, so keep it running (or background it
+with your shell / a launchd/systemd unit). When the poller hits a due job it spawns it in the
+background exactly like `cc-alt bg`; once-jobs are marked `done`, cron-jobs are rescheduled to their
+next time. The built-in cron parser supports the common 5-field forms (`*`, `*/n`, `a,b`, `a-b`).
+
 ---
 
 ## Why it exists (the harness-level claim)
@@ -262,12 +337,15 @@ sessions), neutral-to-slightly-worse on trivial edits.*
 - daily-use layer: `src/config.mjs` (layered config) · `src/repl.mjs` (interactive session) ·
   `src/diff.mjs` (unified-diff renderer) · `src/safety.mjs` (blocklist + approval) · `src/ui.mjs` (colors/footer)
 - MCP client: `src/mcp.mjs` (stdio JSON-RPC client + tool catalog) · `test/stub-mcp.mjs` (local test server)
+- multimodal: `src/multimodal.mjs` (image/pdf block builders + pdf-plugin) · tools `view_image`/`view_pdf` in `src/tools.mjs`
+- skills: `src/skills.mjs` (discovery + arg substitution) · `.cc-alt/skills/*.md` (example prompts)
+- background/scheduled: `src/jobs.mjs` (store + duration/cron parsing) · `src/scheduler.mjs` (detached spawn + poller)
 - `bin/cc-alt.mjs` — main CLI · `bin/agent.mjs` — original benchmark CLI · `demo.mjs` — live side-by-side · `selftest.mjs` — deterministic (no LLM)
 - `bench/tasks.mjs` `bench/run.mjs` `bench/results.json` · `SPEC.md`
 
 ## Run it
 ```
-node selftest.mjs                                   # 60 deterministic tests, no API key
+node selftest.mjs                                   # 145 deterministic tests, no API key
 cc-alt                                              # REPL (after `npm link`)
 node bin/cc-alt.mjs "<task>" ./repo --auto          # one-shot without install
 MODEL=google/gemini-2.5-flash node demo.mjs         # live side-by-side (needs OPENROUTER_API_KEY)
@@ -279,5 +357,8 @@ Reads `OPENROUTER_API_KEY` from the environment, or falls back to `web/.env.loca
 `selftest.mjs` is fully deterministic (no LLM) and covers: the SEAL edit protocol, the tool
 sandbox, the stubbed agent loop, **config resolution/merge precedence**, the **destructive-command
 blocklist**, the **diff renderer**, **REPL command parsing**, UI formatting, the **approval
-gate**, and the **MCP stdio client** (against a local stub server — connect, `tools/list`,
-`tools/call`, namespacing, and `Session` tool-registration/dispatch). 101 checks, all green.
+gate**, the **MCP stdio client** (against a local stub server — connect, `tools/list`,
+`tools/call`, namespacing, and `Session` tool-registration/dispatch), the **multimodal block
+builders** (image/pdf content arrays from fixture files + pdf-plugin detection), **skill discovery +
+arg substitution**, and the **jobs/schedule store** (duration + cron parsing, `tickScheduler` firing
+due jobs against a temp HOME). 145 checks, all green.

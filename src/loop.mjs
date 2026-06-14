@@ -7,6 +7,8 @@
 // or the step cap. agent.mjs and baseline.mjs supply DIFFERENT system prompts + tool maps —
 // that is the only difference between our harness and the Claude-Code-style baseline.
 
+import { buildMultimodalContent } from "./multimodal.mjs";
+
 function extractJSON(text) {
   // tolerate ```json fences and leading prose; grab the first balanced {...} object.
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -104,6 +106,18 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     }
     trace.push({ step, tool: call.tool, ok: result?.ok, tier: result?.tier });
     if (onStep) onStep({ step, tool: call.tool, args: call.args, result });
+
+    // MULTIMODAL: when a tool loaded an image/pdf, push a user message whose content is an ARRAY of
+    // blocks so the model actually SEES the bytes (provider passes array content through unchanged).
+    if (result && result.ok && result.multimodal) {
+      const blocks = buildMultimodalContent(result.multimodal);
+      if (blocks) {
+        // strip the heavy dataUrl out of the trace-facing result so the loop stays cheap.
+        messages.push({ role: "user", content: `RESULT (${call.tool}): ${result.note || "attachment loaded"} — attaching below.` });
+        messages.push({ role: "user", content: blocks });
+        continue;
+      }
+    }
 
     messages.push({ role: "user", content: `RESULT (${call.tool}):\n${clip(result)}` });
   }

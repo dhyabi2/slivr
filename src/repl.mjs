@@ -11,6 +11,7 @@ import { makePalette, colorEnabled, stepLine, footer, banner, confirm, renderPla
 import { renderDiff, diffStat } from "./diff.mjs";
 import { isDestructive, needsApproval } from "./safety.mjs";
 import { applyEdit as _applyEdit } from "./seal.mjs";
+import { listSkills, renderSkill, discoverSkills } from "./skills.mjs";
 
 // Pure command parser — testable without a terminal. Returns { cmd, arg } or null (not a command).
 export function parseCommand(line) {
@@ -26,6 +27,8 @@ const HELP = `commands:
   /model <id>      switch model (e.g. anthropic/claude-sonnet-4, openai/gpt-4o)
   /cost            show session tokens + cost so far
   /plan [on|off]   toggle plan-mode (agent must plan + get approval before editing)
+  /skills          list available skills (.cc-alt/skills/*.md, ~/.cc-alt/skills/*.md)
+  /run <name> [..] run a skill as a task (also: /<name> [..] if not a built-in command)
   /reset           clear the conversation context (keeps cost totals)
   /exit            quit
 keys: Shift-Tab (or Tab) cycle mode [edits → auto → plan]  ·  Ctrl-C interrupt turn  ·  ↑/↓ history
@@ -181,20 +184,22 @@ export async function startRepl({ workdir, config, palette } = {}) {
       if (!input) { safePrompt(); continue; }
 
       const command = parseCommand(input);
+      let taskToRun = input;
       if (command) {
-        const stop = await handleCommand(command, { session, p, rl, get approval() { return approval; }, set approval(v) { approval = v; } });
+        const stop = await handleCommand(command, { session, p, rl, workdir, get approval() { return approval; }, set approval(v) { approval = v; } });
         if (stop === "exit") { exited = true; break; }
-        safePrompt();
-        continue;
+        // A skill command (/run <name> or /<name>) resolves to a task string to run as a turn.
+        if (stop && typeof stop === "object" && stop.runTask) { taskToRun = stop.runTask; }
+        else { safePrompt(); continue; }
       }
 
-      // A normal request -> run a turn (input paused so Ctrl-C maps to abort, not a new line).
+      // A normal request (or a resolved skill) -> run a turn (input paused so Ctrl-C maps to abort).
       // Each turn starts fresh wrt plan approval so a new request must be re-planned in plan-mode.
       session.tools.plan = null; session.tools._planAborted = false;
       currentAbort = new AbortController();
       let res;
       try {
-        res = await session.runTurn(input, { onStep, beforeTool, signal: currentAbort.signal });
+        res = await session.runTurn(taskToRun, { onStep, beforeTool, signal: currentAbort.signal });
       } catch (e) {
         process.stdout.write(p.red(`error: ${e.message}\n`));
         currentAbort = null;
@@ -237,11 +242,27 @@ function previewEdit(current, args) {
 }
 
 async function handleCommand(command, ctx) {
-  const { session, p, rl } = ctx;
+  const { session, p, rl, workdir } = ctx;
   switch (command.cmd) {
     case "help":
       process.stdout.write(p.dim(HELP) + "\n");
       return;
+    case "skills": {
+      const skills = listSkills(workdir);
+      if (!skills.length) { process.stdout.write(p.dim("no skills found. Add prompts under ./.cc-alt/skills/*.md or ~/.cc-alt/skills/*.md\n")); return; }
+      process.stdout.write(p.bold("skills") + p.dim("  (run with /run <name> [args] or /<name> [args])") + "\n");
+      for (const s of skills) process.stdout.write(`  ${p.cyan(s.name.padEnd(14))} ${p.gray((s.description || "").slice(0, 70))}\n`);
+      return;
+    }
+    case "run": {
+      const parts = (command.arg || "").trim().split(/\s+/);
+      const name = parts.shift();
+      if (!name) { process.stdout.write(p.yellow("usage: /run <skill-name> [args]\n")); return; }
+      const r = renderSkill(name, parts, workdir);
+      if (!r.ok) { process.stdout.write(p.yellow(`no skill "${name}". available: ${r.available.join(", ") || "(none)"}\n`)); return; }
+      process.stdout.write(p.dim(`running skill: ${name}\n`));
+      return { runTask: r.prompt };
+    }
     case "model": {
       if (!command.arg) { process.stdout.write(p.dim(`model: ${session.provider.model}\n`)); return; }
       session.setModel(command.arg);
@@ -268,8 +289,16 @@ async function handleCommand(command, ctx) {
     case "exit":
     case "quit":
       return "exit";
-    default:
-      process.stdout.write(p.yellow(`unknown command /${command.cmd} — try /help\n`));
+    default: {
+      // not a built-in command: try to run it as a skill (/<name> [args]).
+      const skills = discoverSkills(workdir);
+      if (skills.has(command.cmd)) {
+        const args = (command.arg || "").trim().split(/\s+/).filter(Boolean);
+        const r = renderSkill(command.cmd, args, workdir);
+        if (r.ok) { process.stdout.write(p.dim(`running skill: ${command.cmd}\n`)); return { runTask: r.prompt }; }
+      }
+      process.stdout.write(p.yellow(`unknown command /${command.cmd} — try /help or /skills\n`));
       return;
+    }
   }
 }

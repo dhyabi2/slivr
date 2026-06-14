@@ -5,6 +5,7 @@
 // A single Provider instance accumulates session totals so a harness can report cost honestly.
 
 import fs from "node:fs";
+import { hasPdfInContext, PDF_PLUGIN } from "./multimodal.mjs";
 
 // Portable key fallback: OPENROUTER_API_KEY env, then a .env / .env.local in the CURRENT dir.
 // (config.apiKey — resolved from env / flags / ~/.cc-alt.json — is the primary path via opts.)
@@ -56,10 +57,16 @@ export class Provider {
 
   hasKey() { return !!this.key; }
 
-  // messages: [{role, content}]. Returns { text, usage, raw }.
-  async chat(messages, { temperature = 0.2, signal } = {}) {
+  // messages: [{role, content}] where content is a STRING or an ARRAY of blocks (multimodal —
+  // text + image_url / file). Array content is passed through to OpenRouter UNCHANGED. When a PDF
+  // file block is in-context (or plugins are passed explicitly) the file-parser plugin is merged so
+  // OpenRouter extracts the PDF text for the model. Returns { text, usage, raw }.
+  async chat(messages, { temperature = 0.2, signal, plugins } = {}) {
     if (!this.key) throw new Error("NO_OPENROUTER_KEY");
     if (signal?.aborted) { const e = new Error("aborted"); e.name = "AbortError"; throw e; }
+    // auto-attach the PDF parser plugin when a pdf is present (callers may also pass plugins).
+    let pluginList = Array.isArray(plugins) ? [...plugins] : [];
+    if (hasPdfInContext(messages) && !pluginList.some(p => p && p.id === "file-parser")) pluginList.push(PDF_PLUGIN);
     let lastErr;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       const ctrl = new AbortController();
@@ -73,6 +80,7 @@ export class Provider {
           headers: { Authorization: "Bearer " + this.key, "Content-Type": "application/json" },
           body: JSON.stringify({
             model: this.model, temperature, max_tokens: this.maxTokens, messages,
+            ...(pluginList.length ? { plugins: pluginList } : {}),
           }),
           signal: ctrl.signal,
         });
