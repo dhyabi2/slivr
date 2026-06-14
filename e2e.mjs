@@ -92,5 +92,17 @@ if (HAS_KEY) {
   ok(/purple/i.test(r.stdout + r.stderr), "agent view_image -> names the color purple");
 } else skipIf("multimodal view_image");
 
+// 8. Interactive REPL via a real PTY (Shift-Tab mode cycle, Ctrl-C, slash-commands) — Python pty.
+console.log("\n8) interactive REPL (PTY)");
+{
+  const py = spawnSync("python3", [path.resolve("test/repl_e2e.py")], { encoding: "utf8", env, timeout: 60000 });
+  if (py.error && /ENOENT/.test(String(py.error))) { console.log("  SKIP  REPL PTY suite (python3 not found)"); skip++; }
+  else {
+    const m = (py.stdout || "").match(/REPL E2E: (\d+) passed, (\d+) failed/);
+    (py.stdout || "").split("\n").filter((l) => /PASS|FAIL/.test(l)).forEach((l) => console.log("  " + l.trim()));
+    ok(py.status === 0 && m && m[2] === "0", `REPL PTY suite (${m ? m[1] : "?"} interactive checks)`);
+  }
+}
+
 console.log(`\nE2E: ${pass} passed, ${fail} failed, ${skip} skipped`);
 process.exit(fail === 0 ? 0 : 1);

@@ -12,7 +12,8 @@
     "demo": "node demo.mjs",
     "bench": "node bench/run.mjs",
     "test": "node selftest.mjs",
-    "e2e": "node e2e.mjs"
+    "e2e": "node e2e.mjs",
+    "e2e:repl": "python3 test/repl_e2e.py"
   },
   "license": "PolyForm-Noncommercial-1.0.0",
   "keywords": [
