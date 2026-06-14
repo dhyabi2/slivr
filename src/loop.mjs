@@ -9,23 +9,42 @@
 
 import { buildMultimodalContent } from "./multimodal.mjs";
 
-function extractJSON(text) {
-  // tolerate ```json fences and leading prose; grab the first balanced {...} object.
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const body = fenced ? fenced[1] : text;
-  const start = body.indexOf("{");
-  if (start === -1) return null;
+// Find the balanced {...} block starting at index `s`, or -1. (string/escape aware)
+function balancedEnd(body, s) {
   let depth = 0, inStr = false, esc = false;
-  for (let i = start; i < body.length; i++) {
+  for (let i = s; i < body.length; i++) {
     const c = body[i];
     if (esc) { esc = false; continue; }
     if (c === "\\") { esc = true; continue; }
     if (c === '"') inStr = !inStr;
     if (inStr) continue;
     if (c === "{") depth++;
-    else if (c === "}") { depth--; if (depth === 0) { try { return JSON.parse(body.slice(start, i + 1)); } catch { return null; } } }
+    else if (c === "}") { depth--; if (depth === 0) return i; }
   }
-  return null;
+  return -1;
+}
+
+// RESILIENT tool-call parser (Block 8): a cheap model often wraps its tool call in reasoning prose,
+// or the prose itself contains stray braces (set notation, code). The old parser only tried the FIRST
+// {...} — so `the set {1,2,3}, so {"tool":"create_file",...}` failed and wasted the whole turn. This
+// scans EVERY balanced {...} and returns the first one that parses AND has a `tool` key (so think+act
+// in one message works); it falls back to the first valid object (so a missing-tool object is still
+// surfaced for the existing correction path).
+function extractJSON(text) {
+  const body = String(text || "");
+  let firstObj = null;
+  for (let s = 0; s < body.length; s++) {
+    if (body[s] !== "{") continue;
+    const end = balancedEnd(body, s);
+    if (end === -1) break;
+    let obj;
+    try { obj = JSON.parse(body.slice(s, end + 1)); } catch { continue; }
+    if (obj && typeof obj === "object") {
+      if (obj.tool) return obj;            // a real tool call — prefer it over any earlier stray object
+      if (!firstObj) firstObj = obj;       // remember the first valid object as a fallback
+    }
+  }
+  return firstObj;
 }
 
 // truncate big tool results so feeding them back doesn't blow the context (both harnesses

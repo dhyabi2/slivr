@@ -213,10 +213,29 @@ async function main() {
     const code = opts.mock ? (prob.reference || "") : await solveWithSlivr(prob, opts);
     const g = grade(code, prob);
     if (g.pass) solved++;
-    results.push({ id: prob.id, title: prob.title, platform: prob.platform, difficulty: prob.difficulty, type: prob.func ? "functional" : "stdin", ...g });
+    // Classify a failure so the results reveal the PATTERN (what to fix next), not just pass/fail.
+    let reason = "pass";
+    if (!g.pass) {
+      if (!code || !code.trim()) reason = "no_solution";
+      else {
+        const f = firstFailure(code, prob);
+        if (!f) reason = "pass";
+        else if (f.why && /timed out|timeout|ETIMEDOUT/i.test(f.why)) reason = "timeout";
+        else if (f.stderr || (f.why && /exit [1-9]|Error|Traceback/i.test(f.why))) reason = "runtime_error";
+        else if (f.got != null) reason = "wrong_answer";
+        else reason = "other";
+      }
+    }
+    results.push({ id: prob.id, title: prob.title, platform: prob.platform, difficulty: prob.difficulty, type: prob.func ? "functional" : "stdin", reason, ...g });
     const mark = g.pass ? "✓" : "✗";
-    console.log(`  ${mark} ${prob.id}  ${String(prob.title).slice(0, 48).padEnd(48)} ${g.passed}/${g.total} tests  [${prob.difficulty}]`);
+    console.log(`  ${mark} ${prob.id}  ${String(prob.title).slice(0, 44).padEnd(44)} ${g.passed}/${g.total} [${prob.difficulty}]${g.pass ? "" : " " + reason}`);
   }
+  // Failure-pattern summary (the seed for the next invention block).
+  const fails = results.filter(r => !r.pass);
+  const byReason = {}, byDiff = {};
+  for (const r of fails) { byReason[r.reason] = (byReason[r.reason] || 0) + 1; byDiff[r.difficulty] = (byDiff[r.difficulty] || 0) + 1; }
+  console.log("\nfailures by reason:", JSON.stringify(byReason));
+  console.log("failures by difficulty:", JSON.stringify(byDiff));
 
   const pass1 = problems.length ? (solved / problems.length) : 0;
   console.log("");

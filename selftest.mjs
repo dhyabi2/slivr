@@ -1125,6 +1125,32 @@ console.log("== 28. edit_symbol — replace a definition by name (Block 7) ==");
   fs.rmSync(d, { recursive: true, force: true });
 }
 
+console.log("== 29. resilient tool-call parser — think-and-act in one turn (Block 8) ==");
+{
+  // Drive the loop with a "model" that emits REASONING PROSE WITH STRAY BRACES before the tool call —
+  // the case the old first-{...} parser failed on (wasting the turn as a BADCALL).
+  const t = new Tools(tmp);
+  fs.writeFileSync(path.join(tmp, "w.js"), "export const A = 1;\n");
+  const toolMap = { edit_file: (a) => t.edit_file(a) };
+  const messy = [
+    'We pick the set {1, 2, 3} and a map {x: 1}. So now I will edit. {"tool":"edit_file","args":{"path":"w.js","anchor":"export const A = 1;","replacement":"export const A = 2;"}}',
+    'Done reasoning. {"tool":"done","args":{"summary":"changed A to 2"}}',
+  ];
+  let i = 0;
+  const provider = { chat: async () => ({ text: messy[i++] ?? '{"tool":"done","args":{}}', usage: {}, raw: {} }), totals: () => ({ model: "s", calls: i, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const res = await runLoop({ provider, tools: t, toolMap, systemPrompt: "s", task: "x", maxSteps: 6 });
+  ok("parser: extracts the tool call despite leading prose + stray braces", res.done === true && !res.trace.some(s => s.badCall));
+  ok("parser: the edit actually applied (no wasted BADCALL turn)", t.read_file({ path: "w.js" }).content.includes("A = 2"));
+
+  // still records a BADCALL when there is genuinely NO tool call (pure prose)
+  let j = 0;
+  const proseThenDone = ["Just thinking out loud about {a, b, c} with no tool call here.", '{"tool":"done","args":{"summary":"ok"}}'];
+  const provider2 = { chat: async () => ({ text: proseThenDone[j++] ?? '{"tool":"done","args":{}}', usage: {}, raw: {} }), totals: () => ({ model: "s", calls: j, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const res2 = await runLoop({ provider: provider2, tools: t, toolMap, systemPrompt: "s", task: "x", maxSteps: 6 });
+  ok("parser: pure prose (no tool call) still flagged as a bad call", res2.trace.some(s => s.badCall));
+  ok("parser: but recovers on the next valid call", res2.done === true);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);
