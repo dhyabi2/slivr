@@ -11,6 +11,7 @@
     "start": "node bin/slivr.mjs",
     "demo": "node demo.mjs",
     "bench": "node bench/run.mjs",
+    "bench:lcb": "node bench/livecodebench.mjs",
     "test": "node selftest.mjs",
     "e2e": "node e2e.mjs",
     "e2e:repl": "python3 test/repl_e2e.py",
