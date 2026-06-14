@@ -63,20 +63,37 @@ Finally, **`edit_files`** applies many such edits **atomically** (all-or-nothing
 files in a single call: every edit is validated to apply uniquely first; if any fails, **nothing is
 written** and per-edit repair packets come back. Multi-file changes cost a few turns instead of many.
 
-## Why it's better (measured, same model both sides)
+## Why it's better (measured — scaled, oracle-judged, same model both sides)
 
-Because edits never carry the file, cost tracks the *change*, not the file:
+From a **130-run** head-to-head (17 tasks × 5 file-size regimes × reps, $6.40 spend, same model
+both arms so the difference is the *protocol*, not the model). Full numbers + raw data in
+[`bench/REPORT.md`](bench/REPORT.md). Aggregate: cc-alt is **81% cheaper at 82% vs 65% success on
+gemini-2.5-flash**, **71% cheaper at 100% vs 71% on claude-sonnet-4** — but the aggregate is *inflated
+by large-file blowups*, so the **per-regime view is the honest one:**
 
-| regime | cc-alt vs Claude-Code-style baseline |
-|---|---|
-| **large-file** single edit | ~**99% cheaper**, and the baseline often **runs away and fails** |
-| **multi-file** edits | ~**53–82% cheaper** at equal success |
-| medium file | ~5% cheaper (marginal) |
-| **tiny** file | **tie / slightly worse** — re-sending a small file is already cheap |
+| regime | cost saved vs full-rewrite baseline | success (cc-alt vs baseline) |
+|---|---|---|
+| **large single-edit** | **65–85% cheaper** | **decisive** — baseline **0/12** (gemini), 2/4 (claude) vs cc-alt 9/12, 4/4 |
+| **large multi-file** | **82–89% cheaper** | **decisive** — baseline **0/6** (gemini), 0/2 (claude) vs cc-alt 6/6, 2/2 |
+| medium | 30–74% cheaper | tie |
+| tiny single-edit | model-dependent: 73% cheaper (gemini) … **−8% (claude)** | tie |
+| **small multi-file** | **−8% to −12% (cc-alt costlier)** | **cc-alt can LOSE** — 9/15 vs 15/15 on gemini-flash |
 
-Two distinct wins: **cost** (the headline) and **reliability** (the unique-match rule means no
-silent wrong edits; the baseline's full-rewrite *fails* large files by exhausting context). And it's
-**provider-agnostic** — the same edge applies whatever model you configure.
+**The core finding — reliability, not just cost:** on large files the full-rewrite baseline
+**failed 0/18 runs on gemini** (44% hit the turn cap in a token *runaway* — worst single run
+**536,038 tokens**), and degraded badly on claude too. Re-emitting a big file every turn isn't a
+cost tax, it's a *failure mode*; the anchor protocol simply doesn't have it.
+
+**Honest losses (reported against us):** on **small/tiny files there's no win** — a full rewrite of a
+small file is already cheap, so cc-alt is cost-neutral-to-slightly-*negative* there; and on
+gemini-flash cc-alt actually **fails some small-multi (new-file) tasks** the baseline passes (a
+model-specific weakness, not structural — it passes them on claude).
+
+**The defensible, publishable claim is therefore narrow and true:** *for edits to **large files**,
+anchor-based editing delivers **equal-or-better correctness at a large, reproducible cost reduction
+(66–89%)** vs full rewrites — and is cost-neutral-to-slightly-negative on small files.* The win is
+**provider-agnostic** (holds on both models) and it's two things at once — cheaper **and** it doesn't
+blow up where full-rewrite tools do.
 
 ## The honest scope (what it is NOT)
 
@@ -105,9 +122,12 @@ converge → build → **measure head-to-head**), then a hole-finding pass:
    comment-collision, fuzzy auto-apply) that were proven empirically.
 2. Those holes were **fixed** (unique-match requirement, sound string-safe normalization, no fuzzy
    auto-apply) — turning the applier from "fewer failed applies" into "**no wrong applies**."
-3. Re-measured on a **realistically-priced model (Claude Sonnet 4)**, the compact-edit protocol then
-   showed a **real ~35% cost cut on large-file edits at equal quality** — the win that the cheap
-   model had hidden. cc-alt is that fixed engine wrapped in a usable agent.
+3. Re-measured at scale on **both** a cheap model (gemini) and a **realistically-priced model
+   (Claude Sonnet 4)**, the compact-edit protocol showed a **real, reproducible 65–89% cost cut on
+   large-file edits at equal-or-better correctness** — and exposed the full-rewrite baseline's
+   large-file *failure* (0/18 on gemini, token runaways). cc-alt is that fixed engine wrapped in a
+   usable agent. (The early cheap-model preview had *hidden* this — cheap input pricing erased the
+   token savings; pricing a realistic model, and scaling the benchmark, revealed it.)
 
 The meta-lesson, paid for in measurements: *with the same model you cannot out-think Claude Code at
 the harness level — you can only make it cheaper and more reliable.* cc-alt is exactly that, honestly.

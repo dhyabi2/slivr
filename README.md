@@ -6,9 +6,11 @@ asks before risky actions, and stops when the task is verifiably done — driven
 plug in (Claude / GPT / Gemini) over OpenRouter.
 
 > **The real invention** is the edit engine: a *correctness-first compact-edit protocol* that lets the
-> agent change code **without ever re-sending whole files** — so edits are dramatically **cheaper**
-> (up to ~99% on large files, where full-rewrite tools even *fail*) and structurally **safer** (it
+> agent change code **without ever re-sending whole files** — so edits to **large files** are
+> **65–89% cheaper at equal-or-better correctness** (where full-rewrite tools often *fail* — our
+> baseline scored **0/18** on large files, with token runaways) and structurally **safer** (it
 > refuses ambiguous anchors instead of silently editing the wrong place), on **any** model.
+> Cost-neutral-to-slightly-negative on small files — see the honest per-regime breakdown.
 > Full deep-dive — mechanism, measured results, honest scope, and how it was invented: **[INVENTION.md](INVENTION.md)**.
 
 ## Quickstart (daily use)
