@@ -18,6 +18,8 @@ You work ONE tool call at a time. Respond with EXACTLY ONE JSON object, nothing 
   {"tool":"list_dir","args":{"path":"."}}
   {"tool":"grep","args":{"pattern":"regex","path":"."}}
   {"tool":"glob","args":{"pattern":"src/**/*.js"}}
+  {"tool":"repo_map","args":{}}
+  {"tool":"find_symbol","args":{"name":"functionOrClassName"}}
   {"tool":"run_command","args":{"command":"node check.js"}}
   {"tool":"web_search","args":{"query":"how to X in library Y"}}
   {"tool":"web_fetch","args":{"url":"https://..."}}
@@ -75,7 +77,11 @@ TASK MANAGEMENT (task_write): for any multi-step task, call "task_write" up fron
   EXACTLY ONE task in_progress at a time; mark a task completed right after you finish it. This
   drives the live checklist the user sees.
 
-Workflow: (plan if asked) → task_write a checklist → explore (list_dir/read_file/grep) → make
+CODE NAVIGATION: to find WHERE something is defined, prefer find_symbol (jumps straight to the
+  definition's file:line + signature) over grep (which returns every mention). Use repo_map to get a
+  compact overview of an unfamiliar repo's files and their top-level symbols before reading files.
+
+Workflow: (plan if asked) → task_write a checklist → explore (repo_map/find_symbol/read_file/grep) → make
 targeted edits (fan out independent work with parallel) → run the check script to verify → keep
 the checklist updated → call done. Keep going until the task is verifiably complete.`;
 
@@ -88,6 +94,8 @@ export function makeAgent(workdir, opts = {}) {
     list_dir: (a) => tools.list_dir(a),
     grep: (a) => tools.grep(a),
     glob: (a) => tools.glob(a),
+    repo_map: (a) => tools.repo_map(a),
+    find_symbol: (a) => tools.find_symbol(a),
     run_command: (a) => tools.run_command(a),
     edit_file: (a) => tools.edit_file(a),
     create_file: (a) => tools.create_file(a),
@@ -126,8 +134,8 @@ const SUBAGENT_BRIEF =
 // the caller gets the actual content even if the model wrote a terse summary. We surface only
 // READ/INFORMATIONAL tools (not edits/commits), de-noised and length-capped.
 const FINDING_TOOLS = new Set([
-  "read_file", "list_dir", "grep", "glob", "run_command", "web_search", "web_fetch",
-  "view_pdf", "view_image", "git_status", "git_diff", "git_log",
+  "read_file", "list_dir", "grep", "glob", "repo_map", "find_symbol", "run_command", "web_search",
+  "web_fetch", "view_pdf", "view_image", "git_status", "git_diff", "git_log",
 ]);
 export function extractFindings(sub, maxTotal = 2000) {
   const out = [];
@@ -295,6 +303,8 @@ export class Session {
       read_file: (a) => t.read_file(a),
       list_dir: (a) => t.list_dir(a),
       grep: (a) => t.grep(a),
+      repo_map: (a) => t.repo_map(a),
+      find_symbol: (a) => t.find_symbol(a),
       run_command: (a) => t.run_command(a),
       edit_file: captureEdit("edit_file", (a) => t.edit_file(a)),
       create_file: captureEdit("create_file", (a) => t.create_file(a)),

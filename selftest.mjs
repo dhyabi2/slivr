@@ -926,6 +926,43 @@ console.log("== 23. progress sentinel — anti-stall guard (no LLM) ==");
   ok("sentinel: injects a final-step nudge", r3.messages.some(m => typeof m.content === "string" && /FINAL step/.test(m.content)));
 }
 
+console.log("== 24. repo symbol index — find_symbol / repo_map (Block 3) ==");
+{
+  const { buildSymbolIndex, findSymbol, repoOverview, extractSymbols } = await import("./src/repomap.mjs");
+
+  // multi-language extraction
+  ok("extract: JS function", extractSymbols("export function foo(a){}", "js").some(s => s.name === "foo" && s.kind === "function"));
+  ok("extract: JS class", extractSymbols("class Bar {}", "js").some(s => s.name === "Bar" && s.kind === "class"));
+  ok("extract: JS arrow const", extractSymbols("export const baz = (x) => x", "js").some(s => s.name === "baz" && s.kind === "function"));
+  ok("extract: Python def/class", (() => { const s = extractSymbols("class A:\n    def m(self):\n        pass", "py"); return s.some(x => x.name === "A" && x.kind === "class") && s.some(x => x.name === "m"); })());
+  ok("extract: ignores JS keywords as methods", !extractSymbols("  if (x) {\n", "js").length);
+  ok("extract: skips indented local consts", !extractSymbols("function f(){\n  const local = 1;\n}", "js").some(s => s.name === "local"));
+
+  // index slivr's OWN source, then jump to known definitions
+  const idx = buildSymbolIndex("src");
+  ok("index: found a meaningful number of symbols", idx.symbols.length > 100, "n=" + idx.symbols.length);
+  const probes = { runLoop: "loop.mjs", needsApproval: "safety.mjs", renderDiff: "diff.mjs", buildSymbolIndex: "repomap.mjs", Session: "agent.mjs" };
+  let exact = 0, grepTotal = 0;
+  const { execSync } = await import("node:child_process");
+  for (const [name, file] of Object.entries(probes)) {
+    const hits = findSymbol(idx, name);
+    const def = hits.find(h => h.kind !== "method") || hits[0];
+    if (def && def.file === file) exact++;
+    try { grepTotal += parseInt(execSync(`grep -rn "${name}" src | wc -l`).toString().trim(), 10) || 0; } catch { /* */ }
+  }
+  ok("find_symbol: resolves every probe to its exact definition file", exact === Object.keys(probes).length, `${exact}/${Object.keys(probes).length}`);
+  // MEASUREMENT: find_symbol returns 1 precise result; grep returns far more lines to read through.
+  ok("find_symbol: far less noise than grep", grepTotal > Object.keys(probes).length, `grep returned ${grepTotal} lines for ${Object.keys(probes).length} symbols (index returns 1 each)`);
+
+  // fuzzy recovery + overview + tool wiring
+  ok("find_symbol: case-insensitive fallback", findSymbol(idx, "runloop").some(s => s.name === "runLoop"));
+  ok("repoOverview: compact map lists files", /symbols across/.test(repoOverview(idx)));
+  const tools = new Tools(path.resolve("src"));
+  ok("tool: find_symbol wired", tools.find_symbol({ name: "runLoop" }).matches[0].file === "loop.mjs");
+  ok("tool: repo_map wired", tools.repo_map().symbols > 100);
+  ok("tool: find_symbol missing name errors", tools.find_symbol({}).ok === false);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

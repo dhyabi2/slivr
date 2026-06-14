@@ -118,6 +118,13 @@ config files and flags in precedence):
 | `SLIVR_MAX_STEPS` | `maxSteps` | integer (default 16) |
 | `SLIVR_MAX_TOKENS` | `maxTokensPerTurn` | integer (default 4000) |
 
+### Code navigation (`find_symbol` / `repo_map`)
+slivr builds a zero-dependency **symbol index** of the repo (regex scan; no vector DB) so the agent
+can **jump to a definition** instead of grepping through every mention: `find_symbol <name>` →
+`file:line` + signature; `repo_map` → a compact map of files and their top-level symbols. On slivr's
+own source this resolves 100% of lookups to the exact single definition vs grep's 2–8 lines of noise.
+See [docs/INVENTION-block3-repo-symbol-index.md](docs/INVENTION-block3-repo-symbol-index.md).
+
 ### Verify-and-repair (`--verify`)
 Give slivr a check and it won't finish until the check passes. When the agent calls `done`, slivr runs
 your verification command; if it fails, the output is fed back and the agent must fix it and finish

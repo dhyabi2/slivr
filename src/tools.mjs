@@ -14,6 +14,7 @@ import { execSync, execFileSync } from "node:child_process";
 import { applyEdit } from "./seal.mjs";
 import { localPdfText } from "./pdftext.mjs";
 import { costUSD } from "./provider.mjs";
+import { buildSymbolIndex, findSymbol, repoOverview } from "./repomap.mjs";
 
 export class Tools {
   constructor(workdir, opts = {}) {
@@ -242,6 +243,29 @@ export class Tools {
     };
     walk(this.workdir, "");
     return { ok: true, matches: out.slice(0, 300) };
+  }
+
+  // --- repo symbol index (Block 3) -------------------------------------------
+  // Lazily build + cache a zero-dependency symbol index over the workdir.
+  _index() {
+    if (!this._symbolIndex) this._symbolIndex = buildSymbolIndex(this.workdir);
+    return this._symbolIndex;
+  }
+
+  // repo_map: shallow global map — files and their top-level symbols. Cheaper than reading files to
+  // orient in an unfamiliar repo.
+  repo_map() {
+    const idx = this._index();
+    return { ok: true, files: idx.files.length, symbols: idx.symbols.length, map: repoOverview(idx) };
+  }
+
+  // find_symbol: jump straight to a definition (file:line + signature) instead of grepping through
+  // every mention. Falls back to case-insensitive / substring matching for slightly-wrong names.
+  find_symbol({ name }) {
+    if (!name) return { ok: false, error: "NO_NAME", hint: 'pass {"name":"functionOrClassName"}' };
+    const hits = findSymbol(this._index(), name);
+    if (!hits.length) return { ok: true, name, matches: [], note: `no symbol named "${name}" found — try repo_map or grep` };
+    return { ok: true, name, matches: hits.slice(0, 25).map(s => ({ file: s.file, line: s.line, kind: s.kind, signature: s.signature })) };
   }
 
   // web_fetch: GET a URL and return readable text (scripts/styles/tags stripped).
