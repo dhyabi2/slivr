@@ -34,5 +34,25 @@
     "ai-coding-assistant",
     "claude-code-alternative",
     "aider-alternative"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dhyabi2/slivr.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dhyabi2/slivr/issues"
+  },
+  "homepage": "https://github.com/dhyabi2/slivr#readme",
+  "files": [
+    "bin/",
+    "src/",
+    "install.sh",
+    "README.md",
+    "INVENTION.md",
+    "assets/",
+    ".slivr/"
   ]
 }
