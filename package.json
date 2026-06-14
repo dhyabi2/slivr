@@ -3,12 +3,36 @@
   "version": "0.1.0",
   "type": "module",
   "description": "A configurable-LLM Claude Code alternative: a coding-agent harness whose compact-edit protocol matches task success at lower session cost than a Claude-Code-style full-rewrite baseline, on the same swappable model.",
-  "bin": { "cc-alt": "bin/cc-alt.mjs" },
+  "bin": {
+    "cc-alt": "bin/cc-alt.mjs"
+  },
   "scripts": {
     "selftest": "node selftest.mjs",
     "start": "node bin/cc-alt.mjs",
     "demo": "node demo.mjs",
     "bench": "node bench/run.mjs"
   },
-  "license": "AGPL-3.0"
+  "license": "AGPL-3.0",
+  "keywords": [
+    "coding-agent",
+    "ai-agent",
+    "ai-agents",
+    "llm",
+    "ai",
+    "cli",
+    "developer-tools",
+    "agent",
+    "mcp",
+    "openrouter",
+    "anthropic",
+    "openai",
+    "claude",
+    "gemini",
+    "code-generation",
+    "command-line",
+    "coding-assistant",
+    "ai-coding-assistant",
+    "claude-code-alternative",
+    "aider-alternative"
+  ]
 }
