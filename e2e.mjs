@@ -92,8 +92,96 @@ if (HAS_KEY) {
   ok(/purple/i.test(r.stdout + r.stderr), "agent view_image -> names the color purple");
 } else skipIf("multimodal view_image");
 
-// 8. Interactive REPL via a real PTY (Shift-Tab mode cycle, Ctrl-C, slash-commands) — Python pty.
-console.log("\n8) interactive REPL (PTY)");
+// 8. AGENT-DRIVEN tool coverage (live): the model must CHOOSE these tools to finish the task.
+console.log("\n8) agent-driven: edit_files (multi-file)");
+if (HAS_KEY) {
+  const d = tmp();
+  fs.writeFileSync(path.join(d, "a.js"), "export const x = 1;\n");
+  fs.writeFileSync(path.join(d, "b.js"), "export const y = 2;\n");
+  const r = run(["in ONE edit_files call, rename the const in a.js from x to alpha and in b.js from y to beta", d, "--auto"], { cwd: d, timeout: 120000 });
+  const a = fs.readFileSync(path.join(d, "a.js"), "utf8"), b = fs.readFileSync(path.join(d, "b.js"), "utf8");
+  ok(/edit_files/.test(r.stdout + r.stderr), "agent chose edit_files");
+  ok(/alpha/.test(a) && /beta/.test(b), "both files edited (a->alpha, b->beta)");
+} else skipIf("edit_files");
+
+console.log("\n9) agent-driven: git_commit");
+if (HAS_KEY) {
+  const d = tmp();
+  spawnSync("git", ["init", "-q"], { cwd: d }); spawnSync("git", ["config", "user.email", "e@e"], { cwd: d }); spawnSync("git", ["config", "user.name", "e"], { cwd: d });
+  fs.writeFileSync(path.join(d, "m.js"), "export const k = 1;\n"); spawnSync("git", ["add", "-A"], { cwd: d }); spawnSync("git", ["commit", "-qm", "base"], { cwd: d });
+  const r = run(["add a function double(n){return n*2} to m.js, then commit it with git_commit", d, "--auto"], { cwd: d, timeout: 120000 });
+  const log = spawnSync("git", ["log", "--oneline"], { cwd: d, encoding: "utf8" }).stdout;
+  ok(/git_commit/.test(r.stdout + r.stderr), "agent chose git_commit");
+  ok(log.trim().split("\n").length >= 2 && /double/.test(fs.readFileSync(path.join(d, "m.js"), "utf8")), "new commit created + double() added");
+} else skipIf("git_commit");
+
+console.log("\n10) agent-driven: web_search");
+if (HAS_KEY) {
+  const r = run(["use web_search to find the current LTS major version of Node.js and report just the number", tmp(), "--auto"], { timeout: 90000 });
+  ok(/web_search/.test(r.stdout + r.stderr), "agent chose web_search (web plugin)");
+} else skipIf("web_search");
+
+console.log("\n11) agent-driven: view_pdf");
+if (HAS_KEY) {
+  const d = tmp();
+  const mkPdf = (text) => {
+    const objs = ["<</Type/Catalog/Pages 2 0 R>>", "<</Type/Pages/Kids[3 0 R]/Count 1>>",
+      "<</Type/Page/Parent 2 0 R/MediaBox[0 0 400 120]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>"];
+    const stream = `BT /F1 18 Tf 30 60 Td (${text}) Tj ET`;
+    objs.push(`<</Length ${stream.length}>>\nstream\n${stream}\nendstream`);
+    objs.push("<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>");
+    let pdf = "%PDF-1.4\n"; const off = [];
+    objs.forEach((o, i) => { off.push(pdf.length); pdf += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+    const xr = pdf.length; pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+    off.forEach((o) => { pdf += String(o).padStart(10, "0") + " 00000 n \n"; });
+    pdf += `trailer\n<</Root 1 0 R/Size ${objs.length + 1}>>\nstartxref\n${xr}\n%%EOF`;
+    return Buffer.from(pdf, "latin1");
+  };
+  fs.writeFileSync(path.join(d, "secret.pdf"), mkPdf("The secret word is BANANA42"));
+  const r = run(["use view_pdf on secret.pdf and tell me the secret word", d, "--auto"], { cwd: d, timeout: 90000 });
+  ok(/view_pdf/.test(r.stdout + r.stderr), "agent chose view_pdf");
+  ok(/BANANA42/i.test(r.stdout + r.stderr), "agent read the PDF text (BANANA42)");
+} else skipIf("view_pdf");
+
+console.log("\n12) agent-driven: parallel");
+if (HAS_KEY) {
+  const d = tmp();
+  fs.writeFileSync(path.join(d, "f1.txt"), "alpha-one\n"); fs.writeFileSync(path.join(d, "f2.txt"), "beta-two\n");
+  const r = run(["use the parallel tool to read f1.txt and f2.txt at the same time, then report both contents", d, "--auto"], { cwd: d, timeout: 120000 });
+  const out = r.stdout + r.stderr;
+  ok(/parallel/.test(out), "agent chose parallel");
+  // parallel runs N sub-agents concurrently and returns each one's SUMMARY (not its full output),
+  // so we assert the fan-out actually ran >=2 sub-tasks (the `↳` sub-result lines / "N subtasks").
+  const subs = (out.match(/↳/g) || []).length;
+  ok(subs >= 2 || /\b2 subtask/.test(out), `parallel fanned out >=2 concurrent sub-agents (saw ${subs})`);
+} else skipIf("parallel");
+
+// 13. REAL MCP server (npx @modelcontextprotocol/server-everything) — network-dependent.
+console.log("\n13) real MCP server (npx)");
+{
+  const d = tmp();
+  fs.writeFileSync(path.join(d, ".slivr.json"), JSON.stringify({ mcpServers: { everything: { command: "npx", args: ["-y", "@modelcontextprotocol/server-everything"] } } }));
+  const r = run(["mcp", "list"], { cwd: d, timeout: 120000 });
+  if (/mcp__everything__/.test(r.stdout)) ok(true, "real npx everything-server: tools discovered");
+  else { console.log("  SKIP  real MCP server (npx/network unavailable)"); skip++; }
+}
+
+// 14. Timed scheduled job actually fires (live).
+console.log("\n14) timed scheduled job fires");
+if (HAS_KEY) {
+  const d = tmp();
+  const fname = "sched_" + Math.floor(Number(process.hrtime.bigint() % 1000000n)) + ".txt";
+  run(["scheduler", "stop"]); // clean
+  run(["schedule", `create a file ${fname} containing exactly fired`, "--in", "4s"], { cwd: d });
+  run(["scheduler", "--daemon", "--every", "2"]);
+  const target = () => [path.join(d, fname), path.join(fs.realpathSync(d), fname)].find(fs.existsSync);
+  for (let i = 0; i < 25 && !target(); i++) spawnSync("sleep", ["1"]);
+  run(["scheduler", "stop"]);
+  ok(!!target(), `scheduled job fired and created ${fname}`);
+} else skipIf("timed scheduled job");
+
+// 15. Interactive REPL via a real PTY (Shift-Tab mode cycle, Ctrl-C, slash-commands) — Python pty.
+console.log("\n15) interactive REPL (PTY)");
 {
   const py = spawnSync("python3", [path.resolve("test/repl_e2e.py")], { encoding: "utf8", env, timeout: 60000 });
   if (py.error && /ENOENT/.test(String(py.error))) { console.log("  SKIP  REPL PTY suite (python3 not found)"); skip++; }
