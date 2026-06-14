@@ -10,7 +10,9 @@
     "selftest": "node selftest.mjs",
     "start": "node bin/slivr.mjs",
     "demo": "node demo.mjs",
-    "bench": "node bench/run.mjs"
+    "bench": "node bench/run.mjs",
+    "test": "node selftest.mjs",
+    "e2e": "node e2e.mjs"
   },
   "license": "PolyForm-Noncommercial-1.0.0",
   "keywords": [
@@ -53,6 +55,9 @@
     "README.md",
     "INVENTION.md",
     "assets/",
-    ".slivr/"
+    ".slivr/",
+    "e2e.mjs",
+    "selftest.mjs",
+    "test/"
   ]
 }
