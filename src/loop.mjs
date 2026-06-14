@@ -60,9 +60,21 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
   let noProgress = 0;
   const NO_PROGRESS_CAP = 4;
 
+  // PROGRESS SENTINEL (Block 2): a non-LLM guard against the *valid-but-spinning* failure mode — the
+  // model keeps making the SAME tool call with the same args and no new result. We escalate: a one-time
+  // recovery hint, then a clean stop. (NO_PROGRESS_CAP above only covers non-JSON / unknown-tool calls.)
+  let lastFp = null, repeatCount = 0, finalNudged = false;
+  const SPIN_HINT = 3, SPIN_STOP = 5;
+
   let aborted = false;
   for (let step = 0; step < maxSteps; step++) {
     if (signal?.aborted) { aborted = true; trace.push({ step, aborted: true }); break; }
+    // Final-step nudge: on the last allowed step, tell the model to stop exploring and finish, so a
+    // turn ends with a usable result instead of silently hitting the step cap.
+    if (step === maxSteps - 1 && maxSteps > 1 && !finalNudged) {
+      messages.push({ role: "user", content: "This is your FINAL step. Stop exploring and call done now with your best result." });
+      finalNudged = true;
+    }
     turns++;
     let resp;
     try {
@@ -161,6 +173,19 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     }
 
     messages.push({ role: "user", content: `RESULT (${call.tool}):\n${clip(result)}` });
+
+    // PROGRESS SENTINEL: same tool + same args repeated with no new result ⇒ the agent is spinning.
+    // Escalate: a one-time recovery hint, then a clean stop (never burn the whole budget spinning).
+    const fp = `${call.tool}|${clip(JSON.stringify(call.args || {}), 200)}`;
+    if (fp === lastFp) repeatCount++; else { lastFp = fp; repeatCount = 1; }
+    if (repeatCount >= SPIN_STOP) {
+      stopped = `stopped: repeated the same ${call.tool} call ${repeatCount}× with no progress`;
+      trace.push({ step, spinStop: call.tool, count: repeatCount });
+      break;
+    } else if (repeatCount === SPIN_HINT) {
+      messages.push({ role: "user", content: `You have called ${call.tool} with identical arguments ${repeatCount}× in a row with no new result — you appear to be stuck. Try a DIFFERENT approach, or call done.` });
+      trace.push({ step, spinHint: call.tool, count: repeatCount });
+    }
   }
 
   // If we fell out of the loop without finishing, aborting, or erroring, we hit the step cap.

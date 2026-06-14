@@ -891,6 +891,41 @@ console.log("== 22. verify-and-repair loop (no LLM) ==");
   ok("verify-repair: opt-out leaves behavior unchanged", res3.done === true && res3.verified === null && res3.repairs === 0);
 }
 
+console.log("== 23. progress sentinel — anti-stall guard (no LLM) ==");
+{
+  const t = new Tools(tmp);
+  fs.writeFileSync(path.join(tmp, "z.js"), "x\n");
+  const toolMap = { read_file: (a) => t.read_file(a) };
+
+  // A spinning "model" that calls the SAME tool with the SAME args forever. Without the guard this
+  // would burn all maxSteps; the sentinel must hint then stop it early.
+  const MAXS = 50;
+  const spin = { chat: async () => ({ text: JSON.stringify({ tool: "read_file", args: { path: "z.js" } }), usage: {}, raw: {} }), totals: () => ({ model: "s", calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const r = await runLoop({ provider: spin, tools: t, toolMap, systemPrompt: "s", task: "x", maxSteps: MAXS });
+  ok("sentinel: stops a spinning loop early", !r.done && r.turns <= 6, "turns=" + r.turns);
+  ok("sentinel: steps saved vs budget (>=80%)", r.turns <= MAXS * 0.2, `turns=${r.turns} of ${MAXS}`);
+  ok("sentinel: surfaces the stall reason", /repeated the same/.test(r.stopped || ""));
+  ok("sentinel: injected a recovery hint before stopping", r.trace.some(s => s.spinHint) && r.trace.some(s => s.spinStop));
+
+  // No false positive: a model that alternates DIFFERENT calls then finishes must NOT be flagged.
+  const seq = [
+    JSON.stringify({ tool: "read_file", args: { path: "z.js" } }),
+    JSON.stringify({ tool: "read_file", args: { path: "nope.js" } }),
+    JSON.stringify({ tool: "read_file", args: { path: "z.js" } }),
+    JSON.stringify({ tool: "done", args: { summary: "looked around" } }),
+  ];
+  let i = 0;
+  const varied = { chat: async () => ({ text: seq[i++] ?? '{"tool":"done","args":{}}', usage: {}, raw: {} }), totals: () => ({ model: "s", calls: i, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const r2 = await runLoop({ provider: varied, tools: t, toolMap, systemPrompt: "s", task: "x", maxSteps: 20 });
+  ok("sentinel: does NOT flag varied tool calls", r2.done === true && !r2.trace.some(s => s.spinStop));
+
+  // Final-step nudge: on the last allowed step the loop tells the model to finish now.
+  let j = 0;
+  const wanderer = { chat: async () => ({ text: JSON.stringify({ tool: "read_file", args: { path: "f" + (j++) } }), usage: {}, raw: {} }), totals: () => ({ model: "s", calls: j, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const r3 = await runLoop({ provider: wanderer, tools: t, toolMap, systemPrompt: "s", task: "x", maxSteps: 3 });
+  ok("sentinel: injects a final-step nudge", r3.messages.some(m => typeof m.content === "string" && /FINAL step/.test(m.content)));
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);
