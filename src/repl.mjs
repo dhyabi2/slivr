@@ -28,7 +28,8 @@ const HELP = `commands:
   /plan [on|off]   toggle plan-mode (agent must plan + get approval before editing)
   /reset           clear the conversation context (keeps cost totals)
   /exit            quit
-anything else is sent to the agent as a request. Ctrl-C interrupts the current turn.`;
+keys: Shift-Tab (or Tab) cycle mode [edits → auto → plan]  ·  Ctrl-C interrupt turn  ·  ↑/↓ history
+anything else is sent to the agent as a request.`;
 
 export async function startRepl({ workdir, config, palette } = {}) {
   const p = palette || makePalette(colorEnabled());
@@ -49,11 +50,31 @@ export async function startRepl({ workdir, config, palette } = {}) {
   }
   process.stdout.write(banner({ model: config.model, approval, cwd: workdir }, p) + "\n\n");
 
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: p.cyan("cc-alt› ") });
+  // the active mode is shown in the prompt; Shift-Tab / Tab cycles it (wired up below).
+  const modeLabel = () => session.tools.planMode ? "plan" : approval;   // edits | auto | plan
+  const promptStr = () => p.cyan("cc-alt ") + p.dim("[" + modeLabel() + "]") + p.cyan("› ");
+  const rl = readline.createInterface({
+    input: process.stdin, output: process.stdout, prompt: promptStr(),
+    completer: (line) => [[], line],         // suppress Tab autocomplete — Tab is used for mode cycling
+  });
 
   // Ctrl-C handling: during a turn -> abort the turn; at the prompt -> a second press exits.
   let currentAbort = null;
   let sigintArmed = false;
+
+  // Keyboard shortcut: Shift-Tab (and Tab) cycle the mode  edits → auto → plan → edits.
+  const MODES = ["edits", "auto", "plan"];
+  const cycleMode = () => {
+    const next = MODES[(MODES.indexOf(modeLabel()) + 1) % MODES.length];
+    if (next === "plan") session.tools.planMode = true;
+    else { session.tools.planMode = false; approval = next; }
+    rl.setPrompt(promptStr());
+    if (!currentAbort) rl.prompt(true);      // redraw the prompt label without disturbing a running turn
+  };
+  if (process.stdin.isTTY) {
+    readline.emitKeypressEvents(process.stdin, rl);
+    process.stdin.on("keypress", (_s, key) => { if (key && key.name === "tab") cycleMode(); });
+  }
   rl.on("SIGINT", () => {
     if (currentAbort) { currentAbort.abort(); return; } // interrupt the running turn
     if (sigintArmed) { rl.close(); return; }
