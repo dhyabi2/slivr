@@ -27,6 +27,7 @@ You work ONE tool call at a time. Respond with EXACTLY ONE JSON object, nothing 
   {"tool":"view_pdf","args":{"path":"spec.pdf"}}
   {"tool":"delegate","args":{"task":"a focused, self-contained sub-task to run in a fresh sub-agent"}}
   {"tool":"parallel","args":{"tasks":["independent subtask A","independent subtask B"]}}
+  {"tool":"pipeline","args":{"tasks":[{"id":"a","task":"do A","deps":[]},{"id":"b","task":"do B using A","deps":["a"]}]}}
   {"tool":"plan","args":{"steps":["step 1","step 2","step 3"]}}
   {"tool":"task_write","args":{"tasks":[{"id":"1","subject":"do X","status":"in_progress"},{"subject":"then Y","status":"pending"}]}}
   {"tool":"edit_file","args":{"path":"f.js","anchor":"<verbatim existing lines>","replacement":"<new lines>","op":"replace"}}
@@ -67,6 +68,11 @@ ORCHESTRATION (parallel):
 - Each sub-result has both a "summary" (the sub-agent's own words) and "findings" (the actual
   content it gathered — file text, search hits, command output). READ the findings to integrate
   real data; don't assume the one-line summary is the whole story.
+- "pipeline" is the DEPENDENCY-AWARE version: pass subtasks as {id, task, deps:[ids]}. Tasks run in
+  dependency order (independent ones concurrently), and each task receives its dependencies' results
+  as context. Use it when some subtasks NEED another's output first (e.g. "design the schema" → then
+  "write the model" and "write the migration" which both depend on it). A failed dependency skips its
+  dependents instead of running them on broken inputs.
 
 PLANNING (plan): when plan-mode is on you MUST call "plan" with a numbered list of concrete steps
   BEFORE any edit/create/run_command — those are blocked until a plan exists and is approved.
@@ -110,6 +116,7 @@ export function makeAgent(workdir, opts = {}) {
     view_pdf: (a) => tools.view_pdf(a),
     delegate: (a) => delegateSubAgent(a, workdir, opts),
     parallel: (a) => parallelSubAgents(a, workdir, opts),
+    pipeline: (a) => pipelineSubAgents(a, workdir, opts),
     plan: (a) => tools.plan_tool(a),
     task_write: (a) => tools.task_write(a),
   };
@@ -190,6 +197,71 @@ export async function parallelSubAgents(a, workdir, opts, runner = runAgent) {
   await Promise.all(Array.from({ length: Math.min(cap, tasks.length) }, worker));
   const failed = results.filter(r => r && (r.error || !r.done)).length;
   return { ok: true, cap, count: tasks.length, failed, results };
+}
+
+// pipeline (Block 4): DEPENDENCY-AWARE orchestration. Unlike `parallel` (flat, no deps, shared
+// workdir → races), each subtask declares { id, task, deps:[ids] }. The orchestrator runs them in
+// dependency order — independent tasks concurrently within a "wave" — and feeds each upstream task's
+// RESULT to its dependents as context. A failed/skipped dependency cascade-SKIPS its dependents
+// (never run them on broken inputs). Cycles are rejected up front. `runner` is injectable for tests.
+export async function pipelineSubAgents(a, workdir, opts, runner = runAgent) {
+  if ((opts._depth || 0) >= 1) return { ok: false, error: "MAX_DELEGATE_DEPTH", hint: "A sub-agent cannot spawn more sub-agents." };
+  const raw = Array.isArray(a?.tasks) ? a.tasks : [];
+  const nodes = [];
+  raw.forEach((t, i) => {
+    const id = String(t?.id ?? `t${i + 1}`);
+    const task = String((typeof t === "string" ? t : (t?.task ?? t?.subject ?? t?.description ?? "")) || "").trim();
+    const deps = Array.isArray(t?.deps) ? t.deps.map(String) : [];
+    if (task) nodes.push({ id, task, deps });
+  });
+  if (!nodes.length) return { ok: false, error: "NO_TASKS", hint: 'Pass tasks:[{id,task,deps:["otherId"]}]' };
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  for (const n of nodes) for (const d of n.deps) if (!byId.has(d)) return { ok: false, error: "UNKNOWN_DEP", detail: `task "${n.id}" depends on unknown task "${d}"` };
+
+  // Cycle pre-check via Kahn topological sort.
+  const dependents = new Map(nodes.map(n => [n.id, []]));
+  for (const n of nodes) for (const d of n.deps) dependents.get(d).push(n.id);
+  const indeg = new Map(nodes.map(n => [n.id, n.deps.length]));
+  const q = nodes.filter(n => !n.deps.length).map(n => n.id);
+  let seen = 0;
+  while (q.length) { const id = q.shift(); seen++; for (const dep of dependents.get(id)) { indeg.set(dep, indeg.get(dep) - 1); if (indeg.get(dep) === 0) q.push(dep); } }
+  if (seen !== nodes.length) return { ok: false, error: "CYCLE", hint: "subtask dependencies form a cycle" };
+
+  const cap = Math.max(1, Math.min(PARALLEL_CAP, opts.parallelCap || PARALLEL_CAP));
+  const status = new Map(nodes.map(n => [n.id, "pending"]));   // pending|done|failed|skipped
+  const result = new Map();
+  const terminal = (s) => s === "done" || s === "failed" || s === "skipped";
+  let waves = 0;
+  while (nodes.some(n => status.get(n.id) === "pending")) {
+    const ready = nodes.filter(n => status.get(n.id) === "pending" && n.deps.every(d => terminal(status.get(d))));
+    if (!ready.length) break; // shouldn't happen (no cycles), but never spin
+    const toRun = [], toSkip = [];
+    for (const n of ready) (n.deps.some(d => status.get(d) === "failed" || status.get(d) === "skipped") ? toSkip : toRun).push(n);
+    for (const n of toSkip) { status.set(n.id, "skipped"); result.set(n.id, { id: n.id, task: n.task, status: "skipped", error: "a dependency failed" }); }
+    if (!toRun.length) continue;
+    waves++;
+    let idx = 0;
+    const worker = async () => {
+      while (true) {
+        const k = idx++; if (k >= toRun.length) return;
+        const n = toRun[k];
+        const ctx = n.deps.map(d => { const r = result.get(d); return r ? `--- result of "${d}" ---\n${(r.summary || "").trim()}\n${(r.findings || "").trim()}`.trim() : ""; }).filter(Boolean).join("\n\n");
+        const prompt = (ctx ? `CONTEXT FROM DEPENDENCIES:\n${ctx}\n\n` : "") + n.task + SUBAGENT_BRIEF;
+        try {
+          const sub = await runner(prompt, workdir, { ...opts, _depth: (opts._depth || 0) + 1, maxSteps: Math.min(10, opts.maxSteps ?? 10), onStep: undefined });
+          const okDone = sub.done !== false;
+          status.set(n.id, okDone ? "done" : "failed");
+          result.set(n.id, { id: n.id, task: n.task, status: okDone ? "done" : "failed", summary: sub.summary, findings: extractFindings(sub), done: sub.done, turns: sub.turns });
+        } catch (e) {
+          status.set(n.id, "failed");
+          result.set(n.id, { id: n.id, task: n.task, status: "failed", error: String(e?.message || e), done: false, turns: 0 });
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(cap, toRun.length) }, worker));
+  }
+  const results = nodes.map(n => result.get(n.id));
+  return { ok: true, cap, count: nodes.length, waves, failed: results.filter(r => r.status === "failed").length, skipped: results.filter(r => r.status === "skipped").length, results };
 }
 
 // delegate: run a focused SUB-TASK in a fresh agent (one level deep only — no recursion runaway).
@@ -320,6 +392,7 @@ export class Session {
       view_pdf: (a) => t.view_pdf(a),
       delegate: (a) => delegateSubAgent(a, this.workdir, this.opts),
       parallel: (a) => parallelSubAgents(a, this.workdir, this.opts),
+      pipeline: (a) => pipelineSubAgents(a, this.workdir, this.opts),
       plan: (a) => t.plan_tool(a),
       task_write: (a) => t.task_write(a),
     };
