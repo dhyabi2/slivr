@@ -1,0 +1,4822 @@
+{
+  "generatedAt": "2026-06-14T00:48:13.153Z",
+  "description": "Scaled head-to-head: cc-alt (compact anchor-edit) vs Claude-Code-style full-rewrite baseline. SAME model both sides, deterministic behavioral oracles, reps per (task,harness).",
+  "models": {
+    "google/gemini-2.5-flash": {
+      "reps": 3,
+      "maxSteps": 16,
+      "tasksRun": 17,
+      "rows": 102,
+      "cumulativeCost": 1.938793,
+      "overall": {
+        "ccalt": {
+          "n": 51,
+          "successes": 42,
+          "successRate": 0.8235294117647058,
+          "runawayCount": 3,
+          "runawayRate": 0.058823529411764705,
+          "editFailures": 10,
+          "tokens": {
+            "mean": 17334.9,
+            "stddev": 21154.3,
+            "median": 3628,
+            "iqr": [
+              2461,
+              27985
+            ],
+            "total": 884080
+          },
+          "cost": {
+            "mean": 0.006064,
+            "stddev": 0.007252,
+            "median": 0.001473,
+            "iqr": [
+              0.001046,
+              0.009538
+            ],
+            "total": 0.309265
+          },
+          "turns": {
+            "mean": 5.96,
+            "stddev": 4.1,
+            "median": 3
+          }
+        },
+        "baseline": {
+          "n": 51,
+          "successes": 33,
+          "successRate": 0.6470588235294118,
+          "runawayCount": 9,
+          "runawayRate": 0.17647058823529413,
+          "editFailures": 0,
+          "tokens": {
+            "mean": 59404.3,
+            "stddev": 137289.2,
+            "median": 11698,
+            "iqr": [
+              2447.5,
+              22082
+            ],
+            "total": 3029618
+          },
+          "cost": {
+            "mean": 0.031952,
+            "stddev": 0.075517,
+            "median": 0.004661,
+            "iqr": [
+              0.001123,
+              0.015592
+            ],
+            "total": 1.629528
+          },
+          "turns": {
+            "mean": 7.94,
+            "stddev": 5.29,
+            "median": 5
+          }
+        }
+      },
+      "byRegime": [
+        {
+          "regime": "tiny-single",
+          "ccalt": {
+            "n": 9,
+            "successes": 9,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 2410.2,
+              "stddev": 49.7,
+              "median": 2442,
+              "iqr": [
+                2349,
+                2444
+              ],
+              "total": 21692
+            },
+            "cost": {
+              "mean": 0.000956,
+              "stddev": 0.000055,
+              "median": 0.000977,
+              "iqr": [
+                0.000898,
+                0.001005
+              ],
+              "total": 0.008608
+            },
+            "turns": {
+              "mean": 3,
+              "stddev": 0,
+              "median": 3
+            }
+          },
+          "baseline": {
+            "n": 9,
+            "successes": 9,
+            "successRate": 1,
+            "runawayCount": 2,
+            "runawayRate": 0.2222222222222222,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 8851.9,
+              "stddev": 7702.2,
+              "median": 9055,
+              "iqr": [
+                1338,
+                16756
+              ],
+              "total": 79667
+            },
+            "cost": {
+              "mean": 0.003495,
+              "stddev": 0.002991,
+              "median": 0.003398,
+              "iqr": [
+                0.000582,
+                0.006202
+              ],
+              "total": 0.031456
+            },
+            "turns": {
+              "mean": 9.22,
+              "stddev": 6.1,
+              "median": 11
+            }
+          },
+          "costSavedPct": 72.6,
+          "tokenSavedPct": 72.8
+        },
+        {
+          "regime": "small-multi",
+          "ccalt": {
+            "n": 15,
+            "successes": 9,
+            "successRate": 0.6,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 1,
+            "tokens": {
+              "mean": 6754.3,
+              "stddev": 8087.6,
+              "median": 2523,
+              "iqr": [
+                2461,
+                4310
+              ],
+              "total": 101315
+            },
+            "cost": {
+              "mean": 0.002796,
+              "stddev": 0.003323,
+              "median": 0.001093,
+              "iqr": [
+                0.001046,
+                0.001756
+              ],
+              "total": 0.04194
+            },
+            "turns": {
+              "mean": 5.2,
+              "stddev": 3.91,
+              "median": 3
+            }
+          },
+          "baseline": {
+            "n": 15,
+            "successes": 15,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 6286.7,
+              "stddev": 6925.8,
+              "median": 2054,
+              "iqr": [
+                1968,
+                11062.5
+              ],
+              "total": 94300
+            },
+            "cost": {
+              "mean": 0.002587,
+              "stddev": 0.002767,
+              "median": 0.000953,
+              "iqr": [
+                0.000894,
+                0.004186
+              ],
+              "total": 0.038802
+            },
+            "turns": {
+              "mean": 7.13,
+              "stddev": 5.04,
+              "median": 4
+            }
+          },
+          "costSavedPct": -8.1,
+          "tokenSavedPct": -7.4
+        },
+        {
+          "regime": "medium-single",
+          "ccalt": {
+            "n": 9,
+            "successes": 9,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 3534.6,
+              "stddev": 336.1,
+              "median": 3615,
+              "iqr": [
+                3121,
+                3875
+              ],
+              "total": 31811
+            },
+            "cost": {
+              "mean": 0.001435,
+              "stddev": 0.000041,
+              "median": 0.001443,
+              "iqr": [
+                0.001409,
+                0.001471
+              ],
+              "total": 0.012915
+            },
+            "turns": {
+              "mean": 3,
+              "stddev": 0,
+              "median": 3
+            }
+          },
+          "baseline": {
+            "n": 9,
+            "successes": 9,
+            "successRate": 1,
+            "runawayCount": 1,
+            "runawayRate": 0.1111111111111111,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 10045.6,
+              "stddev": 8655.7,
+              "median": 7650,
+              "iqr": [
+                4255,
+                9773
+              ],
+              "total": 90410
+            },
+            "cost": {
+              "mean": 0.005464,
+              "stddev": 0.005234,
+              "median": 0.003833,
+              "iqr": [
+                0.003109,
+                0.003855
+              ],
+              "total": 0.049177
+            },
+            "turns": {
+              "mean": 6.67,
+              "stddev": 4.47,
+              "median": 5
+            }
+          },
+          "costSavedPct": 73.7,
+          "tokenSavedPct": 64.8
+        },
+        {
+          "regime": "large-single",
+          "ccalt": {
+            "n": 12,
+            "successes": 9,
+            "successRate": 0.75,
+            "runawayCount": 3,
+            "runawayRate": 0.25,
+            "editFailures": 9,
+            "tokens": {
+              "mean": 39338.2,
+              "stddev": 19139.5,
+              "median": 32744.5,
+              "iqr": [
+                28974.5,
+                43566.3
+              ],
+              "total": 472058
+            },
+            "cost": {
+              "mean": 0.012958,
+              "stddev": 0.006527,
+              "median": 0.011068,
+              "iqr": [
+                0.009246,
+                0.014134
+              ],
+              "total": 0.155496
+            },
+            "turns": {
+              "mean": 10.5,
+              "stddev": 3.66,
+              "median": 9.5
+            }
+          },
+          "baseline": {
+            "n": 12,
+            "successes": 0,
+            "successRate": 0,
+            "runawayCount": 4,
+            "runawayRate": 0.3333333333333333,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 150953.9,
+              "stddev": 227819.8,
+              "median": 22082,
+              "iqr": [
+                18985.5,
+                195475.5
+              ],
+              "total": 1811447
+            },
+            "cost": {
+              "mean": 0.084257,
+              "stddev": 0.124352,
+              "median": 0.015592,
+              "iqr": [
+                0.014649,
+                0.096947
+              ],
+              "total": 1.011082
+            },
+            "turns": {
+              "mean": 7.75,
+              "stddev": 6.11,
+              "median": 4
+            }
+          },
+          "costSavedPct": 84.6,
+          "tokenSavedPct": 73.9
+        },
+        {
+          "regime": "large-multi",
+          "ccalt": {
+            "n": 6,
+            "successes": 6,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 42867.3,
+              "stddev": 21493.7,
+              "median": 51945.5,
+              "iqr": [
+                24686.3,
+                56829.3
+              ],
+              "total": 257204
+            },
+            "cost": {
+              "mean": 0.015051,
+              "stddev": 0.008524,
+              "median": 0.016915,
+              "iqr": [
+                0.008079,
+                0.018345
+              ],
+              "total": 0.090306
+            },
+            "turns": {
+              "mean": 7.67,
+              "stddev": 3.14,
+              "median": 8.5
+            }
+          },
+          "baseline": {
+            "n": 6,
+            "successes": 0,
+            "successRate": 0,
+            "runawayCount": 2,
+            "runawayRate": 0.3333333333333333,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 158965.7,
+              "stddev": 156493,
+              "median": 89407.5,
+              "iqr": [
+                71979.8,
+                165129
+              ],
+              "total": 953794
+            },
+            "cost": {
+              "mean": 0.083169,
+              "stddev": 0.088926,
+              "median": 0.044723,
+              "iqr": [
+                0.03945,
+                0.067613
+              ],
+              "total": 0.499011
+            },
+            "turns": {
+              "mean": 10.33,
+              "stddev": 4.5,
+              "median": 8.5
+            }
+          },
+          "costSavedPct": 81.9,
+          "tokenSavedPct": 73
+        }
+      ],
+      "byTask": [
+        {
+          "task": "fix-offbyone",
+          "kind": "tiny-single",
+          "maxFileLines": 8,
+          "files": 1,
+          "ccalt": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 2444,
+              "stddev": 0,
+              "median": 2444,
+              "iqr": [
+                2444,
+                2444
+              ],
+              "total": 7332
+            },
+            "cost": {
+              "mean": 0.000977,
+              "stddev": 0,
+              "median": 0.000977,
+              "iqr": [
+                0.000977,
+                0.000977
+              ],
+              "total": 0.002931
+            },
+            "turns": {
+              "mean": 3,
+              "stddev": 0,
+              "median": 3
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 2,
+            "runawayRate": 0.6666666666666666,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 16092,
+              "stddev": 3829.4,
+              "median": 16756,
+              "iqr": [
+                14365,
+                18151
+              ],
+              "total": 48276
+            },
+            "cost": {
+              "mean": 0.006132,
+              "stddev": 0.001438,
+              "median": 0.006202,
+              "iqr": [
+                0.005432,
+                0.006868
+              ],
+              "total": 0.018397
+            },
+            "turns": {
+              "mean": 15,
+              "stddev": 1.73,
+              "median": 16
+            }
+          }
+        },
+        {
+          "task": "add-method",
+          "kind": "tiny-single",
+          "maxFileLines": 6,
+          "files": 1,
+          "ccalt": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 2442.7,
+              "stddev": 1.2,
+              "median": 2442,
+              "iqr": [
+                2442,
+                2443
+              ],
+              "total": 7328
+            },
+            "cost": {
+              "mean": 0.001007,
+              "stddev": 0.000003,
+              "median": 0.001005,
+              "iqr": [
+                0.001005,
+                0.001008
+              ],
+              "total": 0.00302
+            },
+            "turns": {
+              "mean": 3,
+              "stddev": 0,
+              "median": 3
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 9125.7,
+              "stddev": 7694.2,
+              "median": 9055,
+              "iqr": [
+                5261,
+                12955
+              ],
+              "total": 27377
+            },
+            "cost": {
+              "mean": 0.003771,
+              "stddev": 0.00323,
+              "median": 0.003398,
+              "iqr": [
+                0.002071,
+                0.005285
+              ],
+              "total": 0.011313
+            },
+            "turns": {
+              "mean": 9.67,
+              "stddev": 6.11,
+              "median": 11
+            }
+          }
+        },
+        {
+          "task": "negate-flag",
+          "kind": "tiny-single",
+          "maxFileLines": 4,
+          "files": 1,
+          "ccalt": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 2344,
+              "stddev": 5,
+              "median": 2344,
+              "iqr": [
+                2341.5,
+                2346.5
+              ],
+              "total": 7032
+            },
+            "cost": {
+              "mean": 0.000886,
+              "stddev": 0.000013,
+              "median": 0.000886,
+              "iqr": [
+                0.000879,
+                0.000892
+              ],
+              "total": 0.002657
+            },
+            "turns": {
+              "mean": 3,
+              "stddev": 0,
+              "median": 3
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 1338,
+              "stddev": 0,
+              "median": 1338,
+              "iqr": [
+                1338,
+                1338
+              ],
+              "total": 4014
+            },
+            "cost": {
+              "mean": 0.000582,
+              "stddev": 0,
+              "median": 0.000582,
+              "iqr": [
+                0.000582,
+                0.000582
+              ],
+              "total": 0.001746
+            },
+            "turns": {
+              "mean": 3,
+              "stddev": 0,
+              "median": 3
+            }
+          }
+        },
+        {
+          "task": "validate-3-funcs",
+          "kind": "small-multi",
+          "maxFileLines": 10,
+          "files": 1,
+          "ccalt": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 1,
+            "tokens": {
+              "mean": 22263.3,
+              "stddev": 1827.9,
+              "median": 22504,
+              "iqr": [
+                21415.5,
+                23231.5
+              ],
+              "total": 66790
+            },
+            "cost": {
+              "mean": 0.009186,
+              "stddev": 0.000431,
+              "median": 0.009316,
+              "iqr": [
+                0.00901,
+                0.009427
+              ],
+              "total": 0.027558
+            },
+            "turns": {
+              "mean": 12.67,
+              "stddev": 0.58,
+              "median": 13
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 17160.3,
+              "stddev": 5831.2,
+              "median": 20518,
+              "iqr": [
+                15472.5,
+                20527
+              ],
+              "total": 51481
+            },
+            "cost": {
+              "mean": 0.007031,
+              "stddev": 0.002581,
+              "median": 0.008507,
+              "iqr": [
+                0.006279,
+                0.008521
+              ],
+              "total": 0.021092
+            },
+            "turns": {
+              "mean": 14.33,
+              "stddev": 2.89,
+              "median": 16
+            }
+          }
+        },
+        {
+          "task": "rename-field",
+          "kind": "small-multi",
+          "maxFileLines": 7,
+          "files": 2,
+          "ccalt": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 4070.7,
+              "stddev": 820.4,
+              "median": 3602,
+              "iqr": [
+                3597,
+                4310
+              ],
+              "total": 12212
+            },
+            "cost": {
+              "mean": 0.001678,
+              "stddev": 0.000249,
+              "median": 0.001547,
+              "iqr": [
+                0.001534,
+                0.001756
+              ],
+              "total": 0.005034
+            },
+            "turns": {
+              "mean": 4.33,
+              "stddev": 0.58,
+              "median": 4
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 8747,
+              "stddev": 5115.6,
+              "median": 11698,
+              "iqr": [
+                7269,
+                11700.5
+              ],
+              "total": 26241
+            },
+            "cost": {
+              "mean": 0.003317,
+              "stddev": 0.001754,
+              "median": 0.004323,
+              "iqr": [
+                0.002808,
+                0.00433
+              ],
+              "total": 0.009951
+            },
+            "turns": {
+              "mean": 10.33,
+              "stddev": 4.62,
+              "median": 13
+            }
+          }
+        },
+        {
+          "task": "add-endpoint",
+          "kind": "small-multi",
+          "maxFileLines": 8,
+          "files": 1,
+          "ccalt": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 2461,
+              "stddev": 0,
+              "median": 2461,
+              "iqr": [
+                2461,
+                2461
+              ],
+              "total": 7383
+            },
+            "cost": {
+              "mean": 0.000976,
+              "stddev": 0,
+              "median": 0.000976,
+              "iqr": [
+                0.000976,
+                0.000976
+              ],
+              "total": 0.002928
+            },
+            "turns": {
+              "mean": 3,
+              "stddev": 0,
+              "median": 3
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 1504,
+              "stddev": 0,
+              "median": 1504,
+              "iqr": [
+                1504,
+                1504
+              ],
+              "total": 4512
+            },
+            "cost": {
+              "mean": 0.000739,
+              "stddev": 0,
+              "median": 0.000739,
+              "iqr": [
+                0.000739,
+                0.000739
+              ],
+              "total": 0.002217
+            },
+            "turns": {
+              "mean": 3,
+              "stddev": 0,
+              "median": 3
+            }
+          }
+        },
+        {
+          "task": "config-constant",
+          "kind": "small-multi",
+          "maxFileLines": 4,
+          "files": 1,
+          "ccalt": {
+            "n": 3,
+            "successes": 0,
+            "successRate": 0,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 2453,
+              "stddev": 0,
+              "median": 2453,
+              "iqr": [
+                2453,
+                2453
+              ],
+              "total": 7359
+            },
+            "cost": {
+              "mean": 0.001046,
+              "stddev": 0,
+              "median": 0.001046,
+              "iqr": [
+                0.001046,
+                0.001046
+              ],
+              "total": 0.003138
+            },
+            "turns": {
+              "mean": 3,
+              "stddev": 0,
+              "median": 3
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 1968,
+              "stddev": 0,
+              "median": 1968,
+              "iqr": [
+                1968,
+                1968
+              ],
+              "total": 5904
+            },
+            "cost": {
+              "mean": 0.000894,
+              "stddev": 0,
+              "median": 0.000894,
+              "iqr": [
+                0.000894,
+                0.000894
+              ],
+              "total": 0.002682
+            },
+            "turns": {
+              "mean": 4,
+              "stddev": 0,
+              "median": 4
+            }
+          }
+        },
+        {
+          "task": "wire-logger",
+          "kind": "small-multi",
+          "maxFileLines": 4,
+          "files": 1,
+          "ccalt": {
+            "n": 3,
+            "successes": 0,
+            "successRate": 0,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 2523.7,
+              "stddev": 1.2,
+              "median": 2523,
+              "iqr": [
+                2523,
+                2524
+              ],
+              "total": 7571
+            },
+            "cost": {
+              "mean": 0.001094,
+              "stddev": 0.000002,
+              "median": 0.001093,
+              "iqr": [
+                0.001093,
+                0.001094
+              ],
+              "total": 0.003282
+            },
+            "turns": {
+              "mean": 3,
+              "stddev": 0,
+              "median": 3
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 2054,
+              "stddev": 1,
+              "median": 2054,
+              "iqr": [
+                2053.5,
+                2054.5
+              ],
+              "total": 6162
+            },
+            "cost": {
+              "mean": 0.000953,
+              "stddev": 0.000002,
+              "median": 0.000953,
+              "iqr": [
+                0.000953,
+                0.000954
+              ],
+              "total": 0.00286
+            },
+            "turns": {
+              "mean": 4,
+              "stddev": 0,
+              "median": 4
+            }
+          }
+        },
+        {
+          "task": "guard-parse",
+          "kind": "medium-single",
+          "maxFileLines": 41,
+          "files": 1,
+          "ccalt": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 3875.3,
+              "stddev": 0.6,
+              "median": 3875,
+              "iqr": [
+                3875,
+                3875.5
+              ],
+              "total": 11626
+            },
+            "cost": {
+              "mean": 0.001472,
+              "stddev": 0.000001,
+              "median": 0.001471,
+              "iqr": [
+                0.001471,
+                0.001472
+              ],
+              "total": 0.004415
+            },
+            "turns": {
+              "mean": 3,
+              "stddev": 0,
+              "median": 3
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 4255,
+              "stddev": 0,
+              "median": 4255,
+              "iqr": [
+                4255,
+                4255
+              ],
+              "total": 12765
+            },
+            "cost": {
+              "mean": 0.003109,
+              "stddev": 0,
+              "median": 0.003109,
+              "iqr": [
+                0.003109,
+                0.003109
+              ],
+              "total": 0.009327
+            },
+            "turns": {
+              "mean": 3,
+              "stddev": 0,
+              "median": 3
+            }
+          }
+        },
+        {
+          "task": "medium-add-validate",
+          "kind": "medium-single",
+          "maxFileLines": 30,
+          "files": 1,
+          "ccalt": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 3616,
+              "stddev": 11.5,
+              "median": 3615,
+              "iqr": [
+                3610,
+                3621.5
+              ],
+              "total": 10848
+            },
+            "cost": {
+              "mean": 0.001446,
+              "stddev": 0.000029,
+              "median": 0.001443,
+              "iqr": [
+                0.00143,
+                0.00146
+              ],
+              "total": 0.004337
+            },
+            "turns": {
+              "mean": 3,
+              "stddev": 0,
+              "median": 3
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 9270.3,
+              "stddev": 6593.6,
+              "median": 7650,
+              "iqr": [
+                5644,
+                12086.5
+              ],
+              "total": 27811
+            },
+            "cost": {
+              "mean": 0.00437,
+              "stddev": 0.002072,
+              "median": 0.003855,
+              "iqr": [
+                0.003229,
+                0.005253
+              ],
+              "total": 0.013109
+            },
+            "turns": {
+              "mean": 5.67,
+              "stddev": 3.06,
+              "median": 5
+            }
+          }
+        },
+        {
+          "task": "fix-bug-large-250",
+          "kind": "large-single",
+          "maxFileLines": 248,
+          "files": 1,
+          "ccalt": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 3,
+            "tokens": {
+              "mean": 26009.3,
+              "stddev": 3953,
+              "median": 26006,
+              "iqr": [
+                24032,
+                27985
+              ],
+              "total": 78028
+            },
+            "cost": {
+              "mean": 0.008362,
+              "stddev": 0.001179,
+              "median": 0.008367,
+              "iqr": [
+                0.007774,
+                0.008953
+              ],
+              "total": 0.025087
+            },
+            "turns": {
+              "mean": 8,
+              "stddev": 1,
+              "median": 8
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 0,
+            "successRate": 0,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 20745,
+              "stddev": 1,
+              "median": 20745,
+              "iqr": [
+                20744.5,
+                20745.5
+              ],
+              "total": 62235
+            },
+            "cost": {
+              "mean": 0.015203,
+              "stddev": 0.000002,
+              "median": 0.015204,
+              "iqr": [
+                0.015203,
+                0.015204
+              ],
+              "total": 0.045609
+            },
+            "turns": {
+              "mean": 4,
+              "stddev": 0,
+              "median": 4
+            }
+          }
+        },
+        {
+          "task": "fix-route-large-400",
+          "kind": "large-single",
+          "maxFileLines": 409,
+          "files": 1,
+          "ccalt": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 30160.7,
+              "stddev": 11196.6,
+              "median": 36621,
+              "iqr": [
+                26926.5,
+                36625
+              ],
+              "total": 90482
+            },
+            "cost": {
+              "mean": 0.009583,
+              "stddev": 0.00358,
+              "median": 0.01164,
+              "iqr": [
+                0.008545,
+                0.01165
+              ],
+              "total": 0.028749
+            },
+            "turns": {
+              "mean": 7.67,
+              "stddev": 2.31,
+              "median": 9
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 0,
+            "successRate": 0,
+            "runawayCount": 1,
+            "runawayRate": 0.3333333333333333,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 194297.3,
+              "stddev": 295956.1,
+              "median": 23436,
+              "iqr": [
+                23427,
+                279737
+              ],
+              "total": 582892
+            },
+            "cost": {
+              "mean": 0.108284,
+              "stddev": 0.159838,
+              "median": 0.016024,
+              "iqr": [
+                0.016002,
+                0.154437
+              ],
+              "total": 0.324852
+            },
+            "turns": {
+              "mean": 8,
+              "stddev": 6.93,
+              "median": 4
+            }
+          }
+        },
+        {
+          "task": "fix-reducer-large-300",
+          "kind": "large-single",
+          "maxFileLines": 289,
+          "files": 1,
+          "ccalt": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 31961,
+              "stddev": 2413.2,
+              "median": 30749,
+              "iqr": [
+                30571.5,
+                32744.5
+              ],
+              "total": 95883
+            },
+            "cost": {
+              "mean": 0.01083,
+              "stddev": 0.000909,
+              "median": 0.010496,
+              "iqr": [
+                0.010316,
+                0.011177
+              ],
+              "total": 0.03249
+            },
+            "turns": {
+              "mean": 10.33,
+              "stddev": 0.58,
+              "median": 10
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 0,
+            "successRate": 0,
+            "runawayCount": 1,
+            "runawayRate": 0.3333333333333333,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 35623.3,
+              "stddev": 43925.4,
+              "median": 10263,
+              "iqr": [
+                10263,
+                48303.5
+              ],
+              "total": 106870
+            },
+            "cost": {
+              "mean": 0.01661,
+              "stddev": 0.014162,
+              "median": 0.008434,
+              "iqr": [
+                0.008434,
+                0.020699
+              ],
+              "total": 0.049831
+            },
+            "turns": {
+              "mean": 7.33,
+              "stddev": 7.51,
+              "median": 3
+            }
+          }
+        },
+        {
+          "task": "add-fn-large-600",
+          "kind": "large-single",
+          "maxFileLines": 588,
+          "files": 1,
+          "ccalt": {
+            "n": 3,
+            "successes": 0,
+            "successRate": 0,
+            "runawayCount": 3,
+            "runawayRate": 1,
+            "editFailures": 6,
+            "tokens": {
+              "mean": 69221.7,
+              "stddev": 7345.9,
+              "median": 65613,
+              "iqr": [
+                64995.5,
+                71643.5
+              ],
+              "total": 207665
+            },
+            "cost": {
+              "mean": 0.023057,
+              "stddev": 0.003279,
+              "median": 0.021376,
+              "iqr": [
+                0.021167,
+                0.024106
+              ],
+              "total": 0.06917
+            },
+            "turns": {
+              "mean": 16,
+              "stddev": 0,
+              "median": 16
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 0,
+            "successRate": 0,
+            "runawayCount": 2,
+            "runawayRate": 0.6666666666666666,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 353150,
+              "stddev": 293963.7,
+              "median": 522870,
+              "iqr": [
+                268290,
+                522870
+              ],
+              "total": 1059450
+            },
+            "cost": {
+              "mean": 0.19693,
+              "stddev": 0.159293,
+              "median": 0.288898,
+              "iqr": [
+                0.150946,
+                0.288898
+              ],
+              "total": 0.59079
+            },
+            "turns": {
+              "mean": 11.67,
+              "stddev": 7.51,
+              "median": 16
+            }
+          }
+        },
+        {
+          "task": "refactor-extract-const",
+          "kind": "medium-single",
+          "maxFileLines": 12,
+          "files": 1,
+          "ccalt": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 3112.3,
+              "stddev": 7.5,
+              "median": 3108,
+              "iqr": [
+                3108,
+                3114.5
+              ],
+              "total": 9337
+            },
+            "cost": {
+              "mean": 0.001388,
+              "stddev": 0.000018,
+              "median": 0.001377,
+              "iqr": [
+                0.001377,
+                0.001393
+              ],
+              "total": 0.004163
+            },
+            "turns": {
+              "mean": 3,
+              "stddev": 0,
+              "median": 3
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 1,
+            "runawayRate": 0.3333333333333333,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 16611.3,
+              "stddev": 11846.9,
+              "median": 9773,
+              "iqr": [
+                9771.5,
+                20032
+              ],
+              "total": 49834
+            },
+            "cost": {
+              "mean": 0.008914,
+              "stddev": 0.008793,
+              "median": 0.003841,
+              "iqr": [
+                0.003837,
+                0.011454
+              ],
+              "total": 0.026741
+            },
+            "turns": {
+              "mean": 11.33,
+              "stddev": 4.04,
+              "median": 9
+            }
+          }
+        },
+        {
+          "task": "rename-largepair",
+          "kind": "large-multi",
+          "maxFileLines": 248,
+          "files": 2,
+          "ccalt": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 31650.7,
+              "stddev": 27635.2,
+              "median": 15696,
+              "iqr": [
+                15695.5,
+                39628.5
+              ],
+              "total": 94952
+            },
+            "cost": {
+              "mean": 0.012584,
+              "stddev": 0.012736,
+              "median": 0.005232,
+              "iqr": [
+                0.005231,
+                0.016261
+              ],
+              "total": 0.037752
+            },
+            "turns": {
+              "mean": 5,
+              "stddev": 1.73,
+              "median": 4
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 0,
+            "successRate": 0,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 82442.7,
+              "stddev": 13961.1,
+              "median": 82380,
+              "iqr": [
+                75446.5,
+                89407.5
+              ],
+              "total": 247328
+            },
+            "cost": {
+              "mean": 0.042616,
+              "stddev": 0.004224,
+              "median": 0.042596,
+              "iqr": [
+                0.040499,
+                0.044723
+              ],
+              "total": 0.127848
+            },
+            "turns": {
+              "mean": 8,
+              "stddev": 1,
+              "median": 8
+            }
+          }
+        },
+        {
+          "task": "wire-fn-largepair",
+          "kind": "large-multi",
+          "maxFileLines": 248,
+          "files": 2,
+          "ccalt": {
+            "n": 3,
+            "successes": 3,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 54084,
+              "stddev": 3715.2,
+              "median": 52234,
+              "iqr": [
+                51945.5,
+                55297.5
+              ],
+              "total": 162252
+            },
+            "cost": {
+              "mean": 0.017518,
+              "stddev": 0.001085,
+              "median": 0.017212,
+              "iqr": [
+                0.016915,
+                0.017968
+              ],
+              "total": 0.052554
+            },
+            "turns": {
+              "mean": 10.33,
+              "stddev": 0.58,
+              "median": 10
+            }
+          },
+          "baseline": {
+            "n": 3,
+            "successes": 0,
+            "successRate": 0,
+            "runawayCount": 2,
+            "runawayRate": 0.6666666666666666,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 235488.7,
+              "stddev": 208477.6,
+              "median": 188027,
+              "iqr": [
+                121430.5,
+                325816
+              ],
+              "total": 706466
+            },
+            "cost": {
+              "mean": 0.123721,
+              "stddev": 0.12173,
+              "median": 0.074534,
+              "iqr": [
+                0.054407,
+                0.168441
+              ],
+              "total": 0.371163
+            },
+            "turns": {
+              "mean": 12.67,
+              "stddev": 5.77,
+              "median": 16
+            }
+          }
+        }
+      ]
+    },
+    "anthropic/claude-sonnet-4": {
+      "reps": 2,
+      "maxSteps": 16,
+      "tasksRun": 7,
+      "rows": 28,
+      "cumulativeCost": 4.462203,
+      "costCap": 4,
+      "stopped": false,
+      "stoppedReason": null,
+      "overall": {
+        "ccalt": {
+          "n": 14,
+          "successes": 14,
+          "successRate": 1,
+          "runawayCount": 0,
+          "runawayRate": 0,
+          "editFailures": 0,
+          "tokens": {
+            "mean": 21077.5,
+            "stddev": 15154.5,
+            "median": 14196.5,
+            "iqr": [
+              7967,
+              37020.8
+            ],
+            "total": 295085
+          },
+          "cost": {
+            "mean": 0.07081,
+            "stddev": 0.04697,
+            "median": 0.05042,
+            "iqr": [
+              0.030639,
+              0.11885
+            ],
+            "total": 0.991335
+          },
+          "turns": {
+            "mean": 8.57,
+            "stddev": 2.62,
+            "median": 8.5
+          }
+        },
+        "baseline": {
+          "n": 14,
+          "successes": 10,
+          "successRate": 0.7142857142857143,
+          "runawayCount": 3,
+          "runawayRate": 0.21428571428571427,
+          "editFailures": 0,
+          "tokens": {
+            "mean": 65849.7,
+            "stddev": 75115,
+            "median": 15266.5,
+            "iqr": [
+              7027.8,
+              126238
+            ],
+            "total": 921896
+          },
+          "cost": {
+            "mean": 0.247919,
+            "stddev": 0.28842,
+            "median": 0.061436,
+            "iqr": [
+              0.027728,
+              0.436059
+            ],
+            "total": 3.470868
+          },
+          "turns": {
+            "mean": 11.64,
+            "stddev": 3.67,
+            "median": 11
+          }
+        }
+      },
+      "byRegime": [
+        {
+          "regime": "tiny-single",
+          "ccalt": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 6111,
+              "stddev": 2985.4,
+              "median": 6111,
+              "iqr": [
+                5055.5,
+                7166.5
+              ],
+              "total": 12222
+            },
+            "cost": {
+              "mean": 0.024243,
+              "stddev": 0.010916,
+              "median": 0.024243,
+              "iqr": [
+                0.020383,
+                0.028102
+              ],
+              "total": 0.048486
+            },
+            "turns": {
+              "mean": 5.5,
+              "stddev": 2.12,
+              "median": 5.5
+            }
+          },
+          "baseline": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 5443.5,
+              "stddev": 546.6,
+              "median": 5443.5,
+              "iqr": [
+                5250.3,
+                5636.8
+              ],
+              "total": 10887
+            },
+            "cost": {
+              "mean": 0.02236,
+              "stddev": 0.001784,
+              "median": 0.02236,
+              "iqr": [
+                0.02173,
+                0.022991
+              ],
+              "total": 0.044721
+            },
+            "turns": {
+              "mean": 7.5,
+              "stddev": 0.71,
+              "median": 7.5
+            }
+          },
+          "costSavedPct": -8.4,
+          "tokenSavedPct": -12.3
+        },
+        {
+          "regime": "small-multi",
+          "ccalt": {
+            "n": 4,
+            "successes": 4,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 9933.8,
+              "stddev": 2778.6,
+              "median": 9902.5,
+              "iqr": [
+                7535,
+                12301.3
+              ],
+              "total": 39735
+            },
+            "cost": {
+              "mean": 0.036128,
+              "stddev": 0.010292,
+              "median": 0.035948,
+              "iqr": [
+                0.027276,
+                0.0448
+              ],
+              "total": 0.144513
+            },
+            "turns": {
+              "mean": 8,
+              "stddev": 1.15,
+              "median": 8
+            }
+          },
+          "baseline": {
+            "n": 4,
+            "successes": 4,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 8457.3,
+              "stddev": 3046.7,
+              "median": 8205.5,
+              "iqr": [
+                5846.8,
+                10816
+              ],
+              "total": 33829
+            },
+            "cost": {
+              "mean": 0.03226,
+              "stddev": 0.011386,
+              "median": 0.031288,
+              "iqr": [
+                0.022514,
+                0.041034
+              ],
+              "total": 0.129039
+            },
+            "turns": {
+              "mean": 9.5,
+              "stddev": 1.73,
+              "median": 9.5
+            }
+          },
+          "costSavedPct": -12,
+          "tokenSavedPct": -17.5
+        },
+        {
+          "regime": "medium-single",
+          "ccalt": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 11929.5,
+              "stddev": 5724,
+              "median": 11929.5,
+              "iqr": [
+                9905.8,
+                13953.3
+              ],
+              "total": 23859
+            },
+            "cost": {
+              "mean": 0.042766,
+              "stddev": 0.017775,
+              "median": 0.042766,
+              "iqr": [
+                0.036482,
+                0.049051
+              ],
+              "total": 0.085533
+            },
+            "turns": {
+              "mean": 6.5,
+              "stddev": 2.12,
+              "median": 6.5
+            }
+          },
+          "baseline": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 15266.5,
+              "stddev": 1832.1,
+              "median": 15266.5,
+              "iqr": [
+                14618.8,
+                15914.3
+              ],
+              "total": 30533
+            },
+            "cost": {
+              "mean": 0.061436,
+              "stddev": 0.006022,
+              "median": 0.061436,
+              "iqr": [
+                0.059306,
+                0.063565
+              ],
+              "total": 0.122871
+            },
+            "turns": {
+              "mean": 8.5,
+              "stddev": 0.71,
+              "median": 8.5
+            }
+          },
+          "costSavedPct": 30.4,
+          "tokenSavedPct": 21.9
+        },
+        {
+          "regime": "large-single",
+          "ccalt": {
+            "n": 4,
+            "successes": 4,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 41994.3,
+              "stddev": 1729.9,
+              "median": 41786.5,
+              "iqr": [
+                41042.3,
+                42738.5
+              ],
+              "total": 167977
+            },
+            "cost": {
+              "mean": 0.135145,
+              "stddev": 0.006316,
+              "median": 0.135068,
+              "iqr": [
+                0.131413,
+                0.1388
+              ],
+              "total": 0.540579
+            },
+            "turns": {
+              "mean": 11.75,
+              "stddev": 1.5,
+              "median": 12
+            }
+          },
+          "baseline": {
+            "n": 4,
+            "successes": 2,
+            "successRate": 0.5,
+            "runawayCount": 2,
+            "runawayRate": 0.5,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 111164.3,
+              "stddev": 29269.4,
+              "median": 118025,
+              "iqr": [
+                94687.8,
+                134501.5
+              ],
+              "total": 444657
+            },
+            "cost": {
+              "mean": 0.392521,
+              "stddev": 0.08581,
+              "median": 0.411669,
+              "iqr": [
+                0.343244,
+                0.460946
+              ],
+              "total": 1.570083
+            },
+            "turns": {
+              "mean": 15.5,
+              "stddev": 1,
+              "median": 16
+            }
+          },
+          "costSavedPct": 65.6,
+          "tokenSavedPct": 62.2
+        },
+        {
+          "regime": "large-multi",
+          "ccalt": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 25646,
+              "stddev": 2801.6,
+              "median": 25646,
+              "iqr": [
+                24655.5,
+                26636.5
+              ],
+              "total": 51292
+            },
+            "cost": {
+              "mean": 0.086112,
+              "stddev": 0.007921,
+              "median": 0.086112,
+              "iqr": [
+                0.083311,
+                0.088913
+              ],
+              "total": 0.172224
+            },
+            "turns": {
+              "mean": 8.5,
+              "stddev": 0.71,
+              "median": 8.5
+            }
+          },
+          "baseline": {
+            "n": 2,
+            "successes": 0,
+            "successRate": 0,
+            "runawayCount": 1,
+            "runawayRate": 0.5,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 200995,
+              "stddev": 20371.7,
+              "median": 200995,
+              "iqr": [
+                193792.5,
+                208197.5
+              ],
+              "total": 401990
+            },
+            "cost": {
+              "mean": 0.802077,
+              "stddev": 0.061132,
+              "median": 0.802077,
+              "iqr": [
+                0.780463,
+                0.823691
+              ],
+              "total": 1.604154
+            },
+            "turns": {
+              "mean": 15.5,
+              "stddev": 0.71,
+              "median": 15.5
+            }
+          },
+          "costSavedPct": 89.3,
+          "tokenSavedPct": 87.2
+        }
+      ],
+      "byTask": [
+        {
+          "task": "negate-flag",
+          "kind": "tiny-single",
+          "maxFileLines": 4,
+          "files": 1,
+          "ccalt": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 6111,
+              "stddev": 2985.4,
+              "median": 6111,
+              "iqr": [
+                5055.5,
+                7166.5
+              ],
+              "total": 12222
+            },
+            "cost": {
+              "mean": 0.024243,
+              "stddev": 0.010916,
+              "median": 0.024243,
+              "iqr": [
+                0.020383,
+                0.028102
+              ],
+              "total": 0.048486
+            },
+            "turns": {
+              "mean": 5.5,
+              "stddev": 2.12,
+              "median": 5.5
+            }
+          },
+          "baseline": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 5443.5,
+              "stddev": 546.6,
+              "median": 5443.5,
+              "iqr": [
+                5250.3,
+                5636.8
+              ],
+              "total": 10887
+            },
+            "cost": {
+              "mean": 0.02236,
+              "stddev": 0.001784,
+              "median": 0.02236,
+              "iqr": [
+                0.02173,
+                0.022991
+              ],
+              "total": 0.044721
+            },
+            "turns": {
+              "mean": 7.5,
+              "stddev": 0.71,
+              "median": 7.5
+            }
+          }
+        },
+        {
+          "task": "rename-field",
+          "kind": "small-multi",
+          "maxFileLines": 7,
+          "files": 2,
+          "ccalt": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 12339.5,
+              "stddev": 108.2,
+              "median": 12339.5,
+              "iqr": [
+                12301.3,
+                12377.8
+              ],
+              "total": 24679
+            },
+            "cost": {
+              "mean": 0.045035,
+              "stddev": 0.000664,
+              "median": 0.045035,
+              "iqr": [
+                0.0448,
+                0.045269
+              ],
+              "total": 0.090069
+            },
+            "turns": {
+              "mean": 9,
+              "stddev": 0,
+              "median": 9
+            }
+          },
+          "baseline": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 11071,
+              "stddev": 721.2,
+              "median": 11071,
+              "iqr": [
+                10816,
+                11326
+              ],
+              "total": 22142
+            },
+            "cost": {
+              "mean": 0.042021,
+              "stddev": 0.002792,
+              "median": 0.042021,
+              "iqr": [
+                0.041034,
+                0.043008
+              ],
+              "total": 0.084042
+            },
+            "turns": {
+              "mean": 11,
+              "stddev": 0,
+              "median": 11
+            }
+          }
+        },
+        {
+          "task": "config-constant",
+          "kind": "small-multi",
+          "maxFileLines": 4,
+          "files": 1,
+          "ccalt": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 7528,
+              "stddev": 19.8,
+              "median": 7528,
+              "iqr": [
+                7521,
+                7535
+              ],
+              "total": 15056
+            },
+            "cost": {
+              "mean": 0.027222,
+              "stddev": 0.000153,
+              "median": 0.027222,
+              "iqr": [
+                0.027168,
+                0.027276
+              ],
+              "total": 0.054444
+            },
+            "turns": {
+              "mean": 7,
+              "stddev": 0,
+              "median": 7
+            }
+          },
+          "baseline": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 5843.5,
+              "stddev": 9.2,
+              "median": 5843.5,
+              "iqr": [
+                5840.3,
+                5846.8
+              ],
+              "total": 11687
+            },
+            "cost": {
+              "mean": 0.022499,
+              "stddev": 0.000045,
+              "median": 0.022499,
+              "iqr": [
+                0.022483,
+                0.022514
+              ],
+              "total": 0.044997
+            },
+            "turns": {
+              "mean": 8,
+              "stddev": 0,
+              "median": 8
+            }
+          }
+        },
+        {
+          "task": "medium-add-validate",
+          "kind": "medium-single",
+          "maxFileLines": 30,
+          "files": 1,
+          "ccalt": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 11929.5,
+              "stddev": 5724,
+              "median": 11929.5,
+              "iqr": [
+                9905.8,
+                13953.3
+              ],
+              "total": 23859
+            },
+            "cost": {
+              "mean": 0.042766,
+              "stddev": 0.017775,
+              "median": 0.042766,
+              "iqr": [
+                0.036482,
+                0.049051
+              ],
+              "total": 0.085533
+            },
+            "turns": {
+              "mean": 6.5,
+              "stddev": 2.12,
+              "median": 6.5
+            }
+          },
+          "baseline": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 15266.5,
+              "stddev": 1832.1,
+              "median": 15266.5,
+              "iqr": [
+                14618.8,
+                15914.3
+              ],
+              "total": 30533
+            },
+            "cost": {
+              "mean": 0.061436,
+              "stddev": 0.006022,
+              "median": 0.061436,
+              "iqr": [
+                0.059306,
+                0.063565
+              ],
+              "total": 0.122871
+            },
+            "turns": {
+              "mean": 8.5,
+              "stddev": 0.71,
+              "median": 8.5
+            }
+          }
+        },
+        {
+          "task": "fix-bug-large-250",
+          "kind": "large-single",
+          "maxFileLines": 248,
+          "files": 1,
+          "ccalt": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 43243,
+              "stddev": 1426.9,
+              "median": 43243,
+              "iqr": [
+                42738.5,
+                43747.5
+              ],
+              "total": 86486
+            },
+            "cost": {
+              "mean": 0.140049,
+              "stddev": 0.003534,
+              "median": 0.140049,
+              "iqr": [
+                0.1388,
+                0.141298
+              ],
+              "total": 0.280098
+            },
+            "turns": {
+              "mean": 13,
+              "stddev": 0,
+              "median": 13
+            }
+          },
+          "baseline": {
+            "n": 2,
+            "successes": 0,
+            "successRate": 0,
+            "runawayCount": 1,
+            "runawayRate": 0.5,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 87776.5,
+              "stddev": 19548,
+              "median": 87776.5,
+              "iqr": [
+                80865.3,
+                94687.8
+              ],
+              "total": 175553
+            },
+            "cost": {
+              "mean": 0.3236,
+              "stddev": 0.055564,
+              "median": 0.3236,
+              "iqr": [
+                0.303955,
+                0.343244
+              ],
+              "total": 0.647199
+            },
+            "turns": {
+              "mean": 15,
+              "stddev": 1.41,
+              "median": 15
+            }
+          }
+        },
+        {
+          "task": "fix-route-large-400",
+          "kind": "large-single",
+          "maxFileLines": 409,
+          "files": 1,
+          "ccalt": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 40745.5,
+              "stddev": 839.3,
+              "median": 40745.5,
+              "iqr": [
+                40448.8,
+                41042.3
+              ],
+              "total": 81491
+            },
+            "cost": {
+              "mean": 0.130241,
+              "stddev": 0.003316,
+              "median": 0.130241,
+              "iqr": [
+                0.129068,
+                0.131413
+              ],
+              "total": 0.260481
+            },
+            "turns": {
+              "mean": 10.5,
+              "stddev": 0.71,
+              "median": 10.5
+            }
+          },
+          "baseline": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 1,
+            "runawayRate": 0.5,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 134552,
+              "stddev": 142.8,
+              "median": 134552,
+              "iqr": [
+                134501.5,
+                134602.5
+              ],
+              "total": 269104
+            },
+            "cost": {
+              "mean": 0.461442,
+              "stddev": 0.001404,
+              "median": 0.461442,
+              "iqr": [
+                0.460946,
+                0.461938
+              ],
+              "total": 0.922884
+            },
+            "turns": {
+              "mean": 16,
+              "stddev": 0,
+              "median": 16
+            }
+          }
+        },
+        {
+          "task": "rename-largepair",
+          "kind": "large-multi",
+          "maxFileLines": 248,
+          "files": 2,
+          "ccalt": {
+            "n": 2,
+            "successes": 2,
+            "successRate": 1,
+            "runawayCount": 0,
+            "runawayRate": 0,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 25646,
+              "stddev": 2801.6,
+              "median": 25646,
+              "iqr": [
+                24655.5,
+                26636.5
+              ],
+              "total": 51292
+            },
+            "cost": {
+              "mean": 0.086112,
+              "stddev": 0.007921,
+              "median": 0.086112,
+              "iqr": [
+                0.083311,
+                0.088913
+              ],
+              "total": 0.172224
+            },
+            "turns": {
+              "mean": 8.5,
+              "stddev": 0.71,
+              "median": 8.5
+            }
+          },
+          "baseline": {
+            "n": 2,
+            "successes": 0,
+            "successRate": 0,
+            "runawayCount": 1,
+            "runawayRate": 0.5,
+            "editFailures": 0,
+            "tokens": {
+              "mean": 200995,
+              "stddev": 20371.7,
+              "median": 200995,
+              "iqr": [
+                193792.5,
+                208197.5
+              ],
+              "total": 401990
+            },
+            "cost": {
+              "mean": 0.802077,
+              "stddev": 0.061132,
+              "median": 0.802077,
+              "iqr": [
+                0.780463,
+                0.823691
+              ],
+              "total": 1.604154
+            },
+            "turns": {
+              "mean": 15.5,
+              "stddev": 0.71,
+              "median": 15.5
+            }
+          }
+        }
+      ]
+    }
+  },
+  "totalSpendUSD": 6.401,
+  "rawRows": {
+    "google/gemini-2.5-flash": [
+      {
+        "task": "fix-offbyone",
+        "kind": "tiny-single",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2444,
+        "promptTokens": 2333,
+        "completionTokens": 111,
+        "cost": 0.000977,
+        "wallMs": 2425,
+        "error": null
+      },
+      {
+        "task": "fix-offbyone",
+        "kind": "tiny-single",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": false,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": true,
+        "tokens": 19546,
+        "promptTokens": 18787,
+        "completionTokens": 759,
+        "cost": 0.007534,
+        "wallMs": 46716,
+        "error": null
+      },
+      {
+        "task": "fix-offbyone",
+        "kind": "tiny-single",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2444,
+        "promptTokens": 2333,
+        "completionTokens": 111,
+        "cost": 0.000977,
+        "wallMs": 2848,
+        "error": null
+      },
+      {
+        "task": "fix-offbyone",
+        "kind": "tiny-single",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": false,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": true,
+        "tokens": 16756,
+        "promptTokens": 16222,
+        "completionTokens": 534,
+        "cost": 0.006202,
+        "wallMs": 48002,
+        "error": null
+      },
+      {
+        "task": "fix-offbyone",
+        "kind": "tiny-single",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2444,
+        "promptTokens": 2333,
+        "completionTokens": 111,
+        "cost": 0.000977,
+        "wallMs": 2094,
+        "error": null
+      },
+      {
+        "task": "fix-offbyone",
+        "kind": "tiny-single",
+        "harness": "baseline",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 13,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 11974,
+        "promptTokens": 11488,
+        "completionTokens": 486,
+        "cost": 0.004661,
+        "wallMs": 10895,
+        "error": null
+      },
+      {
+        "task": "add-method",
+        "kind": "tiny-single",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2442,
+        "promptTokens": 2318,
+        "completionTokens": 124,
+        "cost": 0.001005,
+        "wallMs": 2226,
+        "error": null
+      },
+      {
+        "task": "add-method",
+        "kind": "tiny-single",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 1467,
+        "promptTokens": 1329,
+        "completionTokens": 138,
+        "cost": 0.000744,
+        "wallMs": 3209,
+        "error": null
+      },
+      {
+        "task": "add-method",
+        "kind": "tiny-single",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2442,
+        "promptTokens": 2318,
+        "completionTokens": 124,
+        "cost": 0.001005,
+        "wallMs": 2188,
+        "error": null
+      },
+      {
+        "task": "add-method",
+        "kind": "tiny-single",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 15,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 16855,
+        "promptTokens": 15894,
+        "completionTokens": 961,
+        "cost": 0.007171,
+        "wallMs": 19440,
+        "error": null
+      },
+      {
+        "task": "add-method",
+        "kind": "tiny-single",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2444,
+        "promptTokens": 2318,
+        "completionTokens": 126,
+        "cost": 0.00101,
+        "wallMs": 2389,
+        "error": null
+      },
+      {
+        "task": "add-method",
+        "kind": "tiny-single",
+        "harness": "baseline",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 11,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 9055,
+        "promptTokens": 8745,
+        "completionTokens": 310,
+        "cost": 0.003398,
+        "wallMs": 8399,
+        "error": null
+      },
+      {
+        "task": "negate-flag",
+        "kind": "tiny-single",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2349,
+        "promptTokens": 2261,
+        "completionTokens": 88,
+        "cost": 0.000898,
+        "wallMs": 1645,
+        "error": null
+      },
+      {
+        "task": "negate-flag",
+        "kind": "tiny-single",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 1338,
+        "promptTokens": 1256,
+        "completionTokens": 82,
+        "cost": 0.000582,
+        "wallMs": 1528,
+        "error": null
+      },
+      {
+        "task": "negate-flag",
+        "kind": "tiny-single",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2344,
+        "promptTokens": 2261,
+        "completionTokens": 83,
+        "cost": 0.000886,
+        "wallMs": 3682,
+        "error": null
+      },
+      {
+        "task": "negate-flag",
+        "kind": "tiny-single",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 1338,
+        "promptTokens": 1256,
+        "completionTokens": 82,
+        "cost": 0.000582,
+        "wallMs": 2313,
+        "error": null
+      },
+      {
+        "task": "negate-flag",
+        "kind": "tiny-single",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2339,
+        "promptTokens": 2261,
+        "completionTokens": 78,
+        "cost": 0.000873,
+        "wallMs": 6385,
+        "error": null
+      },
+      {
+        "task": "negate-flag",
+        "kind": "tiny-single",
+        "harness": "baseline",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 1338,
+        "promptTokens": 1256,
+        "completionTokens": 82,
+        "cost": 0.000582,
+        "wallMs": 4804,
+        "error": null
+      },
+      {
+        "task": "validate-3-funcs",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 12,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 20327,
+        "promptTokens": 19142,
+        "completionTokens": 1185,
+        "cost": 0.008705,
+        "wallMs": 16789,
+        "error": null
+      },
+      {
+        "task": "validate-3-funcs",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 20536,
+        "promptTokens": 19457,
+        "completionTokens": 1079,
+        "cost": 0.008535,
+        "wallMs": 24738,
+        "error": null
+      },
+      {
+        "task": "validate-3-funcs",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 13,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 22504,
+        "promptTokens": 21338,
+        "completionTokens": 1166,
+        "cost": 0.009316,
+        "wallMs": 17249,
+        "error": null
+      },
+      {
+        "task": "validate-3-funcs",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 11,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 10427,
+        "promptTokens": 10008,
+        "completionTokens": 419,
+        "cost": 0.00405,
+        "wallMs": 12442,
+        "error": null
+      },
+      {
+        "task": "validate-3-funcs",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 13,
+        "editFailures": 1,
+        "runaway": false,
+        "tokens": 23959,
+        "promptTokens": 22891,
+        "completionTokens": 1068,
+        "cost": 0.009537,
+        "wallMs": 19020,
+        "error": null
+      },
+      {
+        "task": "validate-3-funcs",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 20518,
+        "promptTokens": 19449,
+        "completionTokens": 1069,
+        "cost": 0.008507,
+        "wallMs": 20621,
+        "error": null
+      },
+      {
+        "task": "rename-field",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 3592,
+        "promptTokens": 3390,
+        "completionTokens": 202,
+        "cost": 0.001522,
+        "wallMs": 3488,
+        "error": null
+      },
+      {
+        "task": "rename-field",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 5,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2840,
+        "promptTokens": 2640,
+        "completionTokens": 200,
+        "cost": 0.001292,
+        "wallMs": 3728,
+        "error": null
+      },
+      {
+        "task": "rename-field",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 3602,
+        "promptTokens": 3390,
+        "completionTokens": 212,
+        "cost": 0.001547,
+        "wallMs": 3488,
+        "error": null
+      },
+      {
+        "task": "rename-field",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 13,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 11703,
+        "promptTokens": 11328,
+        "completionTokens": 375,
+        "cost": 0.004336,
+        "wallMs": 14857,
+        "error": null
+      },
+      {
+        "task": "rename-field",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 5,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 5018,
+        "promptTokens": 4809,
+        "completionTokens": 209,
+        "cost": 0.001965,
+        "wallMs": 3493,
+        "error": null
+      },
+      {
+        "task": "rename-field",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 13,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 11698,
+        "promptTokens": 11328,
+        "completionTokens": 370,
+        "cost": 0.004323,
+        "wallMs": 13358,
+        "error": null
+      },
+      {
+        "task": "add-endpoint",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2461,
+        "promptTokens": 2353,
+        "completionTokens": 108,
+        "cost": 0.000976,
+        "wallMs": 1671,
+        "error": null
+      },
+      {
+        "task": "add-endpoint",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 1504,
+        "promptTokens": 1373,
+        "completionTokens": 131,
+        "cost": 0.000739,
+        "wallMs": 1719,
+        "error": null
+      },
+      {
+        "task": "add-endpoint",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2461,
+        "promptTokens": 2353,
+        "completionTokens": 108,
+        "cost": 0.000976,
+        "wallMs": 1772,
+        "error": null
+      },
+      {
+        "task": "add-endpoint",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 1504,
+        "promptTokens": 1373,
+        "completionTokens": 131,
+        "cost": 0.000739,
+        "wallMs": 2068,
+        "error": null
+      },
+      {
+        "task": "add-endpoint",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2461,
+        "promptTokens": 2353,
+        "completionTokens": 108,
+        "cost": 0.000976,
+        "wallMs": 2090,
+        "error": null
+      },
+      {
+        "task": "add-endpoint",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 1504,
+        "promptTokens": 1373,
+        "completionTokens": 131,
+        "cost": 0.000739,
+        "wallMs": 2102,
+        "error": null
+      },
+      {
+        "task": "config-constant",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": false,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2453,
+        "promptTokens": 2312,
+        "completionTokens": 141,
+        "cost": 0.001046,
+        "wallMs": 2639,
+        "error": null
+      },
+      {
+        "task": "config-constant",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 1968,
+        "promptTokens": 1830,
+        "completionTokens": 138,
+        "cost": 0.000894,
+        "wallMs": 3003,
+        "error": null
+      },
+      {
+        "task": "config-constant",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": false,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2453,
+        "promptTokens": 2312,
+        "completionTokens": 141,
+        "cost": 0.001046,
+        "wallMs": 3306,
+        "error": null
+      },
+      {
+        "task": "config-constant",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 1968,
+        "promptTokens": 1830,
+        "completionTokens": 138,
+        "cost": 0.000894,
+        "wallMs": 3061,
+        "error": null
+      },
+      {
+        "task": "config-constant",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": false,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2453,
+        "promptTokens": 2312,
+        "completionTokens": 141,
+        "cost": 0.001046,
+        "wallMs": 2022,
+        "error": null
+      },
+      {
+        "task": "config-constant",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 1968,
+        "promptTokens": 1830,
+        "completionTokens": 138,
+        "cost": 0.000894,
+        "wallMs": 2405,
+        "error": null
+      },
+      {
+        "task": "wire-logger",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": false,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2525,
+        "promptTokens": 2371,
+        "completionTokens": 154,
+        "cost": 0.001096,
+        "wallMs": 2894,
+        "error": null
+      },
+      {
+        "task": "wire-logger",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2053,
+        "promptTokens": 1900,
+        "completionTokens": 153,
+        "cost": 0.000952,
+        "wallMs": 3260,
+        "error": null
+      },
+      {
+        "task": "wire-logger",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": false,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2523,
+        "promptTokens": 2370,
+        "completionTokens": 153,
+        "cost": 0.001093,
+        "wallMs": 3171,
+        "error": null
+      },
+      {
+        "task": "wire-logger",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2055,
+        "promptTokens": 1901,
+        "completionTokens": 154,
+        "cost": 0.000955,
+        "wallMs": 2701,
+        "error": null
+      },
+      {
+        "task": "wire-logger",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": false,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2523,
+        "promptTokens": 2370,
+        "completionTokens": 153,
+        "cost": 0.001093,
+        "wallMs": 2182,
+        "error": null
+      },
+      {
+        "task": "wire-logger",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 2054,
+        "promptTokens": 1901,
+        "completionTokens": 153,
+        "cost": 0.000953,
+        "wallMs": 2603,
+        "error": null
+      },
+      {
+        "task": "guard-parse",
+        "kind": "medium-single",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 3875,
+        "promptTokens": 3735,
+        "completionTokens": 140,
+        "cost": 0.001471,
+        "wallMs": 2200,
+        "error": null
+      },
+      {
+        "task": "guard-parse",
+        "kind": "medium-single",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 4255,
+        "promptTokens": 3422,
+        "completionTokens": 833,
+        "cost": 0.003109,
+        "wallMs": 5207,
+        "error": null
+      },
+      {
+        "task": "guard-parse",
+        "kind": "medium-single",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 3875,
+        "promptTokens": 3735,
+        "completionTokens": 140,
+        "cost": 0.001471,
+        "wallMs": 2049,
+        "error": null
+      },
+      {
+        "task": "guard-parse",
+        "kind": "medium-single",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 4255,
+        "promptTokens": 3422,
+        "completionTokens": 833,
+        "cost": 0.003109,
+        "wallMs": 5432,
+        "error": null
+      },
+      {
+        "task": "guard-parse",
+        "kind": "medium-single",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 3876,
+        "promptTokens": 3735,
+        "completionTokens": 141,
+        "cost": 0.001473,
+        "wallMs": 2411,
+        "error": null
+      },
+      {
+        "task": "guard-parse",
+        "kind": "medium-single",
+        "harness": "baseline",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 4255,
+        "promptTokens": 3422,
+        "completionTokens": 833,
+        "cost": 0.003109,
+        "wallMs": 4905,
+        "error": null
+      },
+      {
+        "task": "medium-add-validate",
+        "kind": "medium-single",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 3628,
+        "promptTokens": 3452,
+        "completionTokens": 176,
+        "cost": 0.001476,
+        "wallMs": 2936,
+        "error": null
+      },
+      {
+        "task": "medium-add-validate",
+        "kind": "medium-single",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 9,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 16523,
+        "promptTokens": 15753,
+        "completionTokens": 770,
+        "cost": 0.006651,
+        "wallMs": 10473,
+        "error": null
+      },
+      {
+        "task": "medium-add-validate",
+        "kind": "medium-single",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 3605,
+        "promptTokens": 3452,
+        "completionTokens": 153,
+        "cost": 0.001418,
+        "wallMs": 2377,
+        "error": null
+      },
+      {
+        "task": "medium-add-validate",
+        "kind": "medium-single",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 5,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 7650,
+        "promptTokens": 6941,
+        "completionTokens": 709,
+        "cost": 0.003855,
+        "wallMs": 6582,
+        "error": null
+      },
+      {
+        "task": "medium-add-validate",
+        "kind": "medium-single",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 3615,
+        "promptTokens": 3452,
+        "completionTokens": 163,
+        "cost": 0.001443,
+        "wallMs": 2839,
+        "error": null
+      },
+      {
+        "task": "medium-add-validate",
+        "kind": "medium-single",
+        "harness": "baseline",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 3638,
+        "promptTokens": 2951,
+        "completionTokens": 687,
+        "cost": 0.002603,
+        "wallMs": 4125,
+        "error": null
+      },
+      {
+        "task": "fix-bug-large-250",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 7,
+        "editFailures": 1,
+        "runaway": false,
+        "tokens": 22058,
+        "promptTokens": 21802,
+        "completionTokens": 256,
+        "cost": 0.007181,
+        "wallMs": 6627,
+        "error": null
+      },
+      {
+        "task": "fix-bug-large-250",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 0,
+        "success": false,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 20746,
+        "promptTokens": 16664,
+        "completionTokens": 4082,
+        "cost": 0.015204,
+        "wallMs": 19189,
+        "error": null
+      },
+      {
+        "task": "fix-bug-large-250",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 9,
+        "editFailures": 1,
+        "runaway": false,
+        "tokens": 29964,
+        "promptTokens": 29714,
+        "completionTokens": 250,
+        "cost": 0.009539,
+        "wallMs": 9530,
+        "error": null
+      },
+      {
+        "task": "fix-bug-large-250",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 1,
+        "success": false,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 20744,
+        "promptTokens": 16663,
+        "completionTokens": 4081,
+        "cost": 0.015201,
+        "wallMs": 19108,
+        "error": null
+      },
+      {
+        "task": "fix-bug-large-250",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 8,
+        "editFailures": 1,
+        "runaway": false,
+        "tokens": 26006,
+        "promptTokens": 25749,
+        "completionTokens": 257,
+        "cost": 0.008367,
+        "wallMs": 6952,
+        "error": null
+      },
+      {
+        "task": "fix-bug-large-250",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 2,
+        "success": false,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 20745,
+        "promptTokens": 16663,
+        "completionTokens": 4082,
+        "cost": 0.015204,
+        "wallMs": 22358,
+        "error": null
+      },
+      {
+        "task": "fix-route-large-400",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 5,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 17232,
+        "promptTokens": 17105,
+        "completionTokens": 127,
+        "cost": 0.005449,
+        "wallMs": 3232,
+        "error": null
+      },
+      {
+        "task": "fix-route-large-400",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 0,
+        "success": false,
+        "done": false,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": true,
+        "tokens": 536038,
+        "promptTokens": 476021,
+        "completionTokens": 60017,
+        "cost": 0.292849,
+        "wallMs": 229115,
+        "error": null
+      },
+      {
+        "task": "fix-route-large-400",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 9,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 36629,
+        "promptTokens": 36324,
+        "completionTokens": 305,
+        "cost": 0.01166,
+        "wallMs": 8553,
+        "error": null
+      },
+      {
+        "task": "fix-route-large-400",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 1,
+        "success": false,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 23418,
+        "promptTokens": 19348,
+        "completionTokens": 4070,
+        "cost": 0.015979,
+        "wallMs": 16715,
+        "error": null
+      },
+      {
+        "task": "fix-route-large-400",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 9,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 36621,
+        "promptTokens": 36324,
+        "completionTokens": 297,
+        "cost": 0.01164,
+        "wallMs": 10255,
+        "error": null
+      },
+      {
+        "task": "fix-route-large-400",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 2,
+        "success": false,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 23436,
+        "promptTokens": 19348,
+        "completionTokens": 4088,
+        "cost": 0.016024,
+        "wallMs": 18115,
+        "error": null
+      },
+      {
+        "task": "fix-reducer-large-300",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 11,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 34740,
+        "promptTokens": 34087,
+        "completionTokens": 653,
+        "cost": 0.011859,
+        "wallMs": 12438,
+        "error": null
+      },
+      {
+        "task": "fix-reducer-large-300",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 0,
+        "success": false,
+        "done": false,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": true,
+        "tokens": 86344,
+        "promptTokens": 83135,
+        "completionTokens": 3209,
+        "cost": 0.032963,
+        "wallMs": 103090,
+        "error": null
+      },
+      {
+        "task": "fix-reducer-large-300",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 10,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 30394,
+        "promptTokens": 29932,
+        "completionTokens": 462,
+        "cost": 0.010135,
+        "wallMs": 9021,
+        "error": null
+      },
+      {
+        "task": "fix-reducer-large-300",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 1,
+        "success": false,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 10263,
+        "promptTokens": 7829,
+        "completionTokens": 2434,
+        "cost": 0.008434,
+        "wallMs": 11538,
+        "error": null
+      },
+      {
+        "task": "fix-reducer-large-300",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 10,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 30749,
+        "promptTokens": 30171,
+        "completionTokens": 578,
+        "cost": 0.010496,
+        "wallMs": 10549,
+        "error": null
+      },
+      {
+        "task": "fix-reducer-large-300",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 2,
+        "success": false,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 10263,
+        "promptTokens": 7829,
+        "completionTokens": 2434,
+        "cost": 0.008434,
+        "wallMs": 10530,
+        "error": null
+      },
+      {
+        "task": "add-fn-large-600",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": false,
+        "done": false,
+        "turns": 16,
+        "editFailures": 2,
+        "runaway": true,
+        "tokens": 65613,
+        "promptTokens": 64844,
+        "completionTokens": 769,
+        "cost": 0.021376,
+        "wallMs": 21902,
+        "error": null
+      },
+      {
+        "task": "add-fn-large-600",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 0,
+        "success": false,
+        "done": false,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": true,
+        "tokens": 522870,
+        "promptTokens": 462853,
+        "completionTokens": 60017,
+        "cost": 0.288898,
+        "wallMs": 223552,
+        "error": null
+      },
+      {
+        "task": "add-fn-large-600",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": false,
+        "done": false,
+        "turns": 16,
+        "editFailures": 2,
+        "runaway": true,
+        "tokens": 64378,
+        "promptTokens": 63630,
+        "completionTokens": 748,
+        "cost": 0.020959,
+        "wallMs": 17050,
+        "error": null
+      },
+      {
+        "task": "add-fn-large-600",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 1,
+        "success": false,
+        "done": false,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": true,
+        "tokens": 522870,
+        "promptTokens": 462853,
+        "completionTokens": 60017,
+        "cost": 0.288898,
+        "wallMs": 240928,
+        "error": null
+      },
+      {
+        "task": "add-fn-large-600",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": false,
+        "done": false,
+        "turns": 16,
+        "editFailures": 2,
+        "runaway": true,
+        "tokens": 77674,
+        "promptTokens": 76068,
+        "completionTokens": 1606,
+        "cost": 0.026835,
+        "wallMs": 21537,
+        "error": null
+      },
+      {
+        "task": "add-fn-large-600",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 2,
+        "success": false,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 13710,
+        "promptTokens": 9673,
+        "completionTokens": 4037,
+        "cost": 0.012994,
+        "wallMs": 17663,
+        "error": null
+      },
+      {
+        "task": "refactor-extract-const",
+        "kind": "medium-single",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 3121,
+        "promptTokens": 2906,
+        "completionTokens": 215,
+        "cost": 0.001409,
+        "wallMs": 4034,
+        "error": null
+      },
+      {
+        "task": "refactor-extract-const",
+        "kind": "medium-single",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 9,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 9773,
+        "promptTokens": 9360,
+        "completionTokens": 413,
+        "cost": 0.003841,
+        "wallMs": 8415,
+        "error": null
+      },
+      {
+        "task": "refactor-extract-const",
+        "kind": "medium-single",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 3108,
+        "promptTokens": 2906,
+        "completionTokens": 202,
+        "cost": 0.001377,
+        "wallMs": 8751,
+        "error": null
+      },
+      {
+        "task": "refactor-extract-const",
+        "kind": "medium-single",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": false,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": true,
+        "tokens": 30291,
+        "promptTokens": 25755,
+        "completionTokens": 4536,
+        "cost": 0.019067,
+        "wallMs": 55565,
+        "error": null
+      },
+      {
+        "task": "refactor-extract-const",
+        "kind": "medium-single",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 3,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 3108,
+        "promptTokens": 2906,
+        "completionTokens": 202,
+        "cost": 0.001377,
+        "wallMs": 2151,
+        "error": null
+      },
+      {
+        "task": "refactor-extract-const",
+        "kind": "medium-single",
+        "harness": "baseline",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 9,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 9770,
+        "promptTokens": 9360,
+        "completionTokens": 410,
+        "cost": 0.003833,
+        "wallMs": 7863,
+        "error": null
+      },
+      {
+        "task": "rename-largepair",
+        "kind": "large-multi",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 7,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 63561,
+        "promptTokens": 59824,
+        "completionTokens": 3737,
+        "cost": 0.02729,
+        "wallMs": 20746,
+        "error": null
+      },
+      {
+        "task": "rename-largepair",
+        "kind": "large-multi",
+        "harness": "baseline",
+        "rep": 0,
+        "success": false,
+        "done": true,
+        "turns": 8,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 82380,
+        "promptTokens": 74252,
+        "completionTokens": 8128,
+        "cost": 0.042596,
+        "wallMs": 32378,
+        "error": null
+      },
+      {
+        "task": "rename-largepair",
+        "kind": "large-multi",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 15696,
+        "promptTokens": 15458,
+        "completionTokens": 238,
+        "cost": 0.005232,
+        "wallMs": 3529,
+        "error": null
+      },
+      {
+        "task": "rename-largepair",
+        "kind": "large-multi",
+        "harness": "baseline",
+        "rep": 1,
+        "success": false,
+        "done": true,
+        "turns": 7,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 68513,
+        "promptTokens": 60400,
+        "completionTokens": 8113,
+        "cost": 0.038402,
+        "wallMs": 35662,
+        "error": null
+      },
+      {
+        "task": "rename-largepair",
+        "kind": "large-multi",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 15695,
+        "promptTokens": 15458,
+        "completionTokens": 237,
+        "cost": 0.00523,
+        "wallMs": 3751,
+        "error": null
+      },
+      {
+        "task": "rename-largepair",
+        "kind": "large-multi",
+        "harness": "baseline",
+        "rep": 2,
+        "success": false,
+        "done": true,
+        "turns": 9,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 96435,
+        "promptTokens": 88290,
+        "completionTokens": 8145,
+        "cost": 0.04685,
+        "wallMs": 34912,
+        "error": null
+      },
+      {
+        "task": "wire-fn-largepair",
+        "kind": "large-multi",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 11,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 58361,
+        "promptTokens": 57809,
+        "completionTokens": 552,
+        "cost": 0.018723,
+        "wallMs": 9612,
+        "error": null
+      },
+      {
+        "task": "wire-fn-largepair",
+        "kind": "large-multi",
+        "harness": "baseline",
+        "rep": 0,
+        "success": false,
+        "done": true,
+        "turns": 6,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 54834,
+        "promptTokens": 46729,
+        "completionTokens": 8105,
+        "cost": 0.034281,
+        "wallMs": 30803,
+        "error": null
+      },
+      {
+        "task": "wire-fn-largepair",
+        "kind": "large-multi",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 10,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 51657,
+        "promptTokens": 51147,
+        "completionTokens": 510,
+        "cost": 0.016619,
+        "wallMs": 14258,
+        "error": null
+      },
+      {
+        "task": "wire-fn-largepair",
+        "kind": "large-multi",
+        "harness": "baseline",
+        "rep": 1,
+        "success": false,
+        "done": false,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": true,
+        "tokens": 463605,
+        "promptTokens": 407575,
+        "completionTokens": 56030,
+        "cost": 0.262348,
+        "wallMs": 206403,
+        "error": null
+      },
+      {
+        "task": "wire-fn-largepair",
+        "kind": "large-multi",
+        "harness": "cc-alt",
+        "rep": 2,
+        "success": true,
+        "done": true,
+        "turns": 10,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 52234,
+        "promptTokens": 51533,
+        "completionTokens": 701,
+        "cost": 0.017212,
+        "wallMs": 14701,
+        "error": null
+      },
+      {
+        "task": "wire-fn-largepair",
+        "kind": "large-multi",
+        "harness": "baseline",
+        "rep": 2,
+        "success": false,
+        "done": false,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": true,
+        "tokens": 188027,
+        "promptTokens": 179788,
+        "completionTokens": 8239,
+        "cost": 0.074534,
+        "wallMs": 40836,
+        "error": null
+      }
+    ],
+    "anthropic/claude-sonnet-4": [
+      {
+        "task": "negate-flag",
+        "kind": "tiny-single",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 4,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 4000,
+        "promptTokens": 3623,
+        "completionTokens": 377,
+        "cost": 0.016524,
+        "wallMs": 11198,
+        "error": null
+      },
+      {
+        "task": "negate-flag",
+        "kind": "tiny-single",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 8,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 5830,
+        "promptTokens": 5319,
+        "completionTokens": 511,
+        "cost": 0.023622,
+        "wallMs": 15076,
+        "error": null
+      },
+      {
+        "task": "negate-flag",
+        "kind": "tiny-single",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 7,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 8222,
+        "promptTokens": 7614,
+        "completionTokens": 608,
+        "cost": 0.031962,
+        "wallMs": 14060,
+        "error": null
+      },
+      {
+        "task": "negate-flag",
+        "kind": "tiny-single",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 7,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 5057,
+        "promptTokens": 4563,
+        "completionTokens": 494,
+        "cost": 0.021099,
+        "wallMs": 12549,
+        "error": null
+      },
+      {
+        "task": "rename-field",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 9,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 12263,
+        "promptTokens": 11615,
+        "completionTokens": 648,
+        "cost": 0.044565,
+        "wallMs": 20497,
+        "error": null
+      },
+      {
+        "task": "rename-field",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 11,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 11581,
+        "promptTokens": 10810,
+        "completionTokens": 771,
+        "cost": 0.043995,
+        "wallMs": 24317,
+        "error": null
+      },
+      {
+        "task": "rename-field",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 9,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 12416,
+        "promptTokens": 11728,
+        "completionTokens": 688,
+        "cost": 0.045504,
+        "wallMs": 21951,
+        "error": null
+      },
+      {
+        "task": "rename-field",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 11,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 10561,
+        "promptTokens": 9864,
+        "completionTokens": 697,
+        "cost": 0.040047,
+        "wallMs": 22618,
+        "error": null
+      },
+      {
+        "task": "config-constant",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 7,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 7542,
+        "promptTokens": 7150,
+        "completionTokens": 392,
+        "cost": 0.02733,
+        "wallMs": 15167,
+        "error": null
+      },
+      {
+        "task": "config-constant",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 8,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 5837,
+        "promptTokens": 5424,
+        "completionTokens": 413,
+        "cost": 0.022467,
+        "wallMs": 13806,
+        "error": null
+      },
+      {
+        "task": "config-constant",
+        "kind": "small-multi",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 7,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 7514,
+        "promptTokens": 7133,
+        "completionTokens": 381,
+        "cost": 0.027114,
+        "wallMs": 14364,
+        "error": null
+      },
+      {
+        "task": "config-constant",
+        "kind": "small-multi",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 8,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 5850,
+        "promptTokens": 5435,
+        "completionTokens": 415,
+        "cost": 0.02253,
+        "wallMs": 14415,
+        "error": null
+      },
+      {
+        "task": "medium-add-validate",
+        "kind": "medium-single",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 8,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 15977,
+        "promptTokens": 15360,
+        "completionTokens": 617,
+        "cost": 0.055335,
+        "wallMs": 19092,
+        "error": null
+      },
+      {
+        "task": "medium-add-validate",
+        "kind": "medium-single",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 8,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 13971,
+        "promptTokens": 12699,
+        "completionTokens": 1272,
+        "cost": 0.057177,
+        "wallMs": 22483,
+        "error": null
+      },
+      {
+        "task": "medium-add-validate",
+        "kind": "medium-single",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 5,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 7882,
+        "promptTokens": 7336,
+        "completionTokens": 546,
+        "cost": 0.030198,
+        "wallMs": 14621,
+        "error": null
+      },
+      {
+        "task": "medium-add-validate",
+        "kind": "medium-single",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 9,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 16562,
+        "promptTokens": 15228,
+        "completionTokens": 1334,
+        "cost": 0.065694,
+        "wallMs": 31468,
+        "error": null
+      },
+      {
+        "task": "fix-bug-large-250",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 13,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 42234,
+        "promptTokens": 41330,
+        "completionTokens": 904,
+        "cost": 0.13755,
+        "wallMs": 42921,
+        "error": null
+      },
+      {
+        "task": "fix-bug-large-250",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 0,
+        "success": false,
+        "done": true,
+        "turns": 14,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 73954,
+        "promptTokens": 68750,
+        "completionTokens": 5204,
+        "cost": 0.28431,
+        "wallMs": 61575,
+        "error": null
+      },
+      {
+        "task": "fix-bug-large-250",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 13,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 44252,
+        "promptTokens": 43436,
+        "completionTokens": 816,
+        "cost": 0.142548,
+        "wallMs": 31450,
+        "error": null
+      },
+      {
+        "task": "fix-bug-large-250",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 1,
+        "success": false,
+        "done": false,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": true,
+        "tokens": 101599,
+        "promptTokens": 96758,
+        "completionTokens": 4841,
+        "cost": 0.362889,
+        "wallMs": 61373,
+        "error": null
+      },
+      {
+        "task": "fix-route-large-400",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 11,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 40152,
+        "promptTokens": 39532,
+        "completionTokens": 620,
+        "cost": 0.127896,
+        "wallMs": 22740,
+        "error": null
+      },
+      {
+        "task": "fix-route-large-400",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 0,
+        "success": true,
+        "done": false,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": true,
+        "tokens": 134451,
+        "promptTokens": 129693,
+        "completionTokens": 4758,
+        "cost": 0.460449,
+        "wallMs": 64499,
+        "error": null
+      },
+      {
+        "task": "fix-route-large-400",
+        "kind": "large-single",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 10,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 41339,
+        "promptTokens": 40625,
+        "completionTokens": 714,
+        "cost": 0.132585,
+        "wallMs": 27003,
+        "error": null
+      },
+      {
+        "task": "fix-route-large-400",
+        "kind": "large-single",
+        "harness": "baseline",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 134653,
+        "promptTokens": 129780,
+        "completionTokens": 4873,
+        "cost": 0.462435,
+        "wallMs": 64242,
+        "error": null
+      },
+      {
+        "task": "rename-largepair",
+        "kind": "large-multi",
+        "harness": "cc-alt",
+        "rep": 0,
+        "success": true,
+        "done": true,
+        "turns": 8,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 23665,
+        "promptTokens": 22872,
+        "completionTokens": 793,
+        "cost": 0.080511,
+        "wallMs": 23718,
+        "error": null
+      },
+      {
+        "task": "rename-largepair",
+        "kind": "large-multi",
+        "harness": "baseline",
+        "rep": 0,
+        "success": false,
+        "done": false,
+        "turns": 16,
+        "editFailures": 0,
+        "runaway": true,
+        "tokens": 215400,
+        "promptTokens": 198808,
+        "completionTokens": 16592,
+        "cost": 0.845304,
+        "wallMs": 151519,
+        "error": null
+      },
+      {
+        "task": "rename-largepair",
+        "kind": "large-multi",
+        "harness": "cc-alt",
+        "rep": 1,
+        "success": true,
+        "done": true,
+        "turns": 9,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 27627,
+        "promptTokens": 26891,
+        "completionTokens": 736,
+        "cost": 0.091713,
+        "wallMs": 24116,
+        "error": null
+      },
+      {
+        "task": "rename-largepair",
+        "kind": "large-multi",
+        "harness": "baseline",
+        "rep": 1,
+        "success": false,
+        "done": true,
+        "turns": 15,
+        "editFailures": 0,
+        "runaway": false,
+        "tokens": 186590,
+        "promptTokens": 170000,
+        "completionTokens": 16590,
+        "cost": 0.75885,
+        "wallMs": 147144,
+        "error": null
+      }
+    ]
+  }
+}
