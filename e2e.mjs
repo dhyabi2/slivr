@@ -150,10 +150,12 @@ if (HAS_KEY) {
   const r = run(["use the parallel tool to read f1.txt and f2.txt at the same time, then report both contents", d, "--auto"], { cwd: d, timeout: 120000 });
   const out = r.stdout + r.stderr;
   ok(/parallel/.test(out), "agent chose parallel");
-  // parallel runs N sub-agents concurrently and returns each one's SUMMARY (not its full output),
-  // so we assert the fan-out actually ran >=2 sub-tasks (the `↳` sub-result lines / "N subtasks").
+  // parallel fans out concurrent sub-agents — assert >=2 actually ran (the `↳` sub-result lines).
   const subs = (out.match(/↳/g) || []).length;
   ok(subs >= 2 || /\b2 subtask/.test(out), `parallel fanned out >=2 concurrent sub-agents (saw ${subs})`);
+  // findings round-trip: each sub-agent now returns the content it gathered (not just a terse
+  // summary), so the parent must be able to report BOTH file contents back to the user.
+  ok(/alpha-one/.test(out) && /beta-two/.test(out), "both file contents round-tripped via sub-agent findings");
 } else skipIf("parallel");
 
 // 13. REAL MCP server (npx @modelcontextprotocol/server-everything) — network-dependent.

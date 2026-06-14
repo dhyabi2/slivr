@@ -155,7 +155,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
     }
     process.stdout.write(stepLine({ tool, args, status, extra, palette: p }) + "\n");
     if (tool === "parallel" && result?.ok) {
-      for (const r of result.results) process.stdout.write(p.dim(`    ↳ ${r.done ? "✓" : "·"} ${r.task.slice(0, 60)} — ${(r.summary || r.error || "").slice(0, 80)}\n`));
+      for (const r of result.results) process.stdout.write(p.dim(`    ↳ ${r.done ? "✓" : "·"} ${r.task.slice(0, 60)} — ${(r.summary || r.findings || r.error || "").replace(/\s+/g, " ").slice(0, 120)}\n`));
     }
     if (tool === "task_write" && result?.ok) {
       const rt = renderTasks(session.tools.tasks, p);

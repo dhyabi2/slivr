@@ -16,7 +16,7 @@ import { isDestructive, needsApproval } from "./src/safety.mjs";
 import { unifiedDiff, diffStat, diffLines } from "./src/diff.mjs";
 import { parseCommand } from "./src/repl.mjs";
 import { describeStep, makePalette, footer, colorEnabled, renderTasks, renderPlan } from "./src/ui.mjs";
-import { parallelSubAgents, planGate, MUTATING_TOOLS } from "./src/agent.mjs";
+import { parallelSubAgents, planGate, MUTATING_TOOLS, extractFindings } from "./src/agent.mjs";
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra = "") {
@@ -264,6 +264,35 @@ console.log("== 10. parallel orchestration (cap + depth guard, stubbed runner) =
   // empty / bad input
   const empty = await parallelSubAgents({ tasks: [] }, "/tmp", {}, runner);
   ok("parallel rejects empty task list", !empty.ok && empty.error === "NO_TASKS");
+
+  // findings round-trip: a sub-agent's READ/INFO tool output must come back to the caller, not be
+  // lost to a terse summary. extractFindings scrapes the transcript; parallel forwards it.
+  const mkMsgs = (pairs) => pairs.map(([tool, body]) => ({ role: "user", content: `RESULT (${tool}):\n${body}` }));
+  const fSub = { messages: mkMsgs([
+    ["read_file", JSON.stringify({ ok: true, path: "f1.txt", content: "alpha-one" })],
+    ["edit_file", JSON.stringify({ ok: true })],                       // mutating tool — must be EXCLUDED
+    ["grep", JSON.stringify({ ok: true, matches: ["hit-here"] })],
+  ]) };
+  const found = extractFindings(fSub);
+  ok("extractFindings surfaces read_file content", /alpha-one/.test(found));
+  ok("extractFindings surfaces grep matches", /hit-here/.test(found));
+  ok("extractFindings excludes mutating tools", !/edit_file/.test(found));
+  ok("extractFindings returns undefined when nothing informational", extractFindings({ messages: mkMsgs([["edit_file", "{}"]]) }) === undefined);
+  ok("extractFindings caps total length", extractFindings({ messages: mkMsgs([["read_file", "x".repeat(5000)]]) }).length < 2100);
+
+  // parallel forwards findings extracted from each sub-agent's transcript
+  const findingRunner = async (task) => ({
+    summary: "done", done: true, turns: 1,
+    messages: mkMsgs([["read_file", JSON.stringify({ ok: true, content: task.split("\n")[0] + "-CONTENT" })]]),
+  });
+  const fr = await parallelSubAgents({ tasks: ["p", "q"] }, "/tmp", { _depth: 0 }, findingRunner);
+  ok("parallel attaches findings per sub-result", /p-CONTENT/.test(fr.results[0].findings) && /q-CONTENT/.test(fr.results[1].findings));
+
+  // every fanned-out subtask is briefed that its caller only sees what it returns
+  let briefedTask = "";
+  const briefRunner = async (task) => { briefedTask = task; return { summary: "", done: true, turns: 0 }; };
+  await parallelSubAgents({ tasks: ["scout the config"] }, "/tmp", { _depth: 0 }, briefRunner);
+  ok("parallel briefs sub-agents to return findings verbatim", /SUB-AGENT BRIEF/.test(briefedTask) && /scout the config/.test(briefedTask));
 }
 
 console.log("== 11. plan-mode gate (no LLM) ==");

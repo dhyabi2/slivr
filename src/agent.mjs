@@ -62,6 +62,9 @@ ORCHESTRATION (parallel):
   that edit the SAME file or depend on each other's output (you'll get races / lost writes).
   When work is sequential or touches overlapping files, do it yourself one tool at a time.
   Pattern: decompose the task → fan out independent pieces with parallel → integrate the results.
+- Each sub-result has both a "summary" (the sub-agent's own words) and "findings" (the actual
+  content it gathered — file text, search hits, command output). READ the findings to integrate
+  real data; don't assume the one-line summary is the whole story.
 
 PLANNING (plan): when plan-mode is on you MUST call "plan" with a numbered list of concrete steps
   BEFORE any edit/create/run_command — those are blocked until a plan exists and is approved.
@@ -109,6 +112,47 @@ export function makeAgent(workdir, opts = {}) {
 // reuses the same _depth guard as delegate so sub-agents cannot spawn more). Runs at most CAP at a
 // time (Promise pool). Sub-agents share the workdir, so this is only safe for independent work.
 const PARALLEL_CAP = 4;
+
+// A sub-agent's CALLER cannot see its tool output — only what it returns. So brief every sub-agent
+// to put the concrete findings the caller needs INTO its final summary (verbatim), not just a
+// "what I did" sentence. This is the real fix for "parallel read N files -> report contents".
+const SUBAGENT_BRIEF =
+  "\n\n[SUB-AGENT BRIEF] You are a sub-agent. Your caller sees ONLY what you return — never your " +
+  "tool output. So your done.summary MUST carry every concrete finding the caller needs (exact file " +
+  "contents, values, paths, names, answers) VERBATIM. Do NOT just say what you did (e.g. \"read the " +
+  "file\") — quote what matters. If you gathered data, paste it into the summary.";
+
+// Belt-and-suspenders: pull the substantive tool RESULTs out of a finished sub-agent's transcript so
+// the caller gets the actual content even if the model wrote a terse summary. We surface only
+// READ/INFORMATIONAL tools (not edits/commits), de-noised and length-capped.
+const FINDING_TOOLS = new Set([
+  "read_file", "list_dir", "grep", "glob", "run_command", "web_search", "web_fetch",
+  "view_pdf", "view_image", "git_status", "git_diff", "git_log",
+]);
+export function extractFindings(sub, maxTotal = 2000) {
+  const out = [];
+  for (const m of sub?.messages || []) {
+    if (m.role !== "user" || typeof m.content !== "string") continue;
+    const mt = m.content.match(/^RESULT \(([^)]+)\):\n([\s\S]*)$/);
+    if (!mt) continue;
+    const [, tool, body] = mt;
+    if (!FINDING_TOOLS.has(tool)) continue;
+    let snippet = body.trim();
+    // unwrap the common {ok,...,content/output/text:"..."} JSON envelope to the human-relevant field
+    try {
+      const o = JSON.parse(body);
+      const v = o.content ?? o.output ?? o.text ?? o.stdout ?? o.results ?? o.matches;
+      if (v != null) snippet = typeof v === "string" ? v : JSON.stringify(v);
+    } catch { /* not JSON — keep raw */ }
+    snippet = snippet.trim();
+    if (snippet) out.push(`[${tool}] ${snippet}`);
+  }
+  if (!out.length) return undefined;
+  let joined = out.join("\n");
+  if (joined.length > maxTotal) joined = joined.slice(0, maxTotal) + " …(findings truncated)";
+  return joined;
+}
+
 export async function parallelSubAgents(a, workdir, opts, runner = runAgent) {
   if ((opts._depth || 0) >= 1) return { ok: false, error: "MAX_DELEGATE_DEPTH", hint: "A sub-agent cannot spawn more sub-agents." };
   const coerce = (t) => {
@@ -128,8 +172,8 @@ export async function parallelSubAgents(a, workdir, opts, runner = runAgent) {
       if (i >= tasks.length) return;
       const task = tasks[i];
       try {
-        const sub = await runner(task, workdir, { ...opts, _depth: (opts._depth || 0) + 1, maxSteps: Math.min(10, opts.maxSteps ?? 10), onStep: undefined });
-        results[i] = { task, summary: sub.summary, done: sub.done, turns: sub.turns };
+        const sub = await runner(task + SUBAGENT_BRIEF, workdir, { ...opts, _depth: (opts._depth || 0) + 1, maxSteps: Math.min(10, opts.maxSteps ?? 10), onStep: undefined });
+        results[i] = { task, summary: sub.summary, findings: extractFindings(sub), done: sub.done, turns: sub.turns };
       } catch (e) {
         results[i] = { task, summary: "", done: false, turns: 0, error: String(e?.message || e) };
       }
@@ -144,8 +188,8 @@ async function delegateSubAgent(a, workdir, opts) {
   if ((opts._depth || 0) >= 1) return { ok: false, error: "MAX_DELEGATE_DEPTH", hint: "A sub-agent cannot spawn more sub-agents." };
   const task = String(a?.task || "").trim();
   if (!task) return { ok: false, error: "NO_TASK" };
-  const sub = await runAgent(task, workdir, { ...opts, _depth: (opts._depth || 0) + 1, maxSteps: Math.min(10, opts.maxSteps ?? 10), onStep: undefined });
-  return { ok: true, summary: sub.summary, turns: sub.turns, done: sub.done };
+  const sub = await runAgent(task + SUBAGENT_BRIEF, workdir, { ...opts, _depth: (opts._depth || 0) + 1, maxSteps: Math.min(10, opts.maxSteps ?? 10), onStep: undefined });
+  return { ok: true, summary: sub.summary, findings: extractFindings(sub), turns: sub.turns, done: sub.done };
 }
 
 // Tools whose effects mutate the repo / run commands — gated by plan-mode until a plan is approved.
