@@ -105,6 +105,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
   // consecutive-identical spin check above misses, e.g. blueprint_mark on 5.2 then 6.1 both STUB_EVIDENCE).
   const failWindow = []; const FAIL_WIN = 14, FAIL_HINT = 3, FAIL_STOP = 7; const failHinted = new Set();
   let denials = 0; const DENIAL_STOP = 6;   // bail out of a denial storm (every edit refused → no progress)
+  let doneTaskNudged = false;   // push back ONCE when done is called with incomplete checklist tasks
   let replanNudged = false;   // Block 5: nudge to re-plan once per failure streak (when a plan exists)
 
   let aborted = false;
@@ -171,6 +172,15 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     }
 
     if (call.tool === "done") {
+      // DONE-GATE (task completeness): if the agent's OWN checklist still has incomplete tasks, push back
+      // ONCE — finish them or update the checklist — rather than declaring done on unfinished work.
+      const openTasks = (tools && Array.isArray(tools.tasks)) ? tools.tasks.filter((t) => t.status !== "completed") : [];
+      if (openTasks.length && !doneTaskNudged) {
+        doneTaskNudged = true; noProgress = 0;
+        messages.push({ role: "user", content: `You called done, but ${openTasks.length} task${openTasks.length === 1 ? " is" : "s are"} still NOT completed on your checklist:\n${openTasks.slice(0, 8).map((t) => "  ☐ " + t.subject).join("\n")}\nDo NOT declare done with unfinished tasks. FINISH each one for real and VERIFY it (a game: see_page/play_levels/autoplay), then mark it completed with task_write — only THEN call done. If a listed task is genuinely already done, mark it completed first.` });
+        trace.push({ step, doneTaskNudge: openTasks.length });
+        continue;
+      }
       summary = call.args?.summary || "";
       // VERIFY-AND-REPAIR gate: before accepting `done`, run the verification (if any). If it fails,
       // feed the failure back and make the model repair instead of finishing — bounded by maxRepairs.

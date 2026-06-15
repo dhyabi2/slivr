@@ -2025,6 +2025,24 @@ console.log("== 54. dual-model routing — creator creates, editor fixes bugs (B
   ok("dual-model: with no editModel set, every turn uses the single model", single.every((m) => m === "CREATOR"));
 }
 
+console.log("== 57. done-gate — push back when done is called with incomplete tasks (premature-done) ==");
+{
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "dn-"));
+  const t = new Tools(d);
+  t.task_write({ tasks: [{ subject: "do X", status: "in_progress" }, { subject: "do Y", status: "pending" }] });
+  let i = 0; const script = [{ tool: "done", args: { summary: "done" } }, { tool: "done", args: { summary: "done2" } }];
+  const provider = { model: "m", chat: async () => { const c = script[i++] || { tool: "done", args: {} }; return { text: JSON.stringify(c), usage: {}, raw: {} }; }, totals: () => ({ model: "m", calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const r = await runLoop({ provider, tools: t, toolMap: {}, systemPrompt: "s", task: "x", maxSteps: 10 });
+  ok("done-gate: a premature done (incomplete tasks) is pushed back ONCE", r.trace.some((x) => x.doneTaskNudge === 2));
+  ok("done-gate: does NOT loop forever — accepts done after the nudge", r.done && r.turns <= 3);
+  const d2 = fs.mkdtempSync(path.join(os.tmpdir(), "dn2-")); const t2 = new Tools(d2);
+  t2.task_write({ tasks: [{ subject: "x", status: "completed" }] });
+  const prov2 = { model: "m", chat: async () => ({ text: JSON.stringify({ tool: "done", args: { summary: "ok" } }), usage: {}, raw: {} }), totals: () => ({ model: "m", calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const r2 = await runLoop({ provider: prov2, tools: t2, toolMap: {}, systemPrompt: "s", task: "x", maxSteps: 10 });
+  ok("done-gate: no nudge when the checklist is fully complete", r2.done && r2.turns === 1 && !r2.trace.some((x) => x.doneTaskNudge));
+  fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(d2, { recursive: true, force: true });
+}
+
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");
 {
   const big = (n) => "x".repeat(n);

@@ -379,6 +379,12 @@ export async function startRepl({ workdir, config, palette } = {}) {
             // not stopped) AND — for a web page — it actually WORKS (no JS/console errors, not blank).
             // Otherwise just show the command; never ask to open an unfinished or broken page.
             let okToOpen = process.stdin.isTTY && res.done && !res.stopped;
+            // not "completely done" if the agent's OWN task checklist still has incomplete items.
+            const openTasks = (session.tools.tasks || []).filter((t) => t.status !== "completed");
+            if (okToOpen && openTasks.length) {
+              okToOpen = false;
+              process.stdout.write(p.yellow(`  ⚠ not opening — ${openTasks.length} task${openTasks.length === 1 ? "" : "s"} still incomplete (the work isn't finished):\n`) + openTasks.slice(0, 4).map((t) => p.dim("    ☐ " + t.subject)).join("\n") + "\n" + p.dim("    ask me to finish, then it'll offer to open.\n"));
+            }
             if (okToOpen && hint.kind === "open" && /\.html?$/i.test(hint.target || "")) {
               try {
                 const chk = session.tools.see_page({ path: hint.target });
