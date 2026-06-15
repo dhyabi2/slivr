@@ -66,7 +66,16 @@ function clip(obj, max = 6000) {
 //   ok:false → the work failed; `feedback` (e.g. test output) is fed back and the model must REPAIR
 //   and call done again, up to `maxRepairs` times (the progress guard). This is what turns slivr from
 //   a blind one-shot agent into a self-verifying one — it never finishes "green" on a failing check.
-export async function runLoop({ provider, tools, toolMap, systemPrompt, task, maxSteps = Infinity, onStep, beforeTool, seedMessages, signal, verify, maxRepairs = 3, bridge }) {
+// The agent may write a short reasoning note before its JSON tool call. Pull that prose out (everything
+// before the tool object) so the UI can show the WHY. "" when the message is JSON-only.
+export function reasoningProse(text) {
+  const s = String(text || "");
+  const i = s.indexOf("{");
+  if (i <= 0) return "";
+  return s.slice(0, i).replace(/```\w*/g, "").replace(/\s+/g, " ").trim();
+}
+
+export async function runLoop({ provider, tools, toolMap, systemPrompt, task, maxSteps = Infinity, onStep, onToolStart, beforeTool, seedMessages, signal, verify, maxRepairs = 3, bridge }) {
   const messages = seedMessages && seedMessages.length
     ? seedMessages
     : [{ role: "system", content: systemPrompt }];
@@ -196,16 +205,21 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
       }
     }
 
-    let result;
+    // Tell the UI what we're about to do (+ the WHY) so it can show a live "running" line before a
+    // possibly slow tool, and time how long it takes.
+    const reasoning = reasoningProse(resp.text);
+    if (onToolStart) { try { onToolStart({ step, tool: call.tool, args: call.args || {}, reasoning }); } catch { /* UI must never break the run */ } }
+    let result; const _t0 = Date.now();
     try { result = await fn(call.args || {}); }
     catch (e) { result = { ok: false, error: e.message }; }
+    const elapsedMs = Date.now() - _t0;
 
     if ((call.tool === "edit_file" || call.tool === "write_file") && result && result.ok === false) {
       editFailures++;
     }
     trace.push({ step, tool: call.tool, ok: result?.ok, tier: result?.tier });
-    if (onStep) onStep({ step, tool: call.tool, args: call.args, result });
-    if (bridge) bridge.emit("result", { tool: call.tool, ok: result?.ok !== false, note: clip(result?.note || result?.error || "", 300) });
+    if (onStep) onStep({ step, tool: call.tool, args: call.args, result, elapsedMs, reasoning });
+    if (bridge) bridge.emit("result", { tool: call.tool, ok: result?.ok !== false, note: clip(result?.note || result?.error || "", 300), ms: elapsedMs });
 
     // MULTIMODAL: when a tool loaded an image/pdf, push a user message whose content is an ARRAY of
     // blocks so the model actually SEES the bytes (provider passes array content through unchanged).

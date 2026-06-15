@@ -72,6 +72,87 @@ export function describeStep({ tool, args = {} }) {
   }
 }
 
+// Format a short elapsed time, e.g. 480ms, 1.2s, 1m03s — so a slow step is visible.
+export function fmtElapsed(ms) {
+  const n = Number(ms || 0);
+  if (n < 1000) return `${Math.round(n)}ms`;
+  if (n < 60000) return `${(n / 1000).toFixed(1)}s`;
+  const m = Math.floor(n / 60000), s = Math.round((n % 60000) / 1000);
+  return `${m}m${String(s).padStart(2, "0")}s`;
+}
+
+// A SEMANTIC one-line summary of a tool result — what actually happened, not the raw dump. Pure +
+// testable. `diff`/`diffs` are the recorded edit diffs (from session.lastDiff/lastDiffs) when relevant.
+export function summarizeResult({ tool, args = {}, result, diff, diffs } = {}, diffStat) {
+  const r = result || {};
+  if (r.denied) return "blocked";
+  // run_command keeps its exit-code summary even on failure (more useful than the raw error text).
+  if (r.ok === false && tool !== "run_command") return clip(String(r.error || "failed").replace(/\s+/g, " "), 80);
+  const ds = (a, b) => (typeof diffStat === "function" ? diffStat(a, b) : { add: 0, del: 0 });
+  switch (tool) {
+    case "edit_file": case "create_file": case "edit_symbol": case "write_file": {
+      if (diff) { const s = ds(diff.before, diff.after); return `+${s.add} -${s.del}${r.tier ? ` (${r.tier})` : ""}`; }
+      return r.tier ? `(${r.tier})` : "written";
+    }
+    case "edit_files": {
+      if (diffs && diffs.length) { let a = 0, d = 0; for (const x of diffs) { const s = ds(x.before, x.after); a += s.add; d += s.del; } return `${diffs.length} file${diffs.length === 1 ? "" : "s"} +${a} -${d}`; }
+      return "applied";
+    }
+    case "run_command": return r.ok ? "exit 0" : `exit ${r.exitCode ?? "?"}`;
+    case "read_file": return r.lines != null ? `${r.lines} lines` : "read";
+    case "list_dir": return Array.isArray(r.entries) ? `${r.entries.length} entries` : "listed";
+    case "grep": return r.matches != null ? `${r.matches} hit${r.matches === 1 ? "" : "s"}` : (Array.isArray(r.hits) ? `${r.hits.length} hits` : "searched");
+    case "glob": return Array.isArray(r.files) ? `${r.files.length} files` : "matched";
+    case "find_symbol": case "find_refs": return Array.isArray(r.results) ? `${r.results.length} found` : (r.note ? clip(r.note, 60) : "");
+    case "repo_map": return r.files != null ? `${r.files} files` : "mapped";
+    case "plan": return `${r.steps?.length ?? args.steps?.length ?? 0} steps`;
+    case "replan": return `replanned (${r.steps?.length ?? 0})`;
+    case "task_write": return r.tasks != null ? `${r.tasks} tasks` : "updated";
+    case "parallel": return `${r.count ?? "?"} subtasks${r.failed ? `, ${r.failed} failed` : ""}`;
+    case "pipeline": return `${r.count ?? "?"} stages${r.failed ? `, ${r.failed} failed` : ""}`;
+    case "see_page": return clip(r.note || "rendered", 70);
+    case "see_asset": return "rendered";
+    case "compare_image": return r.similarity != null ? `${r.similarity}% match` : "compared";
+    case "compare_regions": return r.whole != null ? `${r.whole}% whole · ${r.assetsOff?.length ? r.assetsOff.length + " off" : "all pass"}` : "compared";
+    case "crop_image": return r.width ? `${r.width}×${r.height}` : "cropped";
+    case "style_profile": return Array.isArray(r.palette) ? `${r.palette.length} colors` : "profiled";
+    case "style_check": return r.adherence != null ? `${r.adherence}% in-style` : "checked";
+    case "orbit_scene": return r.responds != null ? `${r.views} views · ${r.responds ? "real 3D" : "flat!"}` : "orbited";
+    case "world_map": return r.coverage ? `${r.coverage.regions} regions` : (r.map ? "map" : "ok");
+    case "play_game": return r.played ? `played${Array.isArray(r.snapshots) ? ` ${r.snapshots.length} snaps` : ""}` : "no contract";
+    case "play_levels": return r.count != null ? `${r.count} levels · ${r.uniqueLevels} distinct${r.clones?.length ? ` · ${r.clones.length} CLONES` : ""}` : "drove levels";
+    case "blueprint_plan": return r.coverage ? `${r.coverage.totalLeaves} leaves` : "planned";
+    case "blueprint_status": case "blueprint_audit": return r.coverage ? `${r.coverage.done}/${r.coverage.totalLeaves} done (${r.coverage.pct}%)` : "";
+    case "blueprint_mark": return r.coverage ? `${r.node?.status || "marked"} · ${r.coverage.done}/${r.coverage.totalLeaves}` : "marked";
+    case "web_search": return Array.isArray(r.results) ? `${r.results.length} results` : "searched";
+    case "web_fetch": return r.title ? clip(r.title, 60) : "fetched";
+    case "git_commit": return "committed";
+    case "git_status": case "git_diff": return clip(r.note || "ok", 60);
+    default: return r.note ? clip(String(r.note).replace(/\s+/g, " "), 70) : "";
+  }
+}
+
+// The agent's brief reasoning, as a dim "why" line (or "" when there's none). Pure.
+export function reasoningLine(text, palette) {
+  const t = clip(String(text || "").trim(), 110);
+  return t ? `  ${palette.dim("› " + t)}` : "";
+}
+
+// The in-progress line shown BEFORE a (possibly slow) tool runs. Pure.
+export function runningLine({ tool, args, palette }) {
+  return `  ${palette.cyan("●")} ${describeStep({ tool, args })} ${palette.dim("…")}`;
+}
+
+// A committed step line WITH a semantic summary and elapsed time. status ∈ 'ok'|'fail'|'skip'.
+export function committedLine({ tool, args, status = "ok", summary = "", elapsedMs, palette }) {
+  const p = palette;
+  const icon = status === "fail" ? p.red("✗") : status === "skip" ? p.yellow("∅") : p.green("✓");
+  const desc = describeStep({ tool, args });
+  const sum = summary ? "  " + p.dim(summary) : "";
+  const time = (elapsedMs != null && elapsedMs >= 800) ? p.dim(" · " + fmtElapsed(elapsedMs)) : "";
+  return `  ${icon} ${desc}${sum}${time}`;
+}
+
 // A single rendered step line for streaming output. status ∈ 'run'|'ok'|'fail'|'skip'.
 export function stepLine({ tool, args, status = "ok", extra = "", palette }) {
   const p = palette;
@@ -80,6 +161,37 @@ export function stepLine({ tool, args, status = "ok", extra = "", palette }) {
   const desc = describeStep({ tool, args });
   const tail = extra ? p.dim(" " + extra) : "";
   return `  ${icon} ${desc}${tail}`;
+}
+
+// A live progress renderer: shows the agent's reasoning (the WHY), a "● doing X …" line BEFORE a tool
+// runs (so a slow step never looks frozen), then OVERWRITES it in place on a TTY with a "✓ X  summary ·
+// 1.2s" committed line. Off a TTY (piped/CI) it degrades to plain committed lines (no cursor tricks).
+//   getSummary(info) -> a semantic one-line summary (caller binds it to session/diff state)
+//   afterCommit(info) -> render any extra block (diffs, sub-results, task checklist) after the line
+// Returns { onToolStart, onStep } to hand straight to runTurn.
+export function makeLiveRenderer({ out, palette, isTTY = false, getSummary = () => "", afterCommit = () => {}, getStatus } = {}) {
+  const p = palette;
+  let pending = false; // a running line is on screen awaiting overwrite (TTY only)
+  const write = (s) => { try { out(s); } catch { /* */ } };
+  return {
+    onToolStart({ tool, args, reasoning }) {
+      if (tool === "done") return;
+      const why = reasoningLine(reasoning, p);
+      if (why) write(why + "\n");
+      if (isTTY) { write(runningLine({ tool, args, palette: p }) + "\n"); pending = true; }
+    },
+    onStep(info) {
+      const { tool, args, result, denied, elapsedMs } = info;
+      if (tool === "done") return;
+      const status = (typeof getStatus === "function" ? getStatus(info) : null)
+        || (denied ? "skip" : result?.ok === false ? "fail" : "ok");
+      let summary = ""; try { summary = getSummary(info) || ""; } catch { /* */ }
+      const line = committedLine({ tool, args, status, summary, elapsedMs, palette: p });
+      if (pending) { write("\x1b[1A\x1b[2K" + line + "\n"); pending = false; } // overwrite the running line
+      else write(line + "\n");
+      try { afterCommit(info); } catch { /* */ }
+    },
+  };
 }
 
 export function formatNumber(n) {

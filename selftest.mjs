@@ -15,7 +15,8 @@ import { resolveConfig, DEFAULTS, parseMaxSteps } from "./src/config.mjs";
 import { isDestructive, needsApproval } from "./src/safety.mjs";
 import { unifiedDiff, diffStat, diffLines } from "./src/diff.mjs";
 import { parseCommand } from "./src/repl.mjs";
-import { describeStep, makePalette, footer, colorEnabled, renderTasks, renderPlan } from "./src/ui.mjs";
+import { describeStep, makePalette, footer, colorEnabled, renderTasks, renderPlan, summarizeResult, fmtElapsed, reasoningLine, committedLine, runningLine, makeLiveRenderer } from "./src/ui.mjs";
+import { reasoningProse } from "./src/loop.mjs";
 import { parallelSubAgents, pipelineSubAgents, planGate, MUTATING_TOOLS, extractFindings } from "./src/agent.mjs";
 
 let pass = 0, fail = 0;
@@ -1679,6 +1680,49 @@ console.log("== 43. play_levels — multi-level: load, distinct (anti-clone), pl
   } else {
     ok("play_levels: (no browser installed — live skipped)", true);
   }
+}
+
+console.log("== 44. live progress UX — reasoning, semantic summaries, in-place commit (Block 24) ==");
+{
+  const pl = makePalette(false);
+  const ds = (a, b) => ({ add: (b.match(/\n/g) || []).length, del: (a.match(/\n/g) || []).length }); // toy diffstat
+
+  // reasoningProse pulls the WHY out of "<prose> {json}"
+  ok("reasoningProse: extracts the note before the tool JSON", reasoningProse('Checking how X is imported first. {"tool":"read_file"}') === "Checking how X is imported first.");
+  ok("reasoningProse: JSON-only message → empty", reasoningProse('{"tool":"read_file","args":{}}') === "");
+
+  // fmtElapsed thresholds
+  ok("fmtElapsed: ms / s / m formatting", fmtElapsed(480) === "480ms" && fmtElapsed(1200) === "1.2s" && fmtElapsed(63000) === "1m03s");
+
+  // summarizeResult — SEMANTIC, per-tool (not raw dumps)
+  ok("summarize edit: +adds/-dels from the diff", summarizeResult({ tool: "edit_file", result: { ok: true }, diff: { before: "a\n", after: "a\nb\nc\n" } }, ds) === "+3 -1");
+  ok("summarize run_command: pass/fail + exit", summarizeResult({ tool: "run_command", result: { ok: true } }) === "exit 0" && summarizeResult({ tool: "run_command", result: { ok: false, exitCode: 2 } }) === "exit 2");
+  ok("summarize grep: hit count", summarizeResult({ tool: "grep", result: { ok: true, matches: 3 } }) === "3 hits");
+  ok("summarize compare_image: % match", summarizeResult({ tool: "compare_image", result: { ok: true, similarity: 92 } }) === "92% match");
+  ok("summarize play_levels: levels + distinct + clones", /3 levels · 3 distinct/.test(summarizeResult({ tool: "play_levels", result: { ok: true, count: 3, uniqueLevels: 3, clones: [] } })));
+  ok("summarize orbit_scene: views + 3D verdict", summarizeResult({ tool: "orbit_scene", result: { ok: true, views: 4, responds: true } }) === "4 views · real 3D");
+  ok("summarize an ERROR is surfaced, never hidden", summarizeResult({ tool: "run_command", result: { ok: false, error: "boom" } }).length > 0);
+
+  // line builders
+  ok("reasoningLine: dim › why (or empty)", reasoningLine("why X", pl).includes("› why X") && reasoningLine("", pl) === "");
+  ok("runningLine: ● action …", runningLine({ tool: "run_command", args: { command: "npm test" }, palette: pl }).includes("●"));
+  ok("committedLine: ✓ + summary + elapsed for slow steps", /✓ run `npm test`  exit 0 · 1\.2s/.test(committedLine({ tool: "run_command", args: { command: "npm test" }, status: "ok", summary: "exit 0", elapsedMs: 1200, palette: pl })));
+  ok("committedLine: hides elapsed for fast steps", !committedLine({ tool: "read_file", args: { path: "a" }, status: "ok", summary: "10 lines", elapsedMs: 50, palette: pl }).includes(" · "));
+
+  // makeLiveRenderer lifecycle: non-TTY prints reasoning + committed line (no cursor codes)
+  const lines = [];
+  const live = makeLiveRenderer({ out: (s) => lines.push(s), palette: pl, isTTY: false, getSummary: () => "10 lines", afterCommit: () => {} });
+  live.onToolStart({ tool: "read_file", args: { path: "a.js" }, reasoning: "need to see a.js" });
+  live.onStep({ tool: "read_file", args: { path: "a.js" }, result: { ok: true }, elapsedMs: 30 });
+  const out = lines.join("");
+  ok("live (non-TTY): shows the WHY and a committed line, no ANSI cursor codes", /need to see a\.js/.test(out) && /✓ read a\.js/.test(out) && !/\x1b\[1A/.test(out));
+
+  // TTY mode overwrites the running line in place (emits the up+clear sequence)
+  const tlines = [];
+  const tlive = makeLiveRenderer({ out: (s) => tlines.push(s), palette: pl, isTTY: true, getSummary: () => "exit 0" });
+  tlive.onToolStart({ tool: "run_command", args: { command: "ls" }, reasoning: "" });
+  tlive.onStep({ tool: "run_command", args: { command: "ls" }, result: { ok: true }, elapsedMs: 10 });
+  ok("live (TTY): prints a running line, then overwrites it in place on commit", /●/.test(tlines.join("")) && /\x1b\[1A\x1b\[2K/.test(tlines.join("")));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

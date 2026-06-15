@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { Session, planGate } from "./agent.mjs";
-import { makePalette, colorEnabled, stepLine, footer, banner, confirm, approvalPrompt, renderPlan, renderTasks, planPrompt, readPlanEdit } from "./ui.mjs";
+import { makePalette, colorEnabled, stepLine, footer, banner, confirm, approvalPrompt, renderPlan, renderTasks, planPrompt, readPlanEdit, makeLiveRenderer, summarizeResult } from "./ui.mjs";
 import { renderDiff, diffStat } from "./diff.mjs";
 import { isDestructive, needsApproval } from "./safety.mjs";
 import { applyEdit as _applyEdit } from "./seal.mjs";
@@ -244,57 +244,42 @@ export async function startRepl({ workdir, config, palette } = {}) {
   };
 
   let lastTasksRender = "";
-  const onStep = ({ tool, args, result, denied }) => {
-    if (tool === "done") return;
-    // Track files the agent created/wrote this turn (any tool) → drives the "▶ run/open it" offer.
+  const w = (s) => process.stdout.write(s);
+  const getStatus = ({ tool, result, denied }) => {
+    if (denied) return "skip";
+    if (tool === "parallel" && result?.ok && result.failed > 0) return "fail"; // partial = not clean
+    return result?.ok === false ? "fail" : "ok";
+  };
+  const getSummary = ({ tool, args, result }) => {
     if (result?.ok) {
       if ((tool === "create_file" || tool === "edit_file") && args?.path) createdThisTurn.push(args.path);
       else if (tool === "edit_symbol" && result.file) createdThisTurn.push(result.file);
       else if (tool === "edit_files" && Array.isArray(result.files)) createdThisTurn.push(...result.files);
     }
-    // A parallel run with any failed/unfinished sub-task is NOT a clean success.
-    const parallelPartial = tool === "parallel" && result?.ok && result.failed > 0;
-    const status = denied ? "skip" : (result?.ok === false || parallelPartial) ? "fail" : "ok";
-    let extra = "";
-    if ((tool === "edit_file" || tool === "create_file" || tool === "edit_symbol") && result?.ok && session.lastDiff) {
-      const { before, after } = session.lastDiff;
-      const stat = diffStat(before, after);
-      extra = `+${stat.add} -${stat.del}` + (result.tier ? ` (${result.tier})` : "");
-    } else if (tool === "edit_files" && result?.ok && session.lastDiffs) {
-      let add = 0, del = 0;
-      for (const d of session.lastDiffs) { const s = diffStat(d.before, d.after); add += s.add; del += s.del; }
-      extra = `${session.lastDiffs.length} file${session.lastDiffs.length === 1 ? "" : "s"} +${add} -${del}`;
-    } else if (tool === "run_command") {
-      extra = result?.ok ? `exit 0` : `exit ${result?.exitCode ?? "?"}`;
-    } else if (tool === "parallel") {
-      extra = result?.ok ? `${result.count} subtasks @${result.cap}${result.failed ? `, ${result.failed} failed` : ""}` : (result?.error || "");
-    } else if (tool === "plan") {
-      extra = result?.ok ? `${result.steps?.length || 0} steps` : "";
-    } else if (result?.ok === false && result?.error) {
-      extra = result.error;
-    }
-    process.stdout.write(stepLine({ tool, args, status, extra, palette: p }) + "\n");
+    const diff = (tool === "edit_file" || tool === "create_file" || tool === "edit_symbol") ? session.lastDiff : undefined;
+    const diffs = tool === "edit_files" ? session.lastDiffs : undefined;
+    return summarizeResult({ tool, args, result, diff, diffs }, diffStat);
+  };
+  const afterCommit = ({ tool, result }) => {
     if (tool === "parallel" && result?.ok) {
-      for (const r of result.results) process.stdout.write(p.dim(`    ↳ ${r.done ? "✓" : r.error ? "✗" : "·"} ${r.task.slice(0, 60)} — ${(r.summary || r.findings || r.error || "").replace(/\s+/g, " ").slice(0, 120)}\n`));
+      for (const r of result.results) w(p.dim(`    ↳ ${r.done ? "✓" : r.error ? "✗" : "·"} ${r.task.slice(0, 60)} — ${(r.summary || r.findings || r.error || "").replace(/\s+/g, " ").slice(0, 120)}\n`));
     }
     if (tool === "task_write" && result?.ok) {
-      const rt = renderTasks(session.tools.tasks, p);
-      if (rt !== lastTasksRender) { process.stdout.write(rt + "\n"); lastTasksRender = rt; }
+      const rt = renderTasks(session.tools.tasks, p); if (rt !== lastTasksRender) { w(rt + "\n"); lastTasksRender = rt; }
     }
-    // For edits, print the compact diff under the step line (skip when we just showed it for approval).
     const showDiff = !needsApproval(tool, approval) && !approveAll;
     if ((tool === "edit_file" || tool === "create_file" || tool === "edit_symbol") && result?.ok && session.lastDiff && showDiff) {
       const { before, after, path: dp } = session.lastDiff;
       const d = renderDiff(before, after, { color: p.enabled, path: dp, context: 2 });
-      if (d) process.stdout.write(d.split("\n").map(l => "    " + l).join("\n") + "\n");
+      if (d) w(d.split("\n").map(l => "    " + l).join("\n") + "\n");
     }
     if (tool === "edit_files" && result?.ok && session.lastDiffs && showDiff) {
-      for (const dd of session.lastDiffs) {
-        const d = renderDiff(dd.before, dd.after, { color: p.enabled, path: dd.path, context: 2 });
-        if (d) process.stdout.write(d.split("\n").map(l => "    " + l).join("\n") + "\n");
-      }
+      for (const dd of session.lastDiffs) { const d = renderDiff(dd.before, dd.after, { color: p.enabled, path: dd.path, context: 2 }); if (d) w(d.split("\n").map(l => "    " + l).join("\n") + "\n"); }
     }
   };
+  const _live = makeLiveRenderer({ out: w, palette: p, isTTY: !!process.stdout.isTTY, getSummary, afterCommit, getStatus });
+  const onStep = _live.onStep;
+  const onToolStart = _live.onToolStart;
 
   // Manual line queue: 'for await (line of rl)' loses buffered piped lines while a turn awaits.
   // We queue lines, process them serially, and pause input during a turn. Works for TTY and pipes.
@@ -350,7 +335,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
       currentAbort = new AbortController();
       let res;
       try {
-        res = await session.runTurn(taskToRun, { onStep, beforeTool, signal: currentAbort.signal });
+        res = await session.runTurn(taskToRun, { onStep, onToolStart, beforeTool, signal: currentAbort.signal });
       } catch (e) {
         process.stdout.write(p.red(`error: ${e.message}\n`));
         currentAbort = null;

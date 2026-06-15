@@ -18,7 +18,7 @@ import { loadConfig, writeStarterConfig, parseMaxSteps } from "../src/config.mjs
 import { Session, planGate } from "../src/agent.mjs";
 import { runBaseline } from "../src/baseline.mjs";
 import { startRepl } from "../src/repl.mjs";
-import { makePalette, colorEnabled, stepLine, footer, renderPlan, renderTasks, planPrompt, readPlanEdit } from "../src/ui.mjs";
+import { makePalette, colorEnabled, stepLine, footer, renderPlan, renderTasks, planPrompt, readPlanEdit, makeLiveRenderer, summarizeResult } from "../src/ui.mjs";
 import { renderDiff, diffStat } from "../src/diff.mjs";
 import { runHintLine } from "../src/run_hint.mjs";
 import { detectCommands } from "../src/project.mjs";
@@ -235,45 +235,37 @@ async function runOneShot(task, dir, config, palette, { auto, plan, verify, repa
 
   let lastTasksRender = "";
   const createdThisTurn = [];
-  const onStep = ({ tool, args, result, denied }) => {
-    if (tool === "done") return;
+  const w = (s) => process.stderr.write(s);
+  // Semantic per-step summary (binds session diff state into the pure summarizer).
+  const getSummary = ({ tool, args, result }) => {
     if (tool === "create_file" && result?.ok && args?.path) createdThisTurn.push(args.path);
-    const status = denied ? "skip" : result?.ok === false ? "fail" : "ok";
-    let extra = "";
-    if ((tool === "edit_file" || tool === "create_file" || tool === "edit_symbol") && result?.ok && session.lastDiff) {
-      const s = diffStat(session.lastDiff.before, session.lastDiff.after);
-      extra = `+${s.add} -${s.del}` + (result.tier ? ` (${result.tier})` : "");
-    } else if (tool === "edit_files" && result?.ok && session.lastDiffs) {
-      let add = 0, del = 0;
-      for (const d of session.lastDiffs) { const s = diffStat(d.before, d.after); add += s.add; del += s.del; }
-      extra = `${session.lastDiffs.length} file${session.lastDiffs.length === 1 ? "" : "s"} +${add} -${del}`;
-    } else if (tool === "run_command") extra = result?.ok ? "exit 0" : `exit ${result?.exitCode ?? "?"}`;
-    else if (tool === "parallel") extra = result?.ok ? `${result.count} subtasks @${result.cap}${result.failed ? `, ${result.failed} failed` : ""}` : (result?.error || "");
-    else if (tool === "plan") extra = result?.ok ? `${result.steps?.length || 0} steps` : "";
-    process.stderr.write(stepLine({ tool, args, status, extra, palette: p }) + "\n");
+    const diff = (tool === "edit_file" || tool === "create_file" || tool === "edit_symbol") ? session.lastDiff : undefined;
+    const diffs = tool === "edit_files" ? session.lastDiffs : undefined;
+    return summarizeResult({ tool, args, result, diff, diffs }, diffStat);
+  };
+  // Detailed blocks printed AFTER the committed line (diffs, sub-results, the live task checklist).
+  const afterCommit = ({ tool, result }) => {
     if ((tool === "edit_file" || tool === "create_file" || tool === "edit_symbol") && result?.ok && session.lastDiff) {
       const d = renderDiff(session.lastDiff.before, session.lastDiff.after, { color: p.enabled, path: session.lastDiff.path });
-      if (d) process.stderr.write(d.split("\n").map(l => "    " + l).join("\n") + "\n");
+      if (d) w(d.split("\n").map(l => "    " + l).join("\n") + "\n");
     }
     if (tool === "edit_files" && result?.ok && session.lastDiffs) {
-      for (const dd of session.lastDiffs) {
-        const d = renderDiff(dd.before, dd.after, { color: p.enabled, path: dd.path });
-        if (d) process.stderr.write(d.split("\n").map(l => "    " + l).join("\n") + "\n");
-      }
+      for (const dd of session.lastDiffs) { const d = renderDiff(dd.before, dd.after, { color: p.enabled, path: dd.path }); if (d) w(d.split("\n").map(l => "    " + l).join("\n") + "\n"); }
     }
     if (tool === "parallel" && result?.ok) {
-      for (const r of result.results) process.stderr.write(p.dim(`    ↳ ${r.done ? "✓" : "·"} ${r.task.slice(0, 60)} — ${(r.summary || r.findings || r.error || "").replace(/\s+/g, " ").slice(0, 120)}\n`));
+      for (const r of result.results) w(p.dim(`    ↳ ${r.done ? "✓" : "·"} ${r.task.slice(0, 60)} — ${(r.summary || r.findings || r.error || "").replace(/\s+/g, " ").slice(0, 120)}\n`));
     }
-    // live checklist: re-render when task_write changes it.
     if (tool === "task_write" && result?.ok) {
-      const r = renderTasks(session.tools.tasks, p);
-      if (r !== lastTasksRender) { process.stderr.write(r + "\n"); lastTasksRender = r; }
+      const r = renderTasks(session.tools.tasks, p); if (r !== lastTasksRender) { w(r + "\n"); lastTasksRender = r; }
     }
   };
+  const live = makeLiveRenderer({ out: w, palette: p, isTTY: !!process.stderr.isTTY, getSummary, afterCommit });
+  const onStep = live.onStep;
+  const onToolStart = live.onToolStart;
 
   let res;
   try {
-    res = await session.runTurn(task, { onStep, beforeTool, verify: verifyFn, maxRepairs });
+    res = await session.runTurn(task, { onStep, onToolStart, beforeTool, verify: verifyFn, maxRepairs });
   } finally {
     session.closeMCP();
   }
