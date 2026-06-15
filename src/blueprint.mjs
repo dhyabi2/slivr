@@ -43,6 +43,7 @@ export function parseTree(goal, tree) {
         title: String((raw && raw.title) || "").trim() || "(untitled)",
         kind,
         leafType: (raw && raw.leafType) ? String(raw.leafType) : (kind === "leaf" ? "part" : null),
+        origin: (raw && (raw.origin === "pictured" || raw.origin === "world")) ? raw.origin : null,
         status: STATUSES.includes(raw && raw.status) ? raw.status : "uncovered",
         evidence: (raw && raw.evidence) ? String(raw.evidence) : "",
         decision: (raw && raw.decision) ? String(raw.decision) : "",
@@ -65,7 +66,12 @@ export function coverage(model) {
   const by = { uncovered: 0, in_progress: 0, done: 0, blocked: 0 };
   for (const n of leaves) by[n.status] = (by[n.status] || 0) + 1;
   const total = leaves.length;
-  return { totalLeaves: total, ...by, totalNodes: Object.keys(model.nodes).length, pct: total ? Math.round((by.done / total) * 100) : 0 };
+  const pictured = leaves.filter(n => n.origin === "pictured");
+  const world = leaves.filter(n => n.origin === "world");
+  const byOrigin = (pictured.length || world.length)
+    ? { pictured: { total: pictured.length, done: pictured.filter(n => n.status === "done").length }, world: { total: world.length, done: world.filter(n => n.status === "done").length } }
+    : null;
+  return { totalLeaves: total, ...by, totalNodes: Object.keys(model.nodes).length, pct: total ? Math.round((by.done / total) * 100) : 0, ...(byOrigin ? { byOrigin } : {}) };
 }
 
 // Depth-first list of the next uncovered/in_progress leaves — the agent's "what's left" pointer.
@@ -93,7 +99,8 @@ export function renderTree(model, { max = 200 } = {}) {
       const n = model.nodes[id];
       if (!n) continue;
       const g = GLYPH[n.status] || "☐";
-      const tag = n.kind === "leaf" && n.leafType && n.leafType !== "part" ? ` [${n.leafType}]` : "";
+      const otag = n.kind === "leaf" && n.origin ? (n.origin === "world" ? " ✦world" : " ◈pic") : "";
+      const tag = (n.kind === "leaf" && n.leafType && n.leafType !== "part" ? ` [${n.leafType}]` : "") + otag;
       const ev = n.kind === "leaf" && n.status === "done" && n.evidence ? `  → ${n.evidence}` : "";
       lines.push(`${"  ".repeat(depth)}${g} ${id} ${n.title}${tag}${ev}`);
       if (n.children && n.children.length) walk(n.children, depth + 1);

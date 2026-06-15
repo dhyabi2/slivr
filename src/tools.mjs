@@ -22,7 +22,7 @@ import { detectStyle, styleBrief } from "./style.mjs";
 import { playGame } from "./gameharness.mjs";
 import { renderAsset } from "./asset.mjs";
 import * as bp from "./blueprint.mjs";
-import { compareImages, cropImage, compareRegions } from "./match.mjs";
+import { compareImages, cropImage, compareRegions, styleProfile, styleAdherence, hexColor } from "./match.mjs";
 
 // Re-indent a replacement block to a target base indent (strip its own common indent, prepend target).
 function reindentBlock(block, indent) {
@@ -517,7 +517,7 @@ export class Tools {
         const id = prefix ? `${prefix}.${idx}` : `${idx}`;
         const kids = Array.isArray(raw.children) ? raw.children : [];
         const kind = kids.length ? "group" : (raw.kind === "group" ? "group" : "leaf");
-        model.nodes[id] = { id, parent: par, title: String(raw.title || "").trim() || "(untitled)", kind, leafType: raw.leafType ? String(raw.leafType) : (kind === "leaf" ? "part" : null), status: "uncovered", evidence: "", decision: raw.decision ? String(raw.decision) : "" };
+        model.nodes[id] = { id, parent: par, title: String(raw.title || "").trim() || "(untitled)", kind, leafType: raw.leafType ? String(raw.leafType) : (kind === "leaf" ? "part" : null), origin: (raw.origin === "pictured" || raw.origin === "world") ? raw.origin : null, status: "uncovered", evidence: "", decision: raw.decision ? String(raw.decision) : "" };
         ids.push(id);
         model.nodes[id].children = walk(kids, id, id, 0);
       });
@@ -631,6 +631,68 @@ export class Tools {
       const out = { ok: true, whole: r.whole, regions: r.regions, assetsOff: off.map((x) => x.label), allPass: pass,
         note: `whole scene ${r.whole}% · ${r.regions.length - off.length}/${r.regions.length} assets ≥90%. ${pass ? "All assets and the whole scene pass." : `Fix these assets next (worst first): ${worst}. A high whole-scene score can still hide a wrong asset — chase the per-asset reds.`}` };
       if (r.dataUrl) out.multimodal = { kind: "image", path: "scorecard", mime: "image/png", dataUrl: r.dataUrl };
+      return out;
+    } finally { if (tmpShot) { try { fs.unlinkSync(tmpShot); } catch { /* */ } } }
+  }
+
+  // style_profile (Block 20 — Beyond the Frame): the picture is only a BASELINE for a bigger world. Derive
+  // a STYLE ANCHOR from it — dominant palette + brightness/saturation/contrast — and persist it to
+  // .slivr/style-anchor.json, so assets you INVENT beyond the frame (not in the picture) can be checked for
+  // consistency. Call this once on the reference before extrapolating the world.
+  style_profile({ target } = {}) {
+    if (!target) return { ok: false, error: "NO_TARGET", hint: "pass target: the reference image to derive the style anchor from" };
+    const readable = (rel) => { try { const a = this._resolve(rel); if (fs.existsSync(a)) return a; } catch { /* */ } if (path.isAbsolute(rel) && fs.existsSync(rel)) return rel; return null; };
+    const targetAbs = readable(target);
+    if (!targetAbs) return { ok: false, error: "TARGET_NOT_FOUND", path: target };
+    const r = styleProfile(targetAbs);
+    if (!r.ok) return { ok: false, error: r.error, hint: "couldn't profile — is Chrome installed and target a real image?" };
+    try {
+      const p = path.join(this.workdir, ".slivr", "style-anchor.json");
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, JSON.stringify(r.profile, null, 2));
+    } catch { /* best effort */ }
+    const hexes = r.profile.palette.map((c) => hexColor(c.rgb));
+    return { ok: true, palette: hexes, brightness: r.profile.brightness, saturation: r.profile.saturation, contrast: r.profile.contrast, saved: ".slivr/style-anchor.json", note: `Style anchor saved: palette ${hexes.join(" ")}. When you build assets NOT in the picture, keep them in this family and verify with style_check.` };
+  }
+
+  // style_check (Block 20): verify an INVENTED asset (not in the picture, so it can't be pixel-diffed) is
+  // consistent with the picture's world — a deterministic palette/tone ADHERENCE score 0–100 plus a
+  // composite (the asset beside the anchor palette) you LOOK at to judge "same game/world?". Pass
+  // candidate (an image) or render (an html/page to screenshot); anchor comes from style_profile (or pass
+  // target to profile on the fly).
+  style_check({ candidate, render, target } = {}) {
+    if (!candidate && !render) return { ok: false, error: "NO_CANDIDATE", hint: "pass candidate: an image path, OR render: an html/page path" };
+    const readable = (rel) => { try { const a = this._resolve(rel); if (fs.existsSync(a)) return a; } catch { /* */ } if (path.isAbsolute(rel) && fs.existsSync(rel)) return rel; return null; };
+    // resolve the anchor: explicit target → profile it; else the persisted anchor.
+    let anchor = null;
+    if (target) {
+      const tAbs = readable(target);
+      if (!tAbs) return { ok: false, error: "TARGET_NOT_FOUND", path: target };
+      const tp = styleProfile(tAbs);
+      if (!tp.ok) return { ok: false, error: tp.error };
+      anchor = tp.profile;
+    } else {
+      try { anchor = JSON.parse(fs.readFileSync(path.join(this.workdir, ".slivr", "style-anchor.json"), "utf8")); }
+      catch { return { ok: false, error: "NO_ANCHOR", hint: "call style_profile on the reference first, or pass target" }; }
+    }
+    let assetAbs, tmpShot = null;
+    if (render) {
+      let pageAbs; try { pageAbs = this._resolve(render); } catch (e) { return { ok: false, error: e.message }; }
+      if (!fs.existsSync(pageAbs)) return { ok: false, error: "RENDER_NOT_FOUND", path: render };
+      tmpShot = path.join(os.tmpdir(), `slivr-style-${process.pid}-${Date.now()}.png`);
+      const shot = renderShot(pageAbs, tmpShot, { width: 600, height: 600 });
+      if (!shot.ok) return { ok: false, error: "RENDER_SCREENSHOT_FAILED", hint: shot.error };
+      assetAbs = tmpShot;
+    } else {
+      assetAbs = readable(candidate);
+      if (!assetAbs) return { ok: false, error: "CANDIDATE_NOT_FOUND", path: candidate };
+    }
+    try {
+      const r = styleAdherence(anchor, assetAbs);
+      if (!r.ok) return { ok: false, error: r.error };
+      const verdict = r.adherence >= 85 ? "consistent with the world" : r.adherence >= 70 ? "borderline — nudge its palette toward the anchor" : "off-style — rework its colours/tone to match the picture's world";
+      const out = { ok: true, adherence: r.adherence, palette: r.palette, tone: r.tone, brightnessDelta: r.brightnessDelta, saturationDelta: r.saturationDelta, contrastDelta: r.contrastDelta, note: `${r.adherence}% style-consistent with the picture's world — ${verdict}. Look at the composite: this asset's palette should live in the same family as the anchor.` };
+      if (r.dataUrl) out.multimodal = { kind: "image", path: "style", mime: "image/png", dataUrl: r.dataUrl };
       return out;
     } finally { if (tmpShot) { try { fs.unlinkSync(tmpShot); } catch { /* */ } } }
   }

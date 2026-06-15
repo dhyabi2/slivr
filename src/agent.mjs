@@ -53,6 +53,8 @@ wastes the turn). The JSON object looks like:
   {"tool":"compare_image","args":{"target":"reference.png","render":"index.html"}}
   {"tool":"crop_image","args":{"src":"reference.png","x":0.5,"y":0.2,"w":0.25,"h":0.3,"out":"assets/ref-tower.png"}}
   {"tool":"compare_regions","args":{"target":"reference.png","render":"index.html","regions":[{"label":"tower","x":0.5,"y":0.2,"w":0.25,"h":0.3},{"label":"park","x":0.1,"y":0.6,"w":0.3,"h":0.2}]}}
+  {"tool":"style_profile","args":{"target":"reference.png"}}
+  {"tool":"style_check","args":{"render":"enemy-preview.html"}}
   {"tool":"plan","args":{"steps":["step 1","step 2","step 3"]}}
   {"tool":"replan","args":{"reason":"step 2 failed because X","steps":["revised remaining step","next step"]}}
   {"tool":"task_write","args":{"tasks":[{"id":"1","subject":"do X","status":"in_progress"},{"subject":"then Y","status":"pending"}]}}
@@ -231,6 +233,22 @@ MATCH A REFERENCE PICTURE (when the user gives a target image to recreate — a 
     AND the whole scene ≥90 (allPass). Fix layout/position first, then per-asset detail; don't redo assets
     already green. This is how you faithfully reproduce a 75-asset picture instead of an averaged blur.
 
+  THE PICTURE IS A BASELINE, NOT THE WHOLE GAME (extrapolate beyond the frame): a reference picture is one
+  window into a much bigger world. The real game needs content the frame never shows — off-screen areas,
+  other levels/rooms, enemies, items, menus, weather, day/night, win/lose screens — all implied by the GAME
+  IDEA. Don't ship only what's in the picture. Two kinds of blueprint leaf:
+  - origin:"pictured" — shown in the reference. Verify by FIDELITY: compare_regions against its crop.
+  - origin:"world"    — invented beyond the frame. It is NOT in the picture, so you can't pixel-diff it;
+                        verify by STYLE-CONSISTENCY instead.
+  Workflow: (1) style_profile {target:reference} once to lock the world's STYLE ANCHOR (palette + tone) to
+  .slivr/style-anchor.json. (2) From the game idea, blueprint_plan the FULL world — mark pictured leaves
+  origin:"pictured" and the extrapolated ones origin:"world" — so coverage tracks both sets. (3) Build the
+  pictured parts to match the picture (compare_regions) and INVENT the world parts in the SAME style: keep
+  their palette/lighting in the anchor's family, and verify each with style_check {render or candidate}
+  (a 0–100 adherence score + a composite you look at). Rework anything under ~85. (4) Finish only when BOTH
+  are complete: the pictured parts are faithful AND the invented world is present and style-coherent. The
+  picture anchors the look; the game idea defines how much bigger the world must be — build that whole world.
+
 DRAFT-FIRST (important for HARD tasks): do NOT spend all your turns planning or reasoning. Commit a
   SIMPLE, COMPLETE, runnable solution EARLY — even a naive/brute-force one — then improve it. Always
   have working code written before you run out of steps; a correct-but-slow solution beats none.
@@ -277,6 +295,8 @@ export function makeAgent(workdir, opts = {}) {
     compare_image: (a) => tools.compare_image(a),
     crop_image: (a) => tools.crop_image(a),
     compare_regions: (a) => tools.compare_regions(a),
+    style_profile: (a) => tools.style_profile(a),
+    style_check: (a) => tools.style_check(a),
     delegate: (a) => delegateSubAgent(a, workdir, opts),
     parallel: (a) => parallelSubAgents(a, workdir, opts),
     pipeline: (a) => pipelineSubAgents(a, workdir, opts),
@@ -306,7 +326,7 @@ const SUBAGENT_BRIEF =
 // READ/INFORMATIONAL tools (not edits/commits), de-noised and length-capped.
 const FINDING_TOOLS = new Set([
   "read_file", "list_dir", "grep", "glob", "repo_map", "project_info", "house_style", "find_symbol", "find_refs", "run_command", "web_search",
-  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "compare_image", "compare_regions", "crop_image", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
+  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "compare_image", "compare_regions", "crop_image", "style_profile", "style_check", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
 ]);
 export function extractFindings(sub, maxTotal = 2000) {
   const out = [];
@@ -579,6 +599,8 @@ export class Session {
       compare_image: (a) => t.compare_image(a),
       crop_image: (a) => t.crop_image(a),
       compare_regions: (a) => t.compare_regions(a),
+      style_profile: (a) => t.style_profile(a),
+      style_check: (a) => t.style_check(a),
       delegate: (a) => delegateSubAgent(a, this.workdir, this.opts),
       parallel: (a) => parallelSubAgents(a, this.workdir, this.opts),
       pipeline: (a) => pipelineSubAgents(a, this.workdir, this.opts),

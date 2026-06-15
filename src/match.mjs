@@ -210,3 +210,101 @@ export function compareRegions(targetAbs, candAbs, regions, opts = {}) {
   } catch (e) { return { ok: false, error: String(e.message || e) }; }
   finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* */ } }
 }
+
+// --- Block 20 (Beyond the Frame): derive a STYLE BASELINE from the picture, then score how well a NEW,
+// invented asset (not in the picture, so it can't be pixel-diffed) ADHERES to that style. -------------
+
+// Deterministic in-Chrome style extractor: a dominant colour palette (3D RGB histogram, fixed bins → no
+// nondeterministic clustering) + average brightness/saturation (HSL) + contrast (stddev of lightness).
+function profileHtml(srcUrl) {
+  return `<!doctype html><html><body style="margin:0"><img id="s" src="${srcUrl}"><pre id="__slivr_prof" style="display:none"></pre>
+<script>
+function out(o){document.getElementById('__slivr_prof').textContent=JSON.stringify(o);}
+function rgb2hsl(r,g,b){r/=255;g/=255;b/=255;var mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2,s=0,h=0,d=mx-mn;
+ if(d){s=l>0.5?d/(2-mx-mn):d/(mx+mn);}return {h:h,s:s,l:l};}
+window.addEventListener('load',function(){setTimeout(function(){try{
+ var s=document.getElementById('s');if(!s.naturalWidth){out({error:'SRC_LOAD_FAILED'});return;}
+ var W=Math.min(160,s.naturalWidth),H=Math.round(W*(s.naturalHeight/s.naturalWidth))||W;
+ var cv=document.createElement('canvas');cv.width=W;cv.height=H;var x=cv.getContext('2d');x.drawImage(s,0,0,W,H);
+ var d=x.getImageData(0,0,W,H).data;
+ var bins={},sumL=0,sumS=0,Ls=[],n=0;
+ for(var i=0;i<d.length;i+=4){var r=d[i],g=d[i+1],b=d[i+2],a=d[i+3];if(a<8)continue;
+   var key=((r>>5)<<6)|((g>>5)<<3)|(b>>5);if(!bins[key])bins[key]={r:0,g:0,b:0,c:0};
+   var bn=bins[key];bn.r+=r;bn.g+=g;bn.b+=b;bn.c++;
+   var hsl=rgb2hsl(r,g,b);sumL+=hsl.l;sumS+=hsl.s;Ls.push(hsl.l);n++;}
+ var arr=Object.keys(bins).map(function(k){var bn=bins[k];return {r:Math.round(bn.r/bn.c),g:Math.round(bn.g/bn.c),b:Math.round(bn.b/bn.c),c:bn.c};});
+ arr.sort(function(a,b){return b.c-a.c || (a.r+a.g+a.b)-(b.r+b.g+b.b);});
+ var top=arr.slice(0,6).map(function(o){return {rgb:[o.r,o.g,o.b],freq:Math.round(o.c/n*100)/100};});
+ var meanL=n?sumL/n:0,varL=0;for(var j=0;j<Ls.length;j++)varL+=(Ls[j]-meanL)*(Ls[j]-meanL);
+ out({ok:true,palette:top,brightness:Math.round(meanL*100)/100,saturation:Math.round((n?sumS/n:0)*100)/100,contrast:Math.round(Math.sqrt(Ls.length?varL/Ls.length:0)*100)/100});
+}catch(e){out({error:String(e&&e.message||e)});}},60);});
+</script></body></html>`;
+}
+
+// Extract a style profile { palette:[{rgb,freq}], brightness, saturation, contrast } from an image.
+export function styleProfile(imgAbs) {
+  if (!fs.existsSync(imgAbs)) return { ok: false, error: "IMG_NOT_FOUND" };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "slivr-prof-"));
+  const file = path.join(dir, "profile.html");
+  try {
+    fs.writeFileSync(file, profileHtml(dataUrl(imgAbs)));
+    const dom = renderDom(file);
+    if (!dom.ok) return { ok: false, error: dom.error };
+    const m = dom.dom.match(/<pre id="__slivr_prof"[^>]*>([\s\S]*?)<\/pre>/);
+    let res = null;
+    if (m) { try { res = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")); } catch { /* */ } }
+    if (!res || res.error) return { ok: false, error: (res && res.error) || "PROFILE_PARSE_FAILED" };
+    return { ok: true, profile: res };
+  } catch (e) { return { ok: false, error: String(e.message || e) }; }
+  finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* */ } }
+}
+
+function hex(rgb) { return "#" + rgb.map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0")).join(""); }
+
+// Score how well an asset's profile adheres to an anchor profile. palette: each asset colour's nearest
+// anchor colour (weighted by the asset colour's frequency) → 0–100; plus brightness/sat/contrast deltas.
+function adherenceScore(anchor, asset) {
+  const dist = (a, b) => Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) / 441.673;
+  let wsum = 0, dsum = 0;
+  for (const ac of asset.palette) {
+    const nearest = Math.min(...anchor.palette.map((rc) => dist(ac.rgb, rc.rgb)));
+    const w = ac.freq || (1 / asset.palette.length);
+    wsum += w; dsum += w * nearest;
+  }
+  const palette = Math.max(0, Math.round((1 - (wsum ? dsum / wsum : 1)) * 100));
+  const bDelta = Math.abs((anchor.brightness || 0) - (asset.brightness || 0));
+  const sDelta = Math.abs((anchor.saturation || 0) - (asset.saturation || 0));
+  const cDelta = Math.abs((anchor.contrast || 0) - (asset.contrast || 0));
+  const tone = Math.max(0, Math.round((1 - (bDelta + sDelta + cDelta) / 3) * 100));
+  const adherence = Math.round(palette * 0.7 + tone * 0.3);
+  return { adherence, palette, tone, brightnessDelta: Math.round(bDelta * 100) / 100, saturationDelta: Math.round(sDelta * 100) / 100, contrastDelta: Math.round(cDelta * 100) / 100 };
+}
+
+// A composite the agent SEES: the invented asset beside the anchor palette + the asset's own palette, so
+// the multimodal eye can judge "do these look like the same game/world?" (the qualitative half).
+function swatchHtml(assetUrl, anchorPal, assetPal) {
+  const row = (title, pal) => `<div style="margin:6px 0"><div style="color:#bbb;font:11px monospace">${title}</div><div style="display:flex">${pal.map((p) => `<div style="width:34px;height:34px;background:${hex(p.rgb)};border:1px solid #222" title="${hex(p.rgb)}"></div>`).join("")}</div></div>`;
+  return `<!doctype html><html><body style="margin:0;background:#141414;padding:10px;font:12px monospace;color:#ddd;display:flex;gap:14px;align-items:flex-start">
+<div><div style="color:#bbb">INVENTED ASSET</div><img src="${assetUrl}" style="max-width:240px;max-height:240px;border:1px solid #333;background:#000"></div>
+<div>${row("ANCHOR PALETTE (the picture's world)", anchorPal)}${row("THIS ASSET'S PALETTE", assetPal)}<div style="color:#888;margin-top:8px">Same world? colours should live in the same family.</div></div>
+</body></html>`;
+}
+
+// Verify an invented asset against a style anchor: deterministic adherence score + a composite for the eye.
+export function styleAdherence(anchorProfile, assetAbs) {
+  const ap = styleProfile(assetAbs);
+  if (!ap.ok) return { ok: false, error: ap.error };
+  const score = adherenceScore(anchorProfile, ap.profile);
+  let dataUrlOut = null;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "slivr-swatch-"));
+  const file = path.join(dir, "swatch.html");
+  const png = path.join(dir, "swatch.png");
+  try {
+    fs.writeFileSync(file, swatchHtml(dataUrl(assetAbs), anchorProfile.palette, ap.profile.palette));
+    const shot = renderShot(file, png, { width: 560, height: 320 });
+    if (shot.ok) { try { dataUrlOut = "data:image/png;base64," + fs.readFileSync(png).toString("base64"); } catch { /* */ } }
+  } catch { /* */ } finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* */ } }
+  return { ok: true, ...score, assetProfile: ap.profile, dataUrl: dataUrlOut };
+}
+
+export { hex as hexColor };
