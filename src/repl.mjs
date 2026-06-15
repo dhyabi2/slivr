@@ -375,10 +375,21 @@ export async function startRepl({ workdir, config, palette } = {}) {
           const hint = detectRunHint(workdir, createdThisTurn);
           if (hint) {
             process.stdout.write("\n" + p.cyan(`▶ run ${hint.what} with:  ${hint.cmd}`) + "\n");
-            // Only OFFER to open/demonstrate on a CLEAN finish. If the turn STOPPED with errors, the
-            // artifact is likely broken — show the command but don't auto-open a broken page.
-            if (process.stdin.isTTY && res.done && !res.stopped) await demonstrate(hint);
-            else if (res.stopped) process.stdout.write(p.dim("  (the turn stopped before finishing — the page is likely incomplete/broken; fix the errors above first)\n"));
+            // Only OFFER to open it when the work is COMPLETELY done: the turn finished cleanly (done,
+            // not stopped) AND — for a web page — it actually WORKS (no JS/console errors, not blank).
+            // Otherwise just show the command; never ask to open an unfinished or broken page.
+            let okToOpen = process.stdin.isTTY && res.done && !res.stopped;
+            if (okToOpen && hint.kind === "open" && /\.html?$/i.test(hint.target || "")) {
+              try {
+                const chk = session.tools.see_page({ path: hint.target });
+                if (chk && chk.broken) {
+                  okToOpen = false;
+                  process.stdout.write(p.yellow(`  ⚠ not opening — ${hint.target} has errors (it won't display right):\n`) + (chk.errors || []).slice(0, 4).map((e) => p.dim("    - " + e)).join("\n") + "\n" + p.dim("    fix these, then it'll offer to open.\n"));
+                }
+              } catch { /* if the check itself fails, fall back to offering */ }
+            }
+            if (okToOpen) await demonstrate(hint);
+            else if (res.stopped) process.stdout.write(p.dim("  (the turn stopped before finishing — the page is likely incomplete; fix the errors above first)\n"));
           }
         }
       }
