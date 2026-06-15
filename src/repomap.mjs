@@ -9,7 +9,9 @@
 // symbols); findSymbol() is the on-demand detail (exact definition file:line + signature).
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 
 // Directories never worth indexing.
 const IGNORE_DIRS = new Set([
@@ -103,33 +105,71 @@ function* walk(dir, root, { maxFiles }) {
   }
 }
 
-// Build the index over `workdir`. Returns { files, symbols, byName, root }.
+// --- persistent + incremental cache (Block 12) -------------------------------
+// The symbol index is "the codebase's memory". Instead of re-parsing every file on every run, we
+// persist a per-file cache to disk keyed by the repo path; on the next run we only re-parse files
+// whose mtime/size changed, drop deleted ones, and reuse the rest. This makes re-indexing an
+// arbitrarily-large repo near-free — no LLM calls, no embeddings, no vector DB.
+const CACHE_VERSION = 2;
+function cacheFileFor(root, cacheDir) {
+  const dir = cacheDir || path.join(os.homedir(), ".slivr", "index");
+  const key = crypto.createHash("sha1").update(root).digest("hex").slice(0, 16);
+  return { dir, file: path.join(dir, `${key}.json`) };
+}
+function loadCache(file) {
+  try { const c = JSON.parse(fs.readFileSync(file, "utf8")); if (c && c.v === CACHE_VERSION && c.files) return c; } catch { /* miss */ }
+  return { v: CACHE_VERSION, files: {} };
+}
+
+// Build the index over `workdir`. Returns { root, files, symbols, byName, allFiles, stats }.
 //   symbols: [{ name, kind, file (relative), line, signature }]
 //   byName:  Map<name, symbol[]>
-export function buildSymbolIndex(workdir, { maxFiles = 5000, maxBytes = 600_000 } = {}) {
+//   stats:   { total, parsed, reused, removed } — how much work the incremental update saved.
+// opts: { maxFiles, maxBytes, persist (default true), cacheDir }.
+export function buildSymbolIndex(workdir, { maxFiles = 50_000, maxBytes = 600_000, persist = true, cacheDir } = {}) {
   const root = path.resolve(workdir);
-  const symbols = [];
-  const files = [];
+  const { dir, file: cacheFile } = cacheFileFor(root, cacheDir);
+  const cache = persist ? loadCache(cacheFile) : { v: CACHE_VERSION, files: {} };
+
+  const next = {};                       // rel -> { mtime, size, syms }
   const allFiles = [];
+  let parsed = 0, reused = 0;
   for (const abs of walk(root, root, { maxFiles })) {
     let stat;
     try { stat = fs.statSync(abs); } catch { continue; }
     if (stat.size > maxBytes) continue;
-    let text;
-    try { text = fs.readFileSync(abs, "utf8"); } catch { continue; }
     const rel = path.relative(root, abs);
     allFiles.push(rel);
-    const lang = LANG_BY_EXT[path.extname(abs)];
-    const syms = extractSymbols(text, lang).map(s => ({ ...s, file: rel }));
+    const prev = cache.files[rel];
+    if (prev && prev.mtime === stat.mtimeMs && prev.size === stat.size) {
+      next[rel] = prev; reused++;        // unchanged → reuse cached symbols (no re-parse)
+      continue;
+    }
+    let text;
+    try { text = fs.readFileSync(abs, "utf8"); } catch { continue; }
+    const syms = extractSymbols(text, LANG_BY_EXT[path.extname(abs)]);
+    next[rel] = { mtime: stat.mtimeMs, size: stat.size, syms };
+    parsed++;
+  }
+  const removed = Object.keys(cache.files).filter(r => !(r in next)).length;
+
+  if (persist) {
+    try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(cacheFile, JSON.stringify({ v: CACHE_VERSION, root, files: next })); } catch { /* cache is best-effort */ }
+  }
+
+  // Materialize the in-memory index from the (mostly cached) per-file symbol lists.
+  const symbols = [], files = [], byName = new Map();
+  for (const rel of allFiles) {
+    const syms = (next[rel] && next[rel].syms) || [];
     if (syms.length) files.push({ file: rel, count: syms.length });
-    for (const s of syms) symbols.push(s);
+    for (const s of syms) {
+      const sym = { ...s, file: rel };
+      symbols.push(sym);
+      if (!byName.has(s.name)) byName.set(s.name, []);
+      byName.get(s.name).push(sym);
+    }
   }
-  const byName = new Map();
-  for (const s of symbols) {
-    if (!byName.has(s.name)) byName.set(s.name, []);
-    byName.get(s.name).push(s);
-  }
-  return { root, files, symbols, byName, allFiles };
+  return { root, files, symbols, byName, allFiles, stats: { total: allFiles.length, parsed, reused, removed } };
 }
 
 export function langOf(file) { return LANG_BY_EXT[path.extname(file)] || null; }

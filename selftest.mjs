@@ -1217,6 +1217,41 @@ console.log("== 31. see_page — the agent's eye (Block 11) ==");
   }
 }
 
+console.log("== 32. persistent + incremental codebase index — scale memory (Block 12) ==");
+{
+  const { buildSymbolIndex, findSymbol } = await import("./src/repomap.mjs");
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "bigrepo-"));
+  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "idxcache-"));
+  const N = 60;
+  for (let i = 0; i < N; i++) fs.writeFileSync(path.join(repo, `m${i}.js`), `export function f${i}(a){return a+${i};}\nexport class C${i}{ run(){} }\n`);
+
+  const cold = buildSymbolIndex(repo, { cacheDir });
+  ok("index: cold build parses every file", cold.stats.parsed === N && cold.stats.reused === 0);
+  ok("index: cold build found all symbols", cold.symbols.length === N * 2);
+
+  const warm = buildSymbolIndex(repo, { cacheDir });
+  ok("index: WARM re-index reuses everything (incremental, near-free)", warm.stats.parsed === 0 && warm.stats.reused === N);
+  ok("index: warm build has the same symbols", warm.symbols.length === N * 2);
+
+  // change ONE file → only it re-parses
+  fs.writeFileSync(path.join(repo, "m7.js"), `export function f7(a){return a*7;}\nexport function extra7(){}\n`);
+  const touched = buildSymbolIndex(repo, { cacheDir });
+  ok("index: touching 1 file re-parses ONLY that file", touched.stats.parsed === 1 && touched.stats.reused === N - 1);
+  ok("index: the new symbol is found after the incremental update", findSymbol(touched, "extra7").some(s => s.file === "m7.js"));
+
+  // delete a file → dropped from the index
+  fs.rmSync(path.join(repo, "m9.js"));
+  const del = buildSymbolIndex(repo, { cacheDir });
+  ok("index: deleted file is removed", del.stats.removed === 1 && del.stats.total === N - 1 && !findSymbol(del, "f9").length);
+
+  // persist:false never writes a cache and always parses fresh
+  const eph = buildSymbolIndex(repo, { persist: false, cacheDir: fs.mkdtempSync(path.join(os.tmpdir(), "eph-")) });
+  ok("index: persist:false always parses (no cache)", eph.stats.reused === 0 && eph.stats.parsed === del.stats.total);
+
+  fs.rmSync(repo, { recursive: true, force: true });
+  fs.rmSync(cacheDir, { recursive: true, force: true });
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

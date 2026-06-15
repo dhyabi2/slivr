@@ -284,7 +284,12 @@ export class Tools {
   // orient in an unfamiliar repo.
   repo_map() {
     const idx = this._index();
-    return { ok: true, files: idx.files.length, symbols: idx.symbols.length, map: repoOverview(idx) };
+    const st = idx.stats || {};
+    return {
+      ok: true, files: idx.files.length, symbols: idx.symbols.length, indexedFiles: st.total,
+      note: `whole-repo memory: ${idx.symbols.length} symbols across ${st.total ?? idx.allFiles.length} files (persistent + incremental: ${st.reused ?? 0} reused / ${st.parsed ?? 0} re-parsed this build). Query it free with find_symbol / find_refs.`,
+      map: repoOverview(idx),
+    };
   }
 
   // find_symbol: jump straight to a definition (file:line + signature) instead of grepping through
