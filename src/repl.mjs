@@ -287,6 +287,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
   const _live = makeLiveRenderer({ out: w, palette: p, isTTY: !!process.stdout.isTTY, getSummary, afterCommit, getStatus });
   const onStep = _live.onStep;
   const onToolStart = _live.onToolStart;
+  const onThinking = _live.onThinking;
 
   // Manual line queue: 'for await (line of rl)' loses buffered piped lines while a turn awaits.
   // We queue lines, process them serially, and pause input during a turn. Works for TTY and pipes.
@@ -342,7 +343,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
       currentAbort = new AbortController();
       let res;
       try {
-        res = await session.runTurn(taskToRun, { onStep, onToolStart, beforeTool, signal: currentAbort.signal });
+        res = await session.runTurn(taskToRun, { onStep, onToolStart, onThinking, beforeTool, signal: currentAbort.signal });
       } catch (e) {
         process.stdout.write(p.red(`error: ${e.message}\n`));
         currentAbort = null;

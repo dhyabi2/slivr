@@ -271,10 +271,11 @@ async function runOneShot(task, dir, config, palette, { auto, plan, verify, repa
   const live = makeLiveRenderer({ out: w, palette: p, isTTY: !!process.stderr.isTTY, getSummary, afterCommit });
   const onStep = live.onStep;
   const onToolStart = live.onToolStart;
+  const onThinking = live.onThinking;
 
   let res;
   try {
-    res = await session.runTurn(task, { onStep, onToolStart, beforeTool, verify: verifyFn, maxRepairs });
+    res = await session.runTurn(task, { onStep, onToolStart, onThinking, beforeTool, verify: verifyFn, maxRepairs });
   } finally {
     session.closeMCP();
   }

@@ -16,16 +16,16 @@ import { applyEdit } from "./seal.mjs";
 import { localPdfText } from "./pdftext.mjs";
 import { costUSD } from "./provider.mjs";
 import { buildSymbolIndex, findSymbol, findReferences, repoOverview, langOf, symbolSpan } from "./repomap.mjs";
-import { renderDom, renderShot, visibleText } from "./eye.mjs";
+import { renderDom, renderShot, visibleText, screenshotWebGL } from "./eye.mjs";
 import { detectCommands, describeCommands } from "./project.mjs";
 import { detectStyle, styleBrief } from "./style.mjs";
 import { playGame, playLevels, autoPlay } from "./gameharness.mjs";
 import { renderAsset } from "./asset.mjs";
 import * as bp from "./blueprint.mjs";
 import { resumeSummary, appendJournal } from "./journal.mjs";
-import { checkPageJs, pageConsoleErrors } from "./webcheck.mjs";
+import { checkPageJs, pageConsoleErrors, isWebGLPage } from "./webcheck.mjs";
 import { compareImages, cropImage, compareRegions, styleProfile, styleAdherence, hexColor, artReview } from "./match.mjs";
-import { ARTKIT, NOISE_FBM_SRC } from "./artkit.mjs";
+import { ARTKIT, ARTKIT3D, NOISE_FBM_SRC } from "./artkit.mjs";
 import { orbitScene } from "./scene3d.mjs";
 import * as world from "./world.mjs";
 
@@ -416,7 +416,8 @@ export class Tools {
     if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
     if (visual) {
       const out = path.join(os.tmpdir(), `slivr-shot-${process.pid}-${Date.now()}.png`);
-      const r = renderShot(abs, out);
+      let isGL = false; try { isGL = isWebGLPage(fs.readFileSync(abs, "utf8")); } catch { /* */ }
+      const r = isGL ? screenshotWebGL(abs, out) : renderShot(abs, out);
       if (!r.ok) return { ok: false, error: r.error, hint: "couldn't get a visual — use see_page (text mode) or reason about the code" };
       let b64; try { b64 = fs.readFileSync(out).toString("base64"); } catch (e) { return { ok: false, error: String(e.message || e) }; }
       try { fs.unlinkSync(out); } catch { /* ignore */ }
@@ -791,8 +792,10 @@ export class Tools {
       let pageAbs; try { pageAbs = this._resolve(render); } catch (e) { return { ok: false, error: e.message }; }
       if (!fs.existsSync(pageAbs)) return { ok: false, error: "RENDER_NOT_FOUND", path: render };
       tmpShot = path.join(os.tmpdir(), `slivr-art-${process.pid}-${Date.now()}.png`);
-      const shot = renderShot(pageAbs, tmpShot, { width: 800, height: 500 });
-      if (!shot.ok) return { ok: false, error: "RENDER_SCREENSHOT_FAILED", hint: shot.error };
+      // WebGL/Three.js pages render BLANK with --screenshot (--disable-gpu) — capture on the GPU path.
+      let isGL = false; try { isGL = isWebGLPage(fs.readFileSync(pageAbs, "utf8")); } catch { /* */ }
+      const shot = isGL ? screenshotWebGL(pageAbs, tmpShot) : renderShot(pageAbs, tmpShot, { width: 800, height: 500 });
+      if (!shot.ok) return { ok: false, error: "RENDER_SCREENSHOT_FAILED", hint: shot.error + (isGL ? " (WebGL page — the scene may be blank; check see_page first)" : "") };
       imgAbs = tmpShot;
     } else { imgAbs = readable(candidate); if (!imgAbs) return { ok: false, error: "CANDIDATE_NOT_FOUND", path: candidate }; }
     try {
@@ -814,9 +817,13 @@ export class Tools {
   // grain() (procedural texture), contactShadow(), sky() + hills() (gradient + parallax depth). Paste the
   // returned source into the game's <script> (the noise/fbm helpers are included) and draw with these
   // instead of fillRect. (see_asset already has them built in for single assets.)
-  artkit() {
-    return { ok: true, source: NOISE_FBM_SRC + ARTKIT,
-      note: "Inline this <script> source into your game, then draw with sky/hills/shadedBox/shadedBall/eyes/contactShadow/grain/palette instead of flat fillRect (light is top-left). After building, run art_review {render:'index.html'} and aim for richness ≥ 60." };
+  artkit({ mode } = {}) {
+    if (mode === "3d") {
+      return { ok: true, mode: "3d", source: ARTKIT3D,
+        note: "Inline this into your Three.js game. Add lights3d(scene), then build entities with character3d({mustache:true}) for the player, enemy3d() for enemies, coin3d(), tree3d(), ground3d() — NEVER a single BoxGeometry per character (that's the 'everything is a box' failure). Each factory returns a THREE.Group of grouped primitives with MeshStandard materials + CanvasTexture faces. After building, run art_review {render:'index.html'} (it renders WebGL on the GPU path) and aim for richness ≥ 60." };
+    }
+    return { ok: true, mode: "2d", source: NOISE_FBM_SRC + ARTKIT,
+      note: "Inline this <script> source into your 2D canvas game, then draw with sky/hills/shadedBox/shadedBall/eyes/contactShadow/grain/palette instead of flat fillRect (light is top-left). For a 3D/Three.js game call artkit {mode:'3d'} instead. After building, run art_review {render:'index.html'} and aim for richness ≥ 60." };
   }
 
   // orbit_scene (Block 21 — the 3D eye): drive a WebGL/Three.js scene's CAMERA to many angles and SEE each

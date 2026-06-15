@@ -75,7 +75,7 @@ export function reasoningProse(text) {
   return s.slice(0, i).replace(/```\w*/g, "").replace(/\s+/g, " ").trim();
 }
 
-export async function runLoop({ provider, tools, toolMap, systemPrompt, task, maxSteps = Infinity, onStep, onToolStart, beforeTool, seedMessages, signal, verify, maxRepairs = 3, bridge, editModel }) {
+export async function runLoop({ provider, tools, toolMap, systemPrompt, task, maxSteps = Infinity, onStep, onToolStart, onThinking, beforeTool, seedMessages, signal, verify, maxRepairs = 3, bridge, editModel }) {
   // DUAL-MODEL ROUTING (optional): a CREATOR model (provider.model) builds/creates; an EDITOR model
   // (editModel) handles editing/bug-fixing. We pick per turn from the most recent mutation: while the
   // agent is creating files it stays on the creator; once it edits existing code it uses the editor.
@@ -142,7 +142,9 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     let resp;
     try {
       const turnModel = (editModel && editPhase) ? editModel : undefined;   // undefined → provider's creator model
-      resp = await provider.chat(messages, { signal, model: turnModel });
+      if (onThinking) { try { onThinking(true, turnModel); } catch { /* */ } }
+      try { resp = await provider.chat(messages, { signal, model: turnModel }); }
+      finally { if (onThinking) { try { onThinking(false); } catch { /* */ } } }
     } catch (e) {
       if (e.name === "AbortError" || signal?.aborted) { aborted = true; trace.push({ step, aborted: true }); break; }
       // Surface the failure to the caller instead of swallowing it. A bare "NO_OPENROUTER_KEY"

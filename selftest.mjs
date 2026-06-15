@@ -1712,6 +1712,7 @@ console.log("== 44. live progress UX — reasoning, semantic summaries, in-place
   ok("summarize grep: hit count", summarizeResult({ tool: "grep", result: { ok: true, matches: 3 } }) === "3 hits");
   ok("summarize compare_image: % match", summarizeResult({ tool: "compare_image", result: { ok: true, similarity: 92 } }) === "92% match");
   ok("summarize play_levels: levels + distinct + clones", /3 levels · 3 distinct/.test(summarizeResult({ tool: "play_levels", result: { ok: true, count: 3, uniqueLevels: 3, clones: [] } })));
+  ok("summarize task_write: a COUNT, not [object Object]", summarizeResult({ tool: "task_write", result: { ok: true, tasks: [{}, {}, {}] } }) === "3 tasks");
   ok("summarize orbit_scene: views + 3D verdict", summarizeResult({ tool: "orbit_scene", result: { ok: true, views: 4, responds: true } }) === "4 views · real 3D");
   ok("summarize an ERROR is surfaced, never hidden", summarizeResult({ tool: "run_command", result: { ok: false, error: "boom" } }).length > 0);
 
@@ -1982,6 +1983,16 @@ console.log("== 53. see_page for WebGL/3D — real runtime error + blank-canvas,
   } else {
     ok("see_page (WebGL): (no browser installed — live skipped)", true);
   }
+}
+
+console.log("== 55. 3D artkit — characters from grouped primitives, not boxes (Block 33) ==");
+{
+  const t = new Tools(tmp);
+  const k2 = t.artkit();
+  const k3 = t.artkit({ mode: "3d" });
+  ok("artkit: 2d mode returns canvas helpers", k2.mode === "2d" && /shadedBall/.test(k2.source));
+  ok("artkit: 3d mode returns Three.js character factories (no single box)", k3.mode === "3d" && /character3d/.test(k3.source) && /enemy3d/.test(k3.source) && /coin3d/.test(k3.source) && /lights3d/.test(k3.source) && /MeshStandardMaterial/.test(k3.source));
+  ok("artkit: 3d note steers away from BoxGeometry-per-character", /NEVER a single BoxGeometry|everything is a box/i.test(k3.note));
 }
 
 console.log("== 54. dual-model routing — creator creates, editor fixes bugs (Block 32) ==");

@@ -47,3 +47,33 @@ function sky(ctx,W,H,topHue,botHue){var g=ctx.createLinearGradient(0,0,0,H);g.ad
 // parallax HILL silhouette band (call 2–3× with rising baseY + lightening hue for atmospheric depth).
 function hills(ctx,W,H,baseY,hue,seed){ctx.fillStyle=_hsl(hue,42,58);ctx.beginPath();ctx.moveTo(0,H);for(var x=0;x<=W;x+=6){var yy=baseY+Math.sin(x*0.012+(seed||0))*16+fbm(x/45,(seed||0)*3,3)*34;ctx.lineTo(x,yy);}ctx.lineTo(W,H);ctx.closePath();ctx.fill();}
 `;
+
+// ARTKIT3D — Three.js helpers so a 3D game builds RECOGNIZABLE figures from GROUPED primitives + lit
+// MeshStandard materials + procedural CanvasTextures, instead of a single flat BoxGeometry per entity
+// (the "everything is a box" failure). Assumes THREE is in scope. Inline via the artkit {mode:"3d"} tool.
+export const ARTKIT3D = `
+// proper lighting — without it even spheres look flat. Returns the directional (key) light.
+function lights3d(scene){scene.add(new THREE.HemisphereLight(0xffffff,0x445566,0.9));var d=new THREE.DirectionalLight(0xffffff,0.85);d.position.set(6,12,7);d.castShadow=true;scene.add(d);return d;}
+function mat3d(color,o){o=o||{};return new THREE.MeshStandardMaterial({color:color,roughness:o.roughness==null?0.7:o.roughness,metalness:o.metalness||0,flatShading:!!o.flat});}
+// a face texture (eyes + optional mustache) painted on a canvas → CanvasTexture (detail, not a blank sphere).
+function faceTexture(skinHex,mustacheHex){var c=document.createElement('canvas');c.width=c.height=128;var x=c.getContext('2d');x.fillStyle=skinHex||'#f1b47a';x.fillRect(0,0,128,128);[46,82].forEach(function(ex){x.fillStyle='#fff';x.beginPath();x.arc(ex,52,13,0,7);x.fill();x.fillStyle='#23314a';x.beginPath();x.arc(ex,55,6,0,7);x.fill();x.fillStyle='#fff';x.beginPath();x.arc(ex-2,50,3,0,7);x.fill();});if(mustacheHex){x.fillStyle=mustacheHex;x.fillRect(36,74,56,13);x.fillRect(40,84,12,8);x.fillRect(76,84,12,8);}var t=new THREE.CanvasTexture(c);return t;}
+// a HUMANOID character (Mario-ish): a THREE.Group of body+legs+head(w/face)+hat+arms — NOT one box.
+function character3d(o){o=o||{};var g=new THREE.Group();var skin=o.skin||'#f1b47a',shirt=o.shirt!=null?o.shirt:0xe52521,pants=o.pants!=null?o.pants:0x0b5fa5,hat=o.hat!=null?o.hat:0xe52521;
+  var legs=new THREE.Mesh(new THREE.CapsuleGeometry(0.42,0.5,6,12),mat3d(pants));legs.position.y=0.5;g.add(legs);
+  var body=new THREE.Mesh(new THREE.CapsuleGeometry(0.46,0.6,6,12),mat3d(shirt));body.position.y=1.1;g.add(body);
+  var head=new THREE.Mesh(new THREE.SphereGeometry(0.43,20,16),new THREE.MeshStandardMaterial({map:faceTexture(skin,o.mustache?'#3a2410':null),roughness:0.7}));head.position.y=1.85;g.add(head);
+  var brim=new THREE.Mesh(new THREE.CylinderGeometry(0.52,0.52,0.08,18),mat3d(hat));brim.position.set(0,2.12,0.12);g.add(brim);
+  var crown=new THREE.Mesh(new THREE.SphereGeometry(0.42,18,12,0,6.3,0,1.25),mat3d(hat));crown.position.y=2.15;g.add(crown);
+  [-0.62,0.62].forEach(function(s){var arm=new THREE.Mesh(new THREE.CapsuleGeometry(0.16,0.5,4,8),mat3d(skin.indexOf('#')===0?0xf1b47a:shirt));arm.position.set(s,1.15,0);arm.rotation.z=s*0.2;g.add(arm);});
+  g.traverse(function(m){if(m.isMesh){m.castShadow=true;m.receiveShadow=true;}});return g;}
+// a low-poly ENEMY (goomba-ish): squat body + eyes + feet, distinct from the player.
+function enemy3d(o){o=o||{};var g=new THREE.Group();var body=new THREE.Mesh(new THREE.SphereGeometry(0.5,16,12),mat3d(o.color!=null?o.color:0x8b5a2b,{flat:true}));body.scale.y=0.85;body.position.y=0.5;g.add(body);
+  [-0.18,0.18].forEach(function(s){var e=new THREE.Mesh(new THREE.SphereGeometry(0.1,10,8),mat3d(0xffffff));e.position.set(s,0.62,0.42);g.add(e);var p=new THREE.Mesh(new THREE.SphereGeometry(0.045,8,6),mat3d(0x111111));p.position.set(s,0.62,0.5);g.add(p);});
+  [-0.25,0.25].forEach(function(s){var f=new THREE.Mesh(new THREE.CapsuleGeometry(0.12,0.06,3,6),mat3d(0x3a2410));f.position.set(s,0.08,0.1);g.add(f);});
+  g.traverse(function(m){if(m.isMesh)m.castShadow=true;});return g;}
+// a spinning gold COIN (metalness reads as gold, not a flat yellow box).
+function coin3d(){var m=new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.4,0.08,22),new THREE.MeshStandardMaterial({color:0xffd23f,metalness:0.45,roughness:0.35,emissive:0xb8860b,emissiveIntensity:0.25}));m.rotation.x=Math.PI/2;m.castShadow=true;return m;}
+// a low-poly TREE (trunk + cone foliage) and a green ground PLANE with a grass CanvasTexture.
+function tree3d(){var g=new THREE.Group();var tr=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.28,1.2,8),mat3d(0x6b4423,{roughness:0.9}));tr.position.y=0.6;g.add(tr);var top=new THREE.Mesh(new THREE.ConeGeometry(0.95,1.7,9),mat3d(0x2e8b3d,{flat:true}));top.position.y=1.85;g.add(top);g.traverse(function(m){if(m.isMesh)m.castShadow=true;});return g;}
+function ground3d(size){size=size||80;var c=document.createElement('canvas');c.width=c.height=128;var x=c.getContext('2d');x.fillStyle='#5fa84f';x.fillRect(0,0,128,128);for(var i=0;i<500;i++){x.fillStyle='rgba(0,0,0,'+(Math.random()*0.07)+')';x.fillRect(Math.random()*128,Math.random()*128,2,7);}var t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(size/4,size/4);var m=new THREE.Mesh(new THREE.PlaneGeometry(size,size),new THREE.MeshStandardMaterial({map:t,roughness:1}));m.rotation.x=-Math.PI/2;m.receiveShadow=true;return m;}
+`;

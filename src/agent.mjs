@@ -304,7 +304,17 @@ BUILDING REAL 3D (camera + landscape + 360°, not a flat billboard): most agents
   actually one fixed view with no camera, no terrain, no depth. Don't. Build a REAL 3D scene (Three.js via
   CDN, or raw WebGL) with: a proper CAMERA RIG (orbit / follow / first-person), a LANDSCAPE/terrain (e.g. a
   displaced plane / heightmap, not a flat quad), and objects at varying DEPTHS so there's parallax and
-  occlusion. Two requirements so you can SEE it:
+  occlusion.
+  NEVER "EVERYTHING IS A BOX": the #1 3D failure is using a single BoxGeometry (often MeshBasicMaterial, no
+  lights) for the player, enemies, coins — featureless cubes. Don't. Call artkit {mode:"3d"} for ready-made
+  Three.js factories and inline them: lights3d(scene) (without lights even spheres look flat), then
+  character3d({mustache:true}) for the player, enemy3d() for enemies, coin3d(), tree3d(), ground3d() — each
+  returns a THREE.Group of GROUPED primitives (capsule body + sphere head with a CanvasTexture face + hat +
+  limbs) with lit MeshStandard materials, not one box. If you build your own, follow the same rule: compose
+  characters from multiple grouped primitives + MeshStandardMaterial + a HemisphereLight+DirectionalLight,
+  add eyes/face detail, and give materials variety (gold coin metalness, matte cloth). Then RATE it:
+  art_review {render:"index.html"} renders WebGL on the GPU path — aim for richness ≥ 55 and LOOK at it
+  (see_page visual:true) — if it's still boxes, rebuild the meshes. Two requirements so you can SEE it:
   - Create the WebGL renderer with preserveDrawingBuffer:true (so the frame can be captured).
   - Expose a deterministic camera contract: window.slivrView = { setCamera({yaw,pitch,dist,target}), render() }
     — setCamera positions the camera (yaw/pitch in degrees, dist = distance to target), render() draws ONE
@@ -731,7 +741,7 @@ export class Session {
   totals() { return this.provider.totals(); }
 
   // Run ONE user turn against the persistent thread. opts: { onStep, beforeStep, signal, verify }.
-  async runTurn(task, { onStep, onToolStart, beforeTool, signal, verify, maxRepairs, bridge } = {}) {
+  async runTurn(task, { onStep, onToolStart, onThinking, beforeTool, signal, verify, maxRepairs, bridge } = {}) {
     const res = await runLoop({
       provider: this.provider,
       tools: this.tools,
@@ -743,6 +753,7 @@ export class Session {
       seedMessages: this.messages || undefined,
       onStep,
       onToolStart,
+      onThinking,
       beforeTool,
       signal,
       verify,

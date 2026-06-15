@@ -111,7 +111,7 @@ export function summarizeResult({ tool, args = {}, result, diff, diffs } = {}, d
     case "repo_map": return r.files != null ? `${r.files} files` : "mapped";
     case "plan": return `${r.steps?.length ?? args.steps?.length ?? 0} steps`;
     case "replan": return `replanned (${r.steps?.length ?? 0})`;
-    case "task_write": return r.tasks != null ? `${r.tasks} tasks` : "updated";
+    case "task_write": return Array.isArray(r.tasks) ? `${r.tasks.length} task${r.tasks.length === 1 ? "" : "s"}` : "updated";
     case "parallel": return `${r.count ?? "?"} subtasks${r.failed ? `, ${r.failed} failed` : ""}`;
     case "pipeline": return `${r.count ?? "?"} stages${r.failed ? `, ${r.failed} failed` : ""}`;
     case "see_page": return clip(r.note || "rendered", 70);
@@ -180,7 +180,19 @@ export function makeLiveRenderer({ out, palette, isTTY = false, getSummary = () 
   const p = palette;
   let pending = false; // a running line is on screen awaiting overwrite (TTY only)
   const write = (s) => { try { out(s); } catch { /* */ } };
+  // LIVE "thinking" timer during the model call (the slow part — esp. a big create). On a TTY, animate a
+  // spinner + elapsed seconds in place so a long generation never looks frozen/stuck; clear it on response.
+  const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  let thinkTimer = null;
   return {
+    onThinking(active, model) {
+      if (!isTTY) return;
+      if (active) {
+        const t0 = Date.now(); let i = 0;
+        const tick = () => { const s = ((Date.now() - t0) / 1000).toFixed(0); write("\r\x1b[2K  " + p.cyan(SPIN[i++ % SPIN.length]) + " " + p.dim("thinking… " + s + "s" + (model ? " · " + String(model).split("/").pop() : ""))); };
+        tick(); thinkTimer = setInterval(tick, 200);
+      } else if (thinkTimer) { clearInterval(thinkTimer); thinkTimer = null; write("\r\x1b[2K"); }
+    },
     onToolStart({ tool, args, reasoning }) {
       if (tool === "done") return;
       const why = reasoningLine(reasoning, p);
