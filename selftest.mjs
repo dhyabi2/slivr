@@ -1151,6 +1151,25 @@ console.log("== 29. resilient tool-call parser — think-and-act in one turn (Bl
   ok("parser: but recovers on the next valid call", res2.done === true);
 }
 
+console.log("== 30. run-hint — anticipate intent / show how to run it (Block 9) ==");
+{
+  const { detectRunHint, runHintLine } = await import("./src/run_hint.mjs");
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "rh-"));
+
+  fs.writeFileSync(path.join(d, "game.py"), "def play():\n    print('hi')\nif __name__ == '__main__':\n    play()\n");
+  ok("run-hint: python __main__ → python3 file", detectRunHint(d, ["game.py"]).cmd === "python3 game.py");
+
+  fs.writeFileSync(path.join(d, "package.json"), JSON.stringify({ scripts: { start: "node server.js" } }));
+  ok("run-hint: package.json start → npm run start", /npm install && npm run start/.test(detectRunHint(d, ["package.json"]).cmd));
+
+  fs.writeFileSync(path.join(d, "index.html"), "<h1>hi</h1>");
+  ok("run-hint: html → open in browser", /open .*\.html/.test(detectRunHint(d, ["index.html"]).cmd));
+
+  ok("run-hint: nothing runnable → no hint", detectRunHint(d, ["notes.txt"]) === null && runHintLine(d, ["notes.txt"]) === "");
+  ok("run-hint: line format mentions a command", runHintLine(d, ["game.py"]).startsWith("▶ run"));
+  fs.rmSync(d, { recursive: true, force: true });
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

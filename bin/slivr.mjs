@@ -20,6 +20,7 @@ import { runBaseline } from "../src/baseline.mjs";
 import { startRepl } from "../src/repl.mjs";
 import { makePalette, colorEnabled, stepLine, footer, renderPlan, renderTasks, planPrompt, readPlanEdit } from "../src/ui.mjs";
 import { renderDiff, diffStat } from "../src/diff.mjs";
+import { runHintLine } from "../src/run_hint.mjs";
 import { isDestructive, needsApproval } from "../src/safety.mjs";
 import { connectAll, closeAll } from "../src/mcp.mjs";
 import { listSkills, renderSkill } from "../src/skills.mjs";
@@ -219,8 +220,10 @@ async function runOneShot(task, dir, config, palette, { auto, plan, verify, repa
   };
 
   let lastTasksRender = "";
+  const createdThisTurn = [];
   const onStep = ({ tool, args, result, denied }) => {
     if (tool === "done") return;
+    if (tool === "create_file" && result?.ok && args?.path) createdThisTurn.push(args.path);
     const status = denied ? "skip" : result?.ok === false ? "fail" : "ok";
     let extra = "";
     if ((tool === "edit_file" || tool === "create_file" || tool === "edit_symbol") && result?.ok && session.lastDiff) {
@@ -273,6 +276,8 @@ async function runOneShot(task, dir, config, palette, { auto, plan, verify, repa
     if (res.verified === true) process.stderr.write(p.green(`✓ verification passed${res.repairs ? ` (after ${res.repairs} repair${res.repairs === 1 ? "" : "s"})` : ""}\n`));
     else if (res.verified === false) { process.stderr.write(p.red(`✗ verification still failing after ${res.repairs} repair attempt(s)\n`)); footerStatus = "error"; }
   }
+  // Anticipate intent (Block 9): if the turn built a runnable artifact, ALWAYS show how to run it.
+  if (createdThisTurn.length) { const hint = runHintLine(dir, createdThisTurn); if (hint) process.stderr.write("\n" + p.cyan(hint) + "\n"); }
   if (session.tools.tasks.length) process.stderr.write("\n" + renderTasks(session.tools.tasks, p) + "\n");
   process.stderr.write(footer({ turns: res.turns, totalTokens: res.totals.totalTokens, cost: res.totals.cost, model: session.provider.model, status: footerStatus }, p) + "\n");
   // exit 0 only on a clean finish AND (if verifying) a passing verification.

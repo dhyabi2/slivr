@@ -16,6 +16,7 @@ import { isDestructive, needsApproval } from "./safety.mjs";
 import { applyEdit as _applyEdit } from "./seal.mjs";
 import { listSkills, renderSkill, discoverSkills } from "./skills.mjs";
 import { listJobs } from "./jobs.mjs";
+import { runHintLine } from "./run_hint.mjs";
 
 // Persist an API key to ~/.slivr.json (merging into any existing config). Returns true on success.
 function saveKeyToConfig(key) {
@@ -96,22 +97,27 @@ export async function startRepl({ workdir, config, palette } = {}) {
   const prompting = async (fn) => { inPrompt = true; try { return await fn(); } finally { inPrompt = false; } };
   // Per-turn approval state (reset at the start of every turn): "allow the rest" / "stop the turn".
   let approveAll = false, stopTurn = false;
+  let createdThisTurn = [];   // files the agent created this turn → drives the "▶ run it" hint
 
-  // Tab cycles the mode  ask → auto → plan → ask. ONLY at the prompt (never mid-turn, so a stray
-  // Tab while the agent is working can't silently flip the approval policy underneath it).
+  // Tab cycles the mode  ask → auto → plan → ask — at the prompt AND mid-turn. Switching mid-turn
+  // takes effect for the REST of the running turn (e.g. flip to [auto] to stop being asked), so it's
+  // always announced clearly so it never feels silent.
   const MODES = ["edits", "auto", "plan"];
   const cycleMode = () => {
     const next = MODES[(MODES.indexOf(modeKey()) + 1) % MODES.length];
     if (next === "plan") session.tools.planMode = true;
     else { session.tools.planMode = false; approval = next; }
     rl.setPrompt(promptStr());
-    process.stdout.write(p.dim(`\n  mode → ${displayMode()}\n`));
-    rl.prompt(true);
+    const note = currentAbort ? " (applies to the rest of this turn)" : "";
+    process.stdout.write("\n" + p.cyan(`  mode → ${displayMode()}`) + p.dim(note) + "\n");
+    if (!currentAbort && !inPrompt) rl.prompt(true);   // redraw the prompt only when idle
   };
   if (process.stdin.isTTY) {
     readline.emitKeypressEvents(process.stdin, rl);
     process.stdin.on("keypress", (_s, key) => {
-      if (key && key.name === "tab" && !currentAbort) cycleMode();   // ignore Tab while a turn/prompt runs
+      // Allow mode-cycling any time EXCEPT while an approval/plan prompt owns stdin (Tab there is the
+      // user's answer, not a mode switch). Works mid-turn so you can flip to [auto] while it runs.
+      if (key && key.name === "tab" && !inPrompt) cycleMode();
     });
   }
   rl.on("SIGINT", () => {
@@ -208,6 +214,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
   let lastTasksRender = "";
   const onStep = ({ tool, args, result, denied }) => {
     if (tool === "done") return;
+    if (tool === "create_file" && result?.ok && args?.path) createdThisTurn.push(args.path);
     // A parallel run with any failed/unfinished sub-task is NOT a clean success.
     const parallelPartial = tool === "parallel" && result?.ok && result.failed > 0;
     const status = denied ? "skip" : (result?.ok === false || parallelPartial) ? "fail" : "ok";
@@ -280,6 +287,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
       // Each turn starts fresh wrt plan approval so a new request must be re-planned in plan-mode.
       session.tools.plan = null; session.tools._planAborted = false;
       approveAll = false; stopTurn = false;   // per-turn approval state
+      createdThisTurn = [];
       currentAbort = new AbortController();
       let res;
       try {
@@ -304,6 +312,8 @@ export async function startRepl({ workdir, config, palette } = {}) {
         if (res.summary) process.stdout.write("\n" + res.summary + "\n");
         if (res.stopped) { process.stdout.write(p.yellow(`\n∅ ${res.stopped}\n`)); footerStatus = "incomplete"; }
         else if (!res.summary) process.stdout.write(p.dim("\n(done — no summary)\n"));
+        // Anticipate intent (Block 9): if the turn built a runnable artifact, ALWAYS show how to run it.
+        if (createdThisTurn.length) { const hint = runHintLine(workdir, createdThisTurn); if (hint) process.stdout.write("\n" + p.cyan(hint) + "\n"); }
       }
       if (session.tools.tasks.length) process.stdout.write("\n" + renderTasks(session.tools.tasks, p) + "\n");
       process.stdout.write(footer({ turns: res.turns, totalTokens: res.totals.totalTokens, cost: res.totals.cost, model: session.provider.model, status: footerStatus }, p) + "\n\n");

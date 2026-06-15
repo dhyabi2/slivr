@@ -118,7 +118,7 @@ async function solveWithSlivr(prob, opts) {
         return { ok: false, feedback: fb + `Fix solution.py so this passes.` };
       }
     : undefined;
-  await runAgent(task, dir, { model: opts.model, apiKey: process.env.OPENROUTER_API_KEY, maxSteps: opts.maxSteps, verify, maxRepairs: opts.repair || 0 });
+  const res = await runAgent(task, dir, { model: opts.model, apiKey: process.env.OPENROUTER_API_KEY, maxSteps: opts.maxSteps, verify, maxRepairs: opts.repair || 0 });
   let code = "";
   try { code = fs.readFileSync(solPath, "utf8"); } catch { /* agent may have written elsewhere */ }
   // Fallback: if solution.py is still the placeholder, grab the largest .py file the agent created.
@@ -129,7 +129,7 @@ async function solveWithSlivr(prob, opts) {
     code = best;
   }
   fs.rmSync(dir, { recursive: true, force: true });
-  return code;
+  return { code, cost: res?.totals?.cost || 0 };
 }
 
 // ---- execution / grading ----------------------------------------------------
@@ -208,9 +208,10 @@ async function main() {
   console.log("");
 
   const results = [];
-  let solved = 0;
+  let solved = 0, totalCost = 0;
   for (const prob of problems) {
-    const code = opts.mock ? (prob.reference || "") : await solveWithSlivr(prob, opts);
+    const sol = opts.mock ? { code: prob.reference || "", cost: 0 } : await solveWithSlivr(prob, opts);
+    const code = sol.code; totalCost += sol.cost;
     const g = grade(code, prob);
     if (g.pass) solved++;
     // Classify a failure so the results reveal the PATTERN (what to fix next), not just pass/fail.
@@ -236,6 +237,7 @@ async function main() {
   for (const r of fails) { byReason[r.reason] = (byReason[r.reason] || 0) + 1; byDiff[r.difficulty] = (byDiff[r.difficulty] || 0) + 1; }
   console.log("\nfailures by reason:", JSON.stringify(byReason));
   console.log("failures by difficulty:", JSON.stringify(byDiff));
+  if (!opts.mock) console.log(`total cost: $${totalCost.toFixed(4)}  (${opts.model})`);
 
   const pass1 = problems.length ? (solved / problems.length) : 0;
   console.log("");
