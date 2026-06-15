@@ -8,6 +8,7 @@
 // that is the only difference between our harness and the Claude-Code-style baseline.
 
 import { buildMultimodalContent } from "./multimodal.mjs";
+import { applyControl, controlToMessage } from "./bridge.mjs";
 
 // Find the balanced {...} block starting at index `s`, or -1. (string/escape aware)
 function balancedEnd(body, s) {
@@ -65,7 +66,7 @@ function clip(obj, max = 6000) {
 //   ok:false → the work failed; `feedback` (e.g. test output) is fed back and the model must REPAIR
 //   and call done again, up to `maxRepairs` times (the progress guard). This is what turns slivr from
 //   a blind one-shot agent into a self-verifying one — it never finishes "green" on a failing check.
-export async function runLoop({ provider, tools, toolMap, systemPrompt, task, maxSteps = 14, onStep, beforeTool, seedMessages, signal, verify, maxRepairs = 3 }) {
+export async function runLoop({ provider, tools, toolMap, systemPrompt, task, maxSteps = 14, onStep, beforeTool, seedMessages, signal, verify, maxRepairs = 3, bridge }) {
   const messages = seedMessages && seedMessages.length
     ? seedMessages
     : [{ role: "system", content: systemPrompt }];
@@ -87,8 +88,31 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
   let replanNudged = false;   // Block 5: nudge to re-plan once per failure streak (when a plan exists)
 
   let aborted = false;
+  // CONTROL CHECKPOINT (Block 22): drain any control commands from the driving agent in the inter-turn
+  // window and apply them — inject guidance / redirect / answer push a message for the NEXT turn; abort
+  // stops cleanly; pause blocks (still polling) until resume or abort. Never runs mid tool-call.
+  const applyBridgeControl = async () => {
+    if (!bridge) return;
+    let paused = false;
+    const handle = (raw) => {
+      const a = applyControl(raw);
+      if (a.kind === "abort") { aborted = true; bridge.emit("control", { applied: "abort" }); bridge.ack(a.id, "applied"); return; }
+      if (a.kind === "pause") { paused = true; bridge.emit("control", { applied: "pause" }); bridge.ack(a.id, "applied"); return; }
+      if (a.kind === "resume") { paused = false; bridge.emit("control", { applied: "resume" }); bridge.ack(a.id, "applied"); return; }
+      const msg = controlToMessage(a);
+      if (msg) { messages.push({ role: "user", content: msg }); bridge.emit("control", { applied: a.kind }); bridge.ack(a.id, "applied"); noProgress = 0; }
+      else { bridge.emit("control", { applied: "noop", reason: a.reason }); bridge.ack(a.id, "noop"); }
+    };
+    for (const raw of bridge.poll()) { handle(raw); if (aborted) return; }
+    while (paused && !aborted) {
+      if (signal?.aborted) { aborted = true; return; }
+      await new Promise((r) => setTimeout(r, 250));
+      for (const raw of bridge.poll()) { handle(raw); if (aborted) return; }
+    }
+  };
   for (let step = 0; step < maxSteps; step++) {
     if (signal?.aborted) { aborted = true; trace.push({ step, aborted: true }); break; }
+    if (bridge) { await applyBridgeControl(); if (aborted) { trace.push({ step, aborted: true }); break; } }
     // Final-step nudge: on the last allowed step, tell the model to stop exploring and finish, so a
     // turn ends with a usable result instead of silently hitting the step cap.
     if (step === maxSteps - 1 && maxSteps > 1 && !finalNudged) {
@@ -129,7 +153,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
         catch (e) { v = { ok: false, feedback: `the verification step itself errored: ${e.message}` }; }
         trace.push({ step, tool: "verify", ok: !!v.ok, repair: repairs });
         if (onStep) onStep({ step, tool: "verify", args: {}, result: { ok: !!v.ok, note: v.ok ? "passed" : clip(v.feedback || "failed", 200) } });
-        if (v.ok) { verified = true; done = true; trace.push({ step, tool: "done", summary }); break; }
+        if (v.ok) { verified = true; done = true; trace.push({ step, tool: "done", summary }); if (bridge) bridge.emit("done", { summary, verified: true }); break; }
         verified = false;
         if (repairs >= maxRepairs) {
           done = true;   // accept the (unverified) result, but say so loudly — never a silent green.
@@ -144,6 +168,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
       }
       done = true;
       trace.push({ step, tool: "done", summary });
+      if (bridge) bridge.emit("done", { summary });
       break;
     }
 
@@ -155,6 +180,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
       continue;
     }
     noProgress = 0; // a real, known tool call — making progress again
+    if (bridge) bridge.emit("turn", { n: turns, tool: call.tool, args: call.args || {} });
 
     // approval/safety gate: let the host veto a tool BEFORE it runs.
     if (beforeTool) {
@@ -179,6 +205,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     }
     trace.push({ step, tool: call.tool, ok: result?.ok, tier: result?.tier });
     if (onStep) onStep({ step, tool: call.tool, args: call.args, result });
+    if (bridge) bridge.emit("result", { tool: call.tool, ok: result?.ok !== false, note: clip(result?.note || result?.error || "", 300) });
 
     // MULTIMODAL: when a tool loaded an image/pdf, push a user message whose content is an ARRAY of
     // blocks so the model actually SEES the bytes (provider passes array content through unchanged).
