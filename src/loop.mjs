@@ -13,7 +13,7 @@ import { buildMultimodalContent } from "./multimodal.mjs";
 import { applyControl, controlToMessage } from "./bridge.mjs";
 import { compressContext } from "./compress.mjs";
 import { isWebGLPage } from "./webcheck.mjs";
-import { analyzeStructure, wantsMinimal } from "./structure.mjs";
+import { analyzeStructure, wantsMinimal, assetSourceViolation } from "./structure.mjs";
 
 // Detect a built WEB GAME in the workdir (a canvas + an animation loop / control contract), so the
 // done-gate can verify it actually PLAYS before accepting done. Returns the html path or null.
@@ -269,6 +269,15 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
                       trace.push({ step, structure: { requiredScore: st.requiredScore, zero: st.zeroCategories, missing: st.missing.map((m) => m.id) } });
                     }
                   } catch { /* couldn't read the file → don't block */ }
+                  // 3D ASSET SOURCE (Block 43): a 3D game's assets MUST come from the vgsds MCP (verified,
+                  // textured GLB) — hand-rolled THREE primitives are not allowed. One-shot push-back.
+                  if (!problem) {
+                    try {
+                      const html = fs.readFileSync(path.join(tools.workdir, gameFile), "utf8");
+                      const av = assetSourceViolation(html, task);
+                      if (av) { problem = av; trace.push({ step, assetGate: clip(av, 80) }); }
+                    } catch { /* */ }
+                  }
                   // LOCK-AND-KEY SOLVABILITY (Block 39): if the game OPTS IN by exposing window.slivrLevels,
                   // prove every level is solvable AND soft-lock-free (ESG-CoReach) — no key spent into an
                   // unwinnable state, the soft-lock that "a path exists / I played it once" can't see. Opt-in

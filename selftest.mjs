@@ -2349,6 +2349,27 @@ console.log("== 64. harness-over-HTTP — verify a SERVED game over http like a 
   }
 }
 
+console.log("== 65. 3D asset source — vgsds-only enforcement + klokwork/vgsds skills (Block 43) ==");
+{
+  const { assetSourceViolation } = await import("./src/structure.mjs");
+  const threeHead = '<script src=three.min.js></script><script>const r=new THREE.WebGLRenderer();';
+  const handRolled = threeHead + 'const a=new THREE.Mesh(new THREE.BoxGeometry(1,1,1));const b=new THREE.Mesh(new THREE.SphereGeometry(1));const cc=new THREE.Mesh(new THREE.CylinderGeometry(1,1,2));</script>';
+  const withGlb = threeHead + 'import {GLTFLoader} from "GLTFLoader.js";new GLTFLoader().load("hero.glb",g=>scene.add(g.scene));const ground=new THREE.Mesh(new THREE.PlaneGeometry(20,20));</script>';
+  const groundOnly = threeHead + 'const ground=new THREE.Mesh(new THREE.PlaneGeometry(20,20));new GLTFLoader().load("x.glb",g=>{});</script>';
+  ok("asset rule: a hand-rolled 3D game (primitives, no .glb) is flagged", /vgsds/.test(assetSourceViolation(handRolled, "make a 3d game") || ""));
+  ok("asset rule: a 3D game loading a .glb (+ ground plane) passes", assetSourceViolation(withGlb, "make a 3d game") === null && assetSourceViolation(groundOnly, "make a 3d game") === null);
+  ok("asset rule: a 2D game is not subject to the 3D asset rule", assetSourceViolation('<canvas></canvas><script>var x=c.getContext("2d");x.fillRect(0,0,9,9);</script>', "make a game") === null);
+  ok("asset rule: an explicit 'simple' 3D request is not blocked", assetSourceViolation(handRolled, "make a simple 3d game") === null);
+  // klokwork (games layer over three) still owes its assets to vgsds — hand-rolled klokwork assets are flagged.
+  ok("asset rule: klokwork primitives without a .glb are still flagged", /vgsds/.test(assetSourceViolation('<script>import {Game} from "klokwork";const r=new THREE.WebGLRenderer();new THREE.BoxGeometry();new THREE.ConeGeometry();</script>', "make a 3d game") || ""));
+
+  // the two new local skills are discoverable + parse.
+  const { parseSkill } = await import("./src/skills.mjs");
+  const skDir = path.join(os.homedir(), ".slivr", "skills");
+  const haveSkill = (n) => { try { const p = parseSkill(fs.readFileSync(path.join(skDir, n + ".md"), "utf8")); return p.description.length > 20; } catch { return false; } };
+  ok("skills: klokwork-threejs + vgsds-3d-assets skills are present and parse", haveSkill("klokwork-threejs") && haveSkill("vgsds-3d-assets"));
+}
+
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");
 {
   const big = (n) => "x".repeat(n);

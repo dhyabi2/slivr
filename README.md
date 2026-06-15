@@ -443,7 +443,10 @@ sessions), neutral-to-slightly-worse on trivial edits.*
   `src/diff.mjs` (unified-diff renderer) · `src/safety.mjs` (blocklist + approval) · `src/ui.mjs` (colors/footer)
 - MCP client: `src/mcp.mjs` (stdio JSON-RPC client + tool catalog) · `test/stub-mcp.mjs` (local test server)
 - multimodal: `src/multimodal.mjs` (image/pdf block builders + pdf-plugin) · tools `view_image`/`view_pdf` in `src/tools.mjs`
-- skills: `src/skills.mjs` (discovery + arg substitution) · `.slivr/skills/*.md` (example prompts)
+- skills: `src/skills.mjs` (discovery + arg substitution) · `.slivr/skills/*.md` (example prompts) · user
+  skills in `~/.slivr/skills/` (e.g. klokwork 3D engine, vgsds 3D-asset MCP, level/multiplayer patterns)
+- 3D games: build on Klokwork (games layer over three.js); 3D ASSETS must come from the vgsds MCP (verified,
+  textured GLB) — enforced by `assetSourceViolation` (src/structure.mjs) in the done-gate
 - game verification: `src/structure.mjs` (production scene-graph contract) · `src/levelcert.mjs` (lock-and-key
   solvability/soft-lock certifier, vendored from esg-coreach) + the `certify_level` tool · `vendor/loft/`
   (serverless realtime-multiplayer protocol, vendored from loft-poc, for generated games)

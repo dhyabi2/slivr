@@ -22,7 +22,7 @@ import { detectStyle, styleBrief } from "./style.mjs";
 import { playGame, playLevels, autoPlay, extractLevels, autoPlayUrl, extractLevelsUrl } from "./gameharness.mjs";
 import { parse as parseLevel, certify as certifyLevel, recheck as recheckLevel } from "./levelcert.mjs";
 import { startServer, stopServer, listServers } from "./server.mjs";
-import { analyzeStructure, wantsMinimal } from "./structure.mjs";
+import { analyzeStructure, wantsMinimal, assetSourceViolation } from "./structure.mjs";
 import { isDestructive } from "./safety.mjs";
 import { renderAsset } from "./asset.mjs";
 import * as bp from "./blueprint.mjs";
@@ -372,6 +372,9 @@ export class Tools {
           const punch = st.missing.slice(0, 9).map((m) => "  ✗ " + m.label + (m.anti ? " (placeholder / wrong primitive)" : "")).join("\n");
           return { ran: true, problem: `the SERVED game's STRUCTURE is only ~${st.requiredScore}% of a production game — ${st.zeroCategories.length} whole layer${st.zeroCategories.length === 1 ? "" : "s"} missing (${st.zeroCategories.join(", ") || "—"}):\n${punch}` };
         }
+        // 3D ASSET SOURCE (Block 43): served 3D game must load vgsds GLBs, not hand-rolled primitives.
+        const av = assetSourceViolation(html, task);
+        if (av) return { ran: true, problem: av };
         // LOCK-AND-KEY solvability — certify window.slivrLevels exposed over HTTP
         try {
           const levels = await extractLevelsUrl(url);

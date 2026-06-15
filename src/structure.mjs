@@ -82,6 +82,24 @@ const NODES = [
     any: ["\\bparticle", "AudioContext", "webkitAudioContext", "new Audio\\(", "oscillator", "screenShake", "\\bshake\\b", "createElement\\(['\"]audio"] },
 ];
 
+// ASSET-SOURCE RULE (Block 43): for a 3D game, every asset MUST come from the vgsds MCP as a verified,
+// textured GLB — never hand-rolled three.js primitive geometry. Returns a push-back reason or null.
+// A ground PlaneGeometry / pure helper is allowed; ≥2 object primitives with NO GLB load → violation.
+const ASSET_PRIMITIVES = /\bnew\s+THREE\.(Box|Sphere|Cylinder|Cone|Torus(Knot)?|Capsule|Icosahedron|Dodecahedron|Octahedron|Tetrahedron|Circle|Ring|Extrude|Lathe)Geometry\b/gi;
+export function assetSourceViolation(html, task = "") {
+  const s = String(html || "");
+  if (wantsMinimal(task)) return null;
+  const is3d = /WebGLRenderer|three(?:\.module|\.min)?\.js|\bTHREE\.|klokwork/i.test(s);
+  if (!is3d) return null;
+  // assets sourced correctly (a GLB loaded, or vgsds referenced) → fine.
+  if (/GLTFLoader|GLTFExporter|\.glb\b|\.gltf\b|vgsds|loadAsset/i.test(s)) return null;
+  const prims = (s.match(ASSET_PRIMITIVES) || []).length;
+  if (prims >= 2) {
+    return `3D ASSETS must come from the vgsds MCP (verified, textured GLB) — this game hand-builds ${prims} primitive geometr${prims === 1 ? "y" : "ies"} and loads NO .glb asset. Generate every character/enemy/prop/collectible with mcp__vgsds__vgsds_generate {prompt, textured:true}, load the returned .glb with GLTFLoader (a ground plane may stay a primitive). Do not hand-roll geometry or use any other asset tool.`;
+  }
+  return null;
+}
+
 function countMatches(html, pattern) {
   try { return (html.match(new RegExp(pattern, "gi")) || []).length; } catch { return 0; }
 }
