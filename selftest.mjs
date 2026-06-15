@@ -1457,6 +1457,40 @@ console.log("== 38. compare_image — recreate a reference picture, verified (Bl
   }
 }
 
+console.log("== 39. crop_image + compare_regions — per-asset extraction & oversight (Block 19) ==");
+{
+  const { renderAsset } = await import("./src/asset.mjs");
+  const { findBrowser } = await import("./src/eye.mjs");
+  const t = new Tools(tmp);
+
+  ok("crop_image: requires src, bbox, out", t.crop_image({ x: 0, y: 0, w: 1, h: 1, out: "o.png" }).error === "NO_SRC" && t.crop_image({ src: "a.png", out: "o.png" }).error === "NO_BBOX");
+  ok("compare_regions: requires target + regions + candidate", t.compare_regions({ regions: [{ x: 0, y: 0, w: 1, h: 1 }] }).error === "NO_TARGET" && t.compare_regions({ target: "a.png" }).error === "NO_REGIONS");
+
+  if (findBrowser()) {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "atlas-"));
+    const tt = new Tools(d);
+    const write = (name, canvas, bg) => { const r = renderAsset({ canvas, width: 320, height: 240, bg }); fs.writeFileSync(path.join(d, name), Buffer.from(r.dataUrl.split(",")[1], "base64")); };
+    // target: green circle (left) + yellow square (right)
+    write("target.png", 'ctx.fillStyle="#3fbf5f";ctx.beginPath();ctx.arc(80,120,50,0,7);ctx.fill();ctx.fillStyle="#ffd23f";ctx.fillRect(180,70,90,90);', "#101820");
+    // candidate: left circle CORRECT, right asset WRONG (red, misplaced)
+    write("cand.png", 'ctx.fillStyle="#3fbf5f";ctx.beginPath();ctx.arc(80,120,50,0,7);ctx.fill();ctx.fillStyle="#e74c3c";ctx.fillRect(200,120,40,40);', "#101820");
+
+    const crop = tt.crop_image({ src: "target.png", x: 0.5, y: 0.2, w: 0.45, h: 0.55, out: "crop.png" });
+    ok("crop_image: extracts an asset region to a real PNG", crop.ok && fs.existsSync(path.join(d, "crop.png")) && crop.width > 10 && crop.height > 10);
+
+    const regions = [{ label: "circle", x: 0.0, y: 0.2, w: 0.45, h: 0.6 }, { label: "square", x: 0.5, y: 0.2, w: 0.45, h: 0.55 }];
+    const r = tt.compare_regions({ target: "target.png", candidate: "cand.png", regions });
+    const byLabel = Object.fromEntries((r.regions || []).map((x) => [x.label, x.similarity]));
+    ok("compare_regions: scores each asset + the whole scene, attaches a scorecard image", r.ok && typeof r.whole === "number" && r.regions.length === 2 && !!r.multimodal);
+    // THE KEY PROPERTY: the whole-image score stays high but the per-asset diff CATCHES the wrong asset.
+    ok("compare_regions: catches a wrong asset the whole-image score hides", r.whole >= 85 && byLabel.circle >= 95 && byLabel.square < 90 && byLabel.square < byLabel.circle);
+    ok("compare_regions: flags which assets are off + allPass=false", Array.isArray(r.assetsOff) && r.assetsOff.includes("square") && r.allPass === false);
+    fs.rmSync(d, { recursive: true, force: true });
+  } else {
+    ok("crop_image/compare_regions: (no browser installed — live skipped)", true);
+  }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

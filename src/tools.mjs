@@ -22,7 +22,7 @@ import { detectStyle, styleBrief } from "./style.mjs";
 import { playGame } from "./gameharness.mjs";
 import { renderAsset } from "./asset.mjs";
 import * as bp from "./blueprint.mjs";
-import { compareImages } from "./match.mjs";
+import { compareImages, cropImage, compareRegions } from "./match.mjs";
 
 // Re-indent a replacement block to a target base indent (strip its own common indent, prepend target).
 function reindentBlock(block, indent) {
@@ -578,6 +578,59 @@ export class Tools {
       const verdict = r.similarity >= 90 ? "close match" : r.similarity >= 75 ? "getting there — keep refining" : "far off — fix the worst regions and re-compare";
       const out = { ok: true, similarity: r.similarity, mae: r.mae, worstRegions: r.worst, note: `${r.similarity}% similar to the target — ${verdict}. Worst regions: ${worst || "n/a"}. Look at the heatmap (red = mismatch), fix those areas, and compare again.` };
       if (r.dataUrl) out.multimodal = { kind: "image", path: "diff", mime: "image/png", dataUrl: r.dataUrl };
+      return out;
+    } finally { if (tmpShot) { try { fs.unlinkSync(tmpShot); } catch { /* */ } } }
+  }
+
+  // crop_image (Block 19): extract ONE asset/region out of an image into a new PNG, given a bounding box
+  // {x,y,w,h} that is normalized (0–1, fractions of the image) OR absolute pixels. Use it to pull a single
+  // asset out of a busy reference picture so you can study and recreate it in isolation (see_asset).
+  crop_image({ src, x, y, w, h, out } = {}) {
+    if (!src) return { ok: false, error: "NO_SRC", hint: "pass src: the image to crop from" };
+    if ([x, y, w, h].some((v) => typeof v !== "number")) return { ok: false, error: "NO_BBOX", hint: "pass x,y,w,h (normalized 0–1 or pixels)" };
+    if (!out) return { ok: false, error: "NO_OUT", hint: "pass out: the destination .png path (in the workdir)" };
+    const readable = (rel) => { try { const a = this._resolve(rel); if (fs.existsSync(a)) return a; } catch { /* */ } if (path.isAbsolute(rel) && fs.existsSync(rel)) return rel; return null; };
+    const srcAbs = readable(src);
+    if (!srcAbs) return { ok: false, error: "SRC_NOT_FOUND", path: src };
+    let outAbs; try { outAbs = this._resolve(out); } catch (e) { return { ok: false, error: e.message }; }
+    const r = cropImage(srcAbs, { x, y, w, h }, outAbs);
+    if (!r.ok) return { ok: false, error: r.error, hint: "couldn't crop — is Chrome installed and src a real image?" };
+    return { ok: true, path: path.relative(this.workdir, outAbs) || out, width: r.width, height: r.height, note: `cropped ${r.width}x${r.height} asset → ${out}. Study it (view_image) and recreate it (see_asset).` };
+  }
+
+  // compare_regions (Block 19 — the granular fix for busy pictures): a whole-image score HIDES a small
+  // wrong asset (it averages out). Pass the asset bounding boxes and this diffs EACH region of target vs
+  // your render AT HIGH SENSITIVITY, plus the whole scene — a per-asset SCORECARD (worst-first) so you fix
+  // the exact assets that are off, with an annotated composite (green box = match, red = off) you SEE.
+  // target + regions required; pass render (an html/page to screenshot) OR candidate (an image).
+  compare_regions({ target, render, candidate, regions } = {}) {
+    if (!target) return { ok: false, error: "NO_TARGET", hint: "pass target: the reference image" };
+    if (!Array.isArray(regions) || !regions.length) return { ok: false, error: "NO_REGIONS", hint: "pass regions: [{label, x, y, w, h}] — the asset boxes (view_image the target first to find them)" };
+    if (!render && !candidate) return { ok: false, error: "NO_CANDIDATE", hint: "pass render: an html/page path, OR candidate: an image path" };
+    const readable = (rel) => { try { const a = this._resolve(rel); if (fs.existsSync(a)) return a; } catch { /* */ } if (path.isAbsolute(rel) && fs.existsSync(rel)) return rel; return null; };
+    const targetAbs = readable(target);
+    if (!targetAbs) return { ok: false, error: "TARGET_NOT_FOUND", path: target };
+    let candAbs, tmpShot = null;
+    if (render) {
+      let pageAbs; try { pageAbs = this._resolve(render); } catch (e) { return { ok: false, error: e.message }; }
+      if (!fs.existsSync(pageAbs)) return { ok: false, error: "RENDER_NOT_FOUND", path: render };
+      tmpShot = path.join(os.tmpdir(), `slivr-rcand-${process.pid}-${Date.now()}.png`);
+      const shot = renderShot(pageAbs, tmpShot, { width: 1000, height: 750 });
+      if (!shot.ok) return { ok: false, error: "RENDER_SCREENSHOT_FAILED", hint: shot.error };
+      candAbs = tmpShot;
+    } else {
+      candAbs = readable(candidate);
+      if (!candAbs) return { ok: false, error: "CANDIDATE_NOT_FOUND", path: candidate };
+    }
+    try {
+      const r = compareRegions(targetAbs, candAbs, regions);
+      if (!r.ok) return { ok: false, error: r.error, hint: "couldn't diff regions — is Chrome installed and both files real images?" };
+      const off = r.regions.filter((x) => x.similarity < 90);
+      const worst = r.regions.slice(0, 6).map((x) => `${x.label}: ${x.similarity}%`).join(", ");
+      const pass = off.length === 0 && r.whole >= 90;
+      const out = { ok: true, whole: r.whole, regions: r.regions, assetsOff: off.map((x) => x.label), allPass: pass,
+        note: `whole scene ${r.whole}% · ${r.regions.length - off.length}/${r.regions.length} assets ≥90%. ${pass ? "All assets and the whole scene pass." : `Fix these assets next (worst first): ${worst}. A high whole-scene score can still hide a wrong asset — chase the per-asset reds.`}` };
+      if (r.dataUrl) out.multimodal = { kind: "image", path: "scorecard", mime: "image/png", dataUrl: r.dataUrl };
       return out;
     } finally { if (tmpShot) { try { fs.unlinkSync(tmpShot); } catch { /* */ } } }
   }

@@ -51,6 +51,8 @@ wastes the turn). The JSON object looks like:
   {"tool":"blueprint_add","args":{"parentId":"1","nodes":[{"title":"hurt sound","leafType":"sound"}]}}
   {"tool":"blueprint_audit","args":{}}
   {"tool":"compare_image","args":{"target":"reference.png","render":"index.html"}}
+  {"tool":"crop_image","args":{"src":"reference.png","x":0.5,"y":0.2,"w":0.25,"h":0.3,"out":"assets/ref-tower.png"}}
+  {"tool":"compare_regions","args":{"target":"reference.png","render":"index.html","regions":[{"label":"tower","x":0.5,"y":0.2,"w":0.25,"h":0.3},{"label":"park","x":0.1,"y":0.6,"w":0.3,"h":0.2}]}}
   {"tool":"plan","args":{"steps":["step 1","step 2","step 3"]}}
   {"tool":"replan","args":{"reason":"step 2 failed because X","steps":["revised remaining step","next step"]}}
   {"tool":"task_write","args":{"tasks":[{"id":"1","subject":"do X","status":"in_progress"},{"subject":"then Y","status":"pending"}]}}
@@ -216,6 +218,19 @@ MATCH A REFERENCE PICTURE (when the user gives a target image to recreate — a 
      looping until similarity is high (aim ≥90). Do NOT declare a visual match done on a low score; if the
      score stops improving across iterations, change approach (re-examine the target) rather than giving up.
 
+  BUSY PICTURES WITH MANY ASSETS (a city, a UI, a crowded scene): a WHOLE-image score is too coarse — one
+  small wrong building averages out to ~95% and is never caught. Go PER-ASSET instead:
+  - View the target and give each distinct asset a bounding box {label, x, y, w, h} (normalized 0–1). Make
+    each asset a blueprint leaf so you have oversight of all of them.
+  - To build a hard asset in isolation, crop_image {src:target, x,y,w,h, out} to pull JUST that asset out of
+    the reference, study it (view_image), and recreate it (see_asset) until it matches its crop.
+  - Verify the whole job with compare_regions {target, render, regions:[…all the boxes…]}: it scores EACH
+    asset region at high sensitivity AND the whole scene, returns a worst-first scorecard + an annotated
+    composite (green box = match, red = off), and tells you which assets still fail. Chase the per-asset
+    REDS — fix those exact assets/positions, re-run compare_regions, and only finish when EVERY asset ≥90
+    AND the whole scene ≥90 (allPass). Fix layout/position first, then per-asset detail; don't redo assets
+    already green. This is how you faithfully reproduce a 75-asset picture instead of an averaged blur.
+
 DRAFT-FIRST (important for HARD tasks): do NOT spend all your turns planning or reasoning. Commit a
   SIMPLE, COMPLETE, runnable solution EARLY — even a naive/brute-force one — then improve it. Always
   have working code written before you run out of steps; a correct-but-slow solution beats none.
@@ -260,6 +275,8 @@ export function makeAgent(workdir, opts = {}) {
     blueprint_add: (a) => tools.blueprint_add(a),
     blueprint_audit: (a) => tools.blueprint_audit(a),
     compare_image: (a) => tools.compare_image(a),
+    crop_image: (a) => tools.crop_image(a),
+    compare_regions: (a) => tools.compare_regions(a),
     delegate: (a) => delegateSubAgent(a, workdir, opts),
     parallel: (a) => parallelSubAgents(a, workdir, opts),
     pipeline: (a) => pipelineSubAgents(a, workdir, opts),
@@ -289,7 +306,7 @@ const SUBAGENT_BRIEF =
 // READ/INFORMATIONAL tools (not edits/commits), de-noised and length-capped.
 const FINDING_TOOLS = new Set([
   "read_file", "list_dir", "grep", "glob", "repo_map", "project_info", "house_style", "find_symbol", "find_refs", "run_command", "web_search",
-  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "compare_image", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
+  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "compare_image", "compare_regions", "crop_image", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
 ]);
 export function extractFindings(sub, maxTotal = 2000) {
   const out = [];
@@ -560,6 +577,8 @@ export class Session {
       blueprint_add: (a) => t.blueprint_add(a),
       blueprint_audit: (a) => t.blueprint_audit(a),
       compare_image: (a) => t.compare_image(a),
+      crop_image: (a) => t.crop_image(a),
+      compare_regions: (a) => t.compare_regions(a),
       delegate: (a) => delegateSubAgent(a, this.workdir, this.opts),
       parallel: (a) => parallelSubAgents(a, this.workdir, this.opts),
       pipeline: (a) => pipelineSubAgents(a, this.workdir, this.opts),
