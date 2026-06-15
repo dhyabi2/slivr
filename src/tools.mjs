@@ -19,6 +19,7 @@ import { renderDom, renderShot, visibleText } from "./eye.mjs";
 import { detectCommands, describeCommands } from "./project.mjs";
 import { detectStyle, styleBrief } from "./style.mjs";
 import { playGame } from "./gameharness.mjs";
+import { renderAsset } from "./asset.mjs";
 
 // Re-indent a replacement block to a target base indent (strip its own common indent, prepend target).
 function reindentBlock(block, indent) {
@@ -434,6 +435,16 @@ export class Tools {
     if (res.error) return { ok: true, played: false, note: `could not drive the game: ${res.error}. Expose window.slivrSim={reset,step,input,state} to make it playtestable.${r.screenshot ? " (final frame attached)" : ""}`, ...img };
     const snaps = res.snapshots || [];
     return { ok: true, played: true, snapshots: snaps, note: `played ${res.steps} steps · ${snaps.length} state snapshots:\n${JSON.stringify(snaps).slice(0, 2200)}`, ...img };
+  }
+
+  // see_asset (Block 16 — Asset Studio): render ONE generated asset in isolation and SEE it, so you can
+  // critique + refine it toward a professional look. Pass `svg` (Bézier organic shapes), `canvas` (2D
+  // draw code — a `noise(x,y)`/`fbm(x,y)` helper is available for natural textures), or `html`. Returns
+  // the rendered image (attached). Loop: generate → see_asset → critique vs the target → refine → repeat.
+  see_asset({ svg, canvas, html, width, height, bg } = {}) {
+    const r = renderAsset({ svg, canvas, html, width, height, bg });
+    if (!r.ok) return { ok: false, error: r.error, hint: "couldn't render the asset — is Chrome installed? (note: WebGL/shader output is NOT captured headless; use svg or canvas-2d)" };
+    return { ok: true, note: `asset rendered ${r.width}x${r.height} — look at it, then refine if it's not professional yet`, multimodal: { kind: "image", path: "asset", mime: "image/png", dataUrl: r.dataUrl } };
   }
 
   // view_pdf: PRIMARY path sends the PDF to the model via OpenRouter's file-parser plugin (so the

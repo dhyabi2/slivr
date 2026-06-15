@@ -40,6 +40,7 @@ wastes the turn). The JSON object looks like:
   {"tool":"view_image","args":{"path":"shot.png"}}
   {"tool":"view_pdf","args":{"path":"spec.pdf"}}
   {"tool":"see_page","args":{"path":"index.html"}}
+  {"tool":"see_asset","args":{"svg":"<svg ...>...</svg>"}}
   {"tool":"play_game","args":{"path":"index.html","inputs":[{"at":0,"key":"ArrowRight","down":true}],"steps":120}}
   {"tool":"delegate","args":{"task":"a focused, self-contained sub-task to run in a fresh sub-agent"}}
   {"tool":"parallel","args":{"tasks":["independent subtask A","independent subtask B"]}}
@@ -159,6 +160,22 @@ BUILDING GAMES (make them real, not just code you can't verify): build a web gam
   envelopes for SFX). Add game-feel/juice (easing/tweening on motion, a few particles, brief screen
   shake or hit-stop on impact) — small touches that make it feel commercial.
 
+ASSET STUDIO (look at the art you make, then make it better): most agents emit "programmer art" because
+  they never SEE what they drew. You can. When you generate visual art — a sprite, an icon, a logo, a
+  texture, an organic shape — call see_asset to RENDER that ONE asset in isolation and look at it, then
+  critique it against the target and REFINE, repeating until it looks intentional. Two techniques the
+  eye can actually capture:
+    • svg    — smooth ORGANIC 2D shapes via Bézier paths (crisp, scalable). Best for icons, logos,
+               characters, leaves/creatures — anything that wants clean curves rather than hard pixels.
+    • canvas — procedural TEXTURE + SHADING on a 2D canvas. A noise(x,y) and fbm(x,y,oct) helper is
+               pre-injected, so you can build natural materials (wood, stone, clouds, skin), gradients,
+               and lighting/normal-style shading. Your draw code runs as (ctx, W, H) => { ... }.
+  Call see_asset {svg:"<svg ...>...</svg>"} or {canvas:"<draw code>", width, height, bg}. It returns the
+  rendered image attached to the conversation — LOOK, then judge silhouette, proportion, color harmony,
+  contrast, shading, and consistency with the rest of the project's art, and refine. (WebGL/shaders are
+  NOT capturable by the headless eye, so stick to svg/canvas for anything you need to see.) Once an asset
+  looks right, inline it into the game/page (SVG markup, or the canvas draw code / a generated dataURL).
+
 DRAFT-FIRST (important for HARD tasks): do NOT spend all your turns planning or reasoning. Commit a
   SIMPLE, COMPLETE, runnable solution EARLY — even a naive/brute-force one — then improve it. Always
   have working code written before you run out of steps; a correct-but-slow solution beats none.
@@ -196,6 +213,7 @@ export function makeAgent(workdir, opts = {}) {
     view_pdf: (a) => tools.view_pdf(a),
     see_page: (a) => tools.see_page(a),
     play_game: (a) => tools.play_game(a),
+    see_asset: (a) => tools.see_asset(a),
     delegate: (a) => delegateSubAgent(a, workdir, opts),
     parallel: (a) => parallelSubAgents(a, workdir, opts),
     pipeline: (a) => pipelineSubAgents(a, workdir, opts),
@@ -225,7 +243,7 @@ const SUBAGENT_BRIEF =
 // READ/INFORMATIONAL tools (not edits/commits), de-noised and length-capped.
 const FINDING_TOOLS = new Set([
   "read_file", "list_dir", "grep", "glob", "repo_map", "project_info", "house_style", "find_symbol", "find_refs", "run_command", "web_search",
-  "web_fetch", "view_pdf", "view_image", "see_page", "play_game", "git_status", "git_diff", "git_log",
+  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "git_status", "git_diff", "git_log",
 ]);
 export function extractFindings(sub, maxTotal = 2000) {
   const out = [];
@@ -489,6 +507,7 @@ export class Session {
       view_pdf: (a) => t.view_pdf(a),
       see_page: (a) => t.see_page(a),
       play_game: (a) => t.play_game(a),
+      see_asset: (a) => t.see_asset(a),
       delegate: (a) => delegateSubAgent(a, this.workdir, this.opts),
       parallel: (a) => parallelSubAgents(a, this.workdir, this.opts),
       pipeline: (a) => pipelineSubAgents(a, this.workdir, this.opts),

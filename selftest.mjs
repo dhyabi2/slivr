@@ -1353,6 +1353,35 @@ console.log("== 35. play_game — drive + observe a running game (Block 15, keys
   ok("play_game: requires a path", new Tools(tmp).play_game({}).ok === false);
 }
 
+console.log("== 36. see_asset — the Asset Studio: generate → SEE → refine (Block 16) ==");
+{
+  const { renderAsset } = await import("./src/asset.mjs");
+  const { findBrowser } = await import("./src/eye.mjs");
+
+  ok("see_asset: requires an asset spec", renderAsset({}).ok === false);
+  ok("see_asset: requires an asset spec (tool layer)", new Tools(tmp).see_asset({}).ok === false);
+
+  if (findBrowser()) {
+    const t = new Tools(tmp);
+    // SVG: a smooth organic Bézier blob on a colored bg — should render a real (non-blank) PNG.
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">' +
+      '<path d="M60 12 C92 12 108 40 100 72 C92 104 40 112 24 84 C8 56 28 12 60 12 Z" fill="#4caf50"/></svg>';
+    const rs = t.see_asset({ svg, width: 120, height: 120, bg: "#101820" });
+    const svgBytes = rs.ok ? Buffer.from(rs.multimodal.dataUrl.split(",")[1], "base64").length : 0;
+    ok("see_asset: renders an SVG asset and attaches the image", rs.ok && rs.multimodal && rs.multimodal.kind === "image");
+    ok("see_asset: the SVG render is non-blank (real pixels)", svgBytes > 700);
+
+    // Canvas: procedural fbm noise texture using the injected helper — must render too.
+    const canvas = "for(var y=0;y<H;y++){for(var x=0;x<W;x++){var n=fbm(x/24,y/24,5);" +
+      "ctx.fillStyle='rgb('+(n*180|0)+','+(n*120|0)+','+(n*80|0)+')';ctx.fillRect(x,y,1,1);}}";
+    const rc = t.see_asset({ canvas, width: 96, height: 96 });
+    const cvBytes = rc.ok ? Buffer.from(rc.multimodal.dataUrl.split(",")[1], "base64").length : 0;
+    ok("see_asset: renders a Canvas-2D procedural texture (noise/fbm helper available)", rc.ok && cvBytes > 1500);
+  } else {
+    ok("see_asset: (no browser installed — live render skipped)", true);
+  }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);
