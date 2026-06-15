@@ -66,6 +66,8 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "slivr-"));
   ok("create_file new file", cf.ok && t.read_file({ path: "new.js" }).content.includes("Z = 9"));
   const cf2 = t.create_file({ path: "new.js", content: "x" });
   ok("create_file refuses overwrite", !cf2.ok && cf2.error === "FILE_EXISTS");
+  const cf3 = t.create_file({ path: "empty.txt" }); // missing content must NOT crash — make an empty file
+  ok("create_file with no content → empty file (no crash)", cf3.ok && cf3.bytes === 0);
 
   let escaped = false;
   try { t.read_file({ path: "../../../etc/passwd" }); } catch (err) { escaped = /SANDBOX/.test(err.message); }

@@ -206,9 +206,10 @@ export class Tools {
   create_file({ path: rel, content }) {
     const abs = this._resolve(rel);
     if (fs.existsSync(abs)) return { ok: false, error: "FILE_EXISTS", path: rel, hint: "Use edit_file to modify an existing file." };
+    const body = content == null ? "" : String(content);   // a missing/null content must NOT crash the turn
     fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, content);
-    return { ok: true, path: rel, bytes: Buffer.byteLength(content) };
+    fs.writeFileSync(abs, body);
+    return { ok: true, path: rel, bytes: Buffer.byteLength(body) };
   }
 
   // NAIVE edit protocol (baseline). Full-file overwrite.
