@@ -13,6 +13,7 @@ import { Tools } from "./src/tools.mjs";
 import { runLoop } from "./src/loop.mjs";
 import { findStub } from "./src/blueprint.mjs";
 import { appendJournal, readJournal, resumeSummary } from "./src/journal.mjs";
+import { applyPromptCache, cachedTokensOf } from "./src/provider.mjs";
 import { resolveConfig, DEFAULTS, parseMaxSteps } from "./src/config.mjs";
 import { isDestructive, needsApproval } from "./src/safety.mjs";
 import { unifiedDiff, diffStat, diffLines } from "./src/diff.mjs";
@@ -1781,6 +1782,32 @@ console.log("== 45. continuity + anti-stuck — resume between sessions, escape 
     ok("resume tool: surfaces the briefing for the agent", t.resume().hasState === true && /Blueprint/.test(t.resume().summary));
     fs.rmSync(d, { recursive: true, force: true });
   }
+}
+
+console.log("== 46. prompt caching — token efficiency with ZERO text change (Block 26) ==");
+{
+  const msgs = [
+    { role: "system", content: "BIG STABLE SYSTEM PROMPT" },
+    { role: "user", content: "do the thing" },
+    { role: "assistant", content: "working" },
+  ];
+  const claude = applyPromptCache(msgs, "anthropic/claude-opus-4.8");
+  ok("prompt cache: marks the system prompt with cache_control (Claude)", Array.isArray(claude[0].content) && claude[0].content[0].cache_control?.type === "ephemeral");
+  ok("prompt cache: also caches the running history tail (last message)", claude[2].content[0].cache_control?.type === "ephemeral");
+  ok("prompt cache: the TEXT is byte-identical — nothing reworded or deleted", claude[0].content[0].text === "BIG STABLE SYSTEM PROMPT" && claude[1].content === "do the thing" /* middle untouched */);
+  ok("prompt cache: original messages NOT mutated (pure)", typeof msgs[0].content === "string");
+
+  // multimodal array content: cache_control goes on the last TEXT block, image/file blocks untouched
+  const mm = [{ role: "system", content: "s" }, { role: "user", content: [{ type: "text", text: "look" }, { type: "image_url", image_url: { url: "data:..." } }] }];
+  const mmc = applyPromptCache(mm, "anthropic/claude-sonnet-4");
+  ok("prompt cache: multimodal — caches last text block, leaves image block alone", mmc[1].content[0].cache_control?.type === "ephemeral" && !mmc[1].content[1].cache_control);
+
+  // non-Anthropic providers cache automatically server-side → we leave messages untouched
+  ok("prompt cache: Gemini/others untouched (they cache automatically)", applyPromptCache(msgs, "google/gemini-2.5-flash") === msgs && typeof msgs[0].content === "string");
+  ok("prompt cache: GPT untouched too", typeof applyPromptCache(msgs, "openai/gpt-4o")[0].content === "string");
+
+  // cached-token accounting across provider usage shapes
+  ok("cachedTokensOf: reads OpenAI + Anthropic shapes", cachedTokensOf({ prompt_tokens_details: { cached_tokens: 900 } }) === 900 && cachedTokensOf({ cache_read_input_tokens: 50 }) === 50 && cachedTokensOf({}) === 0);
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

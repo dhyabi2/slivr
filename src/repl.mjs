@@ -379,7 +379,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
         }
       }
       if (session.tools.tasks.length) process.stdout.write("\n" + renderTasks(session.tools.tasks, p) + "\n");
-      process.stdout.write(footer({ turns: res.turns, totalTokens: res.totals.totalTokens, cost: res.totals.cost, model: session.provider.model, status: footerStatus }, p) + "\n\n");
+      process.stdout.write(footer({ turns: res.turns, totalTokens: res.totals.totalTokens, cachedTokens: res.totals.cachedTokens, cost: res.totals.cost, model: session.provider.model, status: footerStatus }, p) + "\n\n");
       safePrompt();
     }
     busy = false;

@@ -54,6 +54,7 @@ export class Provider {
     this.calls = 0;
     this.promptTokens = 0;
     this.completionTokens = 0;
+    this.cachedTokens = 0;
     this.cost = 0;
     this.log = [];
   }
@@ -83,7 +84,8 @@ export class Provider {
           method: "POST",
           headers: { Authorization: "Bearer " + this.key, "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: this.model, temperature, max_tokens: this.maxTokens, messages,
+            model: this.model, temperature, max_tokens: this.maxTokens,
+            messages: applyPromptCache(messages, this.model),   // cache the stable prefix — no text change
             ...(pluginList.length ? { plugins: pluginList } : {}),
           }),
           signal: ctrl.signal,
@@ -103,13 +105,15 @@ export class Provider {
         const u = d.usage || {};
         const pt = u.prompt_tokens ?? 0;
         const ct = u.completion_tokens ?? 0;
+        const cached = cachedTokensOf(u);   // prompt tokens served from cache (billed ~10%, not full)
         const c = costUSD(this.model, pt, ct);
         // accumulate session totals
         this.calls++;
         this.promptTokens += pt;
         this.completionTokens += ct;
+        this.cachedTokens += cached;
         this.cost += c;
-        const usage = { promptTokens: pt, completionTokens: ct, cost: c };
+        const usage = { promptTokens: pt, completionTokens: ct, cachedTokens: cached, cost: c };
         this.log.push(usage);
         return { text, usage, raw: d };
       } catch (e) {
@@ -150,6 +154,7 @@ export class Provider {
       calls: this.calls,
       promptTokens: this.promptTokens,
       completionTokens: this.completionTokens,
+      cachedTokens: this.cachedTokens,
       totalTokens: this.promptTokens + this.completionTokens,
       cost: +this.cost.toFixed(6),
     };
@@ -157,6 +162,38 @@ export class Provider {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// PROMPT CACHING (token efficiency, ZERO text change): mark the stable prefix with cache_control so the
+// provider bills it at the cached rate (~10% of input) instead of re-billing the full prompt every turn.
+// The model reads the SAME text — this only adds a cache hint; nothing is deleted or reworded. Anthropic/
+// Claude use explicit cache_control breakpoints (we set them); other providers (Gemini, DeepSeek) cache
+// automatically server-side, so we leave their messages untouched. Pure + testable.
+const CACHE_MODELS = /claude|anthropic/i;
+export function applyPromptCache(messages, model) {
+  if (!CACHE_MODELS.test(String(model || "")) || !Array.isArray(messages) || !messages.length) return messages;
+  const mark = (msg) => {
+    if (!msg) return msg;
+    if (typeof msg.content === "string") return { ...msg, content: [{ type: "text", text: msg.content, cache_control: { type: "ephemeral" } }] };
+    if (Array.isArray(msg.content) && msg.content.length) {
+      const blocks = msg.content.map((b) => ({ ...b }));
+      for (let i = blocks.length - 1; i >= 0; i--) { if (blocks[i].type === "text") { blocks[i] = { ...blocks[i], cache_control: { type: "ephemeral" } }; break; } }
+      return { ...msg, content: blocks };
+    }
+    return msg;
+  };
+  const out = messages.slice();
+  const sysIdx = out.findIndex((m) => m.role === "system");      // the largest stable block (tool docs + rules)
+  if (sysIdx >= 0) out[sysIdx] = mark(out[sysIdx]);
+  const lastIdx = out.length - 1;                                // cache the running history prefix for the NEXT turn
+  if (lastIdx >= 0 && lastIdx !== sysIdx) out[lastIdx] = mark(out[lastIdx]);
+  return out;
+}
+
+// Pull cached-prompt-token count out of a usage record across provider shapes (OpenAI-style
+// prompt_tokens_details.cached_tokens, Anthropic cache_read_input_tokens).
+export function cachedTokensOf(u = {}) {
+  return u.prompt_tokens_details?.cached_tokens ?? u.cache_read_input_tokens ?? u.cached_tokens ?? 0;
+}
 
 // Turn an OpenRouter error response into a short, human-readable message instead of dumping raw
 // JSON at the user. Falls back to the provider's own message, then a generic status line.

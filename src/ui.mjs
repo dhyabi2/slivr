@@ -212,11 +212,12 @@ export function formatCost(cost) {
 // Per-turn footer, e.g.  · 4 turns · 5,912 tok · $0.0021
 // status: 'ok' (default) | 'error' | 'interrupted' | 'incomplete' — tints the leading marker so a
 // failed/aborted turn doesn't read as a successful one.
-export function footer({ turns, totalTokens, cost, model, status = "ok" }, palette) {
+export function footer({ turns, totalTokens, cost, model, status = "ok", cachedTokens = 0 }, palette) {
   const p = palette;
   const parts = [
     `${turns} turn${turns === 1 ? "" : "s"}`,
     `${formatNumber(totalTokens)} tok`,
+    ...(cachedTokens > 0 ? [`${formatNumber(cachedTokens)} cached`] : []),
     formatCost(cost),
   ];
   if (model) parts.push(p.gray(model));
