@@ -16,6 +16,8 @@ export const DEFAULTS = {
   apiKey: "",
   baseUrl: "https://openrouter.ai/api/v1",
   approval: "edits",
+  // Rolling context compression (Block 34): elide old reconstructable tool results. true = on (saves tokens).
+  compress: true,
   // Optional 2nd model for EDITING / bug-fixing (the main `model` creates files). "" = use one model for all.
   editModel: "",
   // No artificial step cap by default — the agent runs until the task is DONE (or a real safety stop:

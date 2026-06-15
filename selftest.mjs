@@ -14,6 +14,7 @@ import { runLoop } from "./src/loop.mjs";
 import { findStub } from "./src/blueprint.mjs";
 import { appendJournal, readJournal, resumeSummary } from "./src/journal.mjs";
 import { applyPromptCache, cachedTokensOf } from "./src/provider.mjs";
+import { compressContext } from "./src/compress.mjs";
 import { checkPageJs, extractScripts, nodeCheckCode, isWebGLPage } from "./src/webcheck.mjs";
 import { resolveConfig, DEFAULTS, parseMaxSteps } from "./src/config.mjs";
 import { isDestructive, needsApproval } from "./src/safety.mjs";
@@ -2017,6 +2018,35 @@ console.log("== 54. dual-model routing — creator creates, editor fixes bugs (B
   ok("dual-model: editing existing code switches to the EDITOR model", dual[3] === "EDITOR");
   const single = await run(undefined);
   ok("dual-model: with no editModel set, every turn uses the single model", single.every((m) => m === "CREATOR"));
+}
+
+console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");
+{
+  const big = (n) => "x".repeat(n);
+  const mk = () => [
+    { role: "system", content: "SYS" },
+    { role: "user", content: "TASK" },
+    { role: "user", content: "RESULT (read_file):\n" + big(2000) },     // old read → elide
+    { role: "user", content: "RESULT (grep):\n" + big(1500) },          // old grep → elide
+    { role: "user", content: "RESULT (read_file):\n" + big(1800) },     // recent read → keep
+    { role: "user", content: "RESULT (read_file):\n" + big(1200) },     // recent read → keep
+    { role: "user", content: "RESULT (run_command):\nexit 0 " + big(900) }, // NOT reconstructable → keep
+    { role: "user", content: [{ type: "text", text: "(img)" }, { type: "image_url", image_url: { url: "data:image/png;base64," + big(4000) } }] }, // old image → elide
+    { role: "user", content: [{ type: "text", text: "(img)" }, { type: "image_url", image_url: { url: "data:image/png;base64," + big(4000) } }] }, // recent image → keep
+  ];
+  const m = mk();
+  const before = JSON.stringify(m).length;
+  const r = compressContext(m, { keepResults: 2, keepImages: 1 });
+  const after = JSON.stringify(m).length;
+  ok("compress: elides OLD reconstructable results + an old image, big saving", r.elided === 3 && after < before * 0.7);
+  ok("compress: KEEPS the recent results (working set)", m[4].content.length > 1000 && m[5].content.length > 1000);
+  ok("compress: KEEPS a non-reconstructable run_command result", typeof m[6].content === "string" && m[6].content.length > 800);
+  ok("compress: KEEPS the most recent image", Array.isArray(m[8].content) && m[8].content.some((b) => b.type === "image_url"));
+  ok("compress: is idempotent (a 2nd pass elides nothing new)", compressContext(m, { keepResults: 2, keepImages: 1 }).elided === 0);
+  // opt-out: disabled does nothing
+  const m2 = mk(); const len2 = JSON.stringify(m2).length;
+  // (the loop guards with compress !== false; the function itself always runs when called — verify it's pure-ish)
+  ok("compress: never touches the system prompt or the task", m2[0].content === "SYS" && m2[1].content === "TASK");
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

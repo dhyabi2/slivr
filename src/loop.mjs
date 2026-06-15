@@ -9,6 +9,7 @@
 
 import { buildMultimodalContent } from "./multimodal.mjs";
 import { applyControl, controlToMessage } from "./bridge.mjs";
+import { compressContext } from "./compress.mjs";
 
 // Find the balanced {...} block starting at index `s`, or -1. (string/escape aware)
 function balancedEnd(body, s) {
@@ -75,7 +76,7 @@ export function reasoningProse(text) {
   return s.slice(0, i).replace(/```\w*/g, "").replace(/\s+/g, " ").trim();
 }
 
-export async function runLoop({ provider, tools, toolMap, systemPrompt, task, maxSteps = Infinity, onStep, onToolStart, onThinking, beforeTool, seedMessages, signal, verify, maxRepairs = 3, bridge, editModel }) {
+export async function runLoop({ provider, tools, toolMap, systemPrompt, task, maxSteps = Infinity, onStep, onToolStart, onThinking, beforeTool, seedMessages, signal, verify, maxRepairs = 3, bridge, editModel, compress }) {
   // DUAL-MODEL ROUTING (optional): a CREATOR model (provider.model) builds/creates; an EDITOR model
   // (editModel) handles editing/bug-fixing. We pick per turn from the most recent mutation: while the
   // agent is creating files it stays on the creator; once it edits existing code it uses the editor.
@@ -141,6 +142,10 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     turns++;
     let resp;
     try {
+      // ROLLING COMPRESSION (Block 34): shrink the thread before sending — elide OLD reconstructable tool
+      // results + already-viewed images to stubs (the model re-calls the tool if it needs them). Lossless,
+      // any-prompt, stable (so prompt-cache hits survive). compress === false opts out.
+      if (compress !== false) compressContext(messages, typeof compress === "object" ? compress : undefined);
       const turnModel = (editModel && editPhase) ? editModel : undefined;   // undefined → provider's creator model
       if (onThinking) { try { onThinking(true, turnModel); } catch { /* */ } }
       try { resp = await provider.chat(messages, { signal, model: turnModel }); }

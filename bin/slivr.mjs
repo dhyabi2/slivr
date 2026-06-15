@@ -77,6 +77,7 @@ function parseArgs(argv) {
     else if (a === "--skill") { [flags.skill, i] = val(i, "--skill"); }
     else if (a === "--control") { [flags.control, i] = val(i, "--control"); }
     else if (a === "--standing") flags.standing = true;
+    else if (a === "--no-compress") flags.compress = false;
     else if (a.startsWith("--skill=")) flags.skill = a.slice(8);
     else if (a.startsWith("--control=")) flags.control = a.slice(10);
     else if (a === "--daemon") flags.daemon = true;
@@ -169,7 +170,7 @@ EXAMPLES
 async function runOneShot(task, dir, config, palette, { auto, plan, verify, repair }) {
   const p = palette;
   const session = new Session(dir, {
-    model: config.model, editModel: config.editModel, apiKey: config.apiKey, baseUrl: config.baseUrl,
+    model: config.model, editModel: config.editModel, compress: config.compress, apiKey: config.apiKey, baseUrl: config.baseUrl,
     maxSteps: config.maxSteps, maxTokensPerTurn: config.maxTokensPerTurn,
     planMode: !!plan,
     notify: (m) => process.stderr.write(p.dim(`  … ${m}\n`)),
@@ -308,7 +309,7 @@ async function runOneShot(task, dir, config, palette, { auto, plan, verify, repa
 async function runOneShotInProcess(task, dir, log) {
   const { config } = loadConfig({});
   const session = new Session(dir, {
-    model: config.model, editModel: config.editModel, apiKey: config.apiKey, baseUrl: config.baseUrl,
+    model: config.model, editModel: config.editModel, compress: config.compress, apiKey: config.apiKey, baseUrl: config.baseUrl,
     maxSteps: config.maxSteps, maxTokensPerTurn: config.maxTokensPerTurn,
   });
   const w = (s) => { try { log.write(s); } catch { /* ignore */ } };
@@ -567,7 +568,7 @@ async function main() {
     if (!fs.existsSync(dir)) { process.stderr.write(`directory not found: ${dir}\n`); return 2; }
 
     const session = new Session(dir, {
-      model: config.model, editModel: config.editModel, apiKey: config.apiKey, baseUrl: config.baseUrl,
+      model: config.model, editModel: config.editModel, compress: config.compress, apiKey: config.apiKey, baseUrl: config.baseUrl,
       maxSteps: config.maxSteps, maxTokensPerTurn: config.maxTokensPerTurn,
     });
     const controlFile = flags.control || path.join(dir, ".slivr", "control.jsonl");
