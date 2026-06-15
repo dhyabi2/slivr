@@ -22,6 +22,28 @@ function decodeEntities(s) {
   return String(s).replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 }
 
+// Extract a game's LEVEL DATA for solvability certification. A lock-and-key/grid game can OPT IN by
+// exposing window.slivrLevels — an array where each level is row-strings (["#S.G#",…]) or {rows:[…]} or
+// {grid:[…]} (tiles: # wall, S spawn, G goal, k key, D door). Returns that array, or null when the game
+// doesn't expose it (so the certifier never blocks games that don't use keys/doors). Mirrors buildHarness.
+export function extractLevels(htmlAbs) {
+  const gameHtml = read(htmlAbs);
+  if (!gameHtml) return null;
+  const driver = `<script>(function(){function out(o){var el=document.getElementById('__slivr_levels_data');if(!el){el=document.createElement('pre');el.id='__slivr_levels_data';el.style.display='none';document.body.appendChild(el);}el.textContent=JSON.stringify(o);}function run(){try{var L=window.slivrLevels;if(L==null){out({error:'NO_LEVELS'});return;}out({ok:true,levels:L});}catch(e){out({error:String(e&&e.message||e)});}}if(document.readyState==='complete')run();else window.addEventListener('load',run);})();</script>`;
+  const harnessed = /<\/body>/i.test(gameHtml) ? gameHtml.replace(/<\/body>/i, driver + "</body>") : gameHtml + driver;
+  const dir = path.dirname(htmlAbs);
+  const tmp = path.join(dir, `.slivr-levels-${process.pid}-${Date.now()}.html`);
+  try {
+    fs.writeFileSync(tmp, harnessed);
+    const dom = renderDom(tmp);
+    if (!dom.ok) return null;
+    const m = dom.dom.match(/<pre id="__slivr_levels_data"[^>]*>([\s\S]*?)<\/pre>/);
+    if (!m) return null;
+    let r = null; try { r = JSON.parse(decodeEntities(m[1])); } catch { return null; }
+    return r && r.ok && Array.isArray(r.levels) ? r.levels : null;
+  } finally { try { fs.unlinkSync(tmp); } catch { /* */ } }
+}
+
 // Build a harness HTML: the game + an injected driver that runs the Simulacrum and writes a JSON
 // result into a hidden <pre> that --dump-dom can read back.
 export function buildHarness(gameHtml, plan = {}) {

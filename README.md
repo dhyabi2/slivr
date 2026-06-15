@@ -444,6 +444,9 @@ sessions), neutral-to-slightly-worse on trivial edits.*
 - MCP client: `src/mcp.mjs` (stdio JSON-RPC client + tool catalog) · `test/stub-mcp.mjs` (local test server)
 - multimodal: `src/multimodal.mjs` (image/pdf block builders + pdf-plugin) · tools `view_image`/`view_pdf` in `src/tools.mjs`
 - skills: `src/skills.mjs` (discovery + arg substitution) · `.slivr/skills/*.md` (example prompts)
+- game verification: `src/structure.mjs` (production scene-graph contract) · `src/levelcert.mjs` (lock-and-key
+  solvability/soft-lock certifier, vendored from esg-coreach) + the `certify_level` tool · `vendor/loft/`
+  (serverless realtime-multiplayer protocol, vendored from loft-poc, for generated games)
 - background/scheduled: `src/jobs.mjs` (store + duration/cron parsing) · `src/scheduler.mjs` (detached spawn + poller)
 - `bin/slivr.mjs` — main CLI · `bin/agent.mjs` — original benchmark CLI · `demo.mjs` — live side-by-side · `selftest.mjs` — deterministic (no LLM)
 - `bench/tasks.mjs` `bench/run.mjs` `bench/results.json` · `SPEC.md`

@@ -44,6 +44,7 @@ wastes the turn). The JSON object looks like:
   {"tool":"play_game","args":{"path":"index.html","inputs":[{"at":0,"key":"ArrowRight","down":true}],"steps":120}}
   {"tool":"play_levels","args":{"path":"index.html","steps":80}}
   {"tool":"autoplay","args":{"path":"index.html","keys":["ArrowRight","ArrowUp","Space"]}}
+  {"tool":"certify_level","args":{"rows":["#######","#S.k.G#","#######"]}}
   {"tool":"delegate","args":{"task":"a focused, self-contained sub-task to run in a fresh sub-agent"}}
   {"tool":"parallel","args":{"tasks":["independent subtask A","independent subtask B"]}}
   {"tool":"pipeline","args":{"tasks":[{"id":"a","task":"do A","deps":[]},{"id":"b","task":"do B using A","deps":["a"]}]}}
@@ -240,6 +241,24 @@ MULTI-LEVEL GAMES (don't ship a single playground — build a real progression):
     is dead as the user would experience it — fix the real input handlers + update loop. NEVER declare a
     game done until autoplay shows it responds AND you've looked at the contact sheet and it plays right.
 
+LOCK-AND-KEY / GRID LEVELS (prove they're winnable — don't ship soft-locks): for any game with a discrete
+  grid and CONSUMABLE / IRREVERSIBLE choices — keys + doors, switches, pushable boxes (Sokoban), one-way
+  doors, limited charges — a level can LOOK solvable and even have a solution path yet silently SOFT-LOCK
+  (spend your one key on the wrong door → the goal is unreachable forever). "A path exists" and "I played it
+  once" CANNOT see this. Use certify_level {rows:[...]} (tiles: # wall, S spawn, G goal, . floor, k key,
+  D door) to PROVE a level is solvable AND soft-lock-free — it returns ok plus any soft-locked states. Build
+  your level DATA in that tile format, certify_level EVERY level, and ship only certified ones (regenerate or
+  fix the key/door economy otherwise). Better: expose window.slivrLevels (an array of row-string levels) so
+  the done-gate auto-certifies them — a level that can strand the player is pushed back. Any path the
+  certifier finds is also a guaranteed walkthrough for a hint system.
+
+SERVERLESS MULTIPLAYER (no always-on game server): if a multiplayer game must run on serverless infra
+  (Vercel/Cloudflare/Lambda, no persistent socket/process) and it's a FULL-INFORMATION game (shared boss,
+  visible positions — not hidden cards/fog), use the LOFT pattern vendored at vendor/loft/ (README + SPEC):
+  a deterministic integer-only step(state,inputs), one durable CAS row, an ed25519 hash-chain, and bisection
+  fraud proofs; route each player's input to a distinct KV key. Don't hand-roll a relay or rent an always-on
+  box. For hidden-state games, LOFT's fraud proof doesn't apply — pick a different approach.
+
 ASSET STUDIO (look at the art you make, then make it better): most agents emit "programmer art" because
   they never SEE what they drew. You can. When you generate visual art — a sprite, an icon, a logo, a
   texture, an organic shape — call see_asset to RENDER that ONE asset in isolation and look at it, then
@@ -424,6 +443,7 @@ export function makeAgent(workdir, opts = {}) {
     play_game: (a) => tools.play_game(a),
     play_levels: (a) => tools.play_levels(a),
     autoplay: (a) => tools.autoplay(a),
+    certify_level: (a) => tools.certify_level(a),
     see_asset: (a) => tools.see_asset(a),
     blueprint_plan: (a) => tools.blueprint_plan(a),
     blueprint_status: (a) => tools.blueprint_status(a),

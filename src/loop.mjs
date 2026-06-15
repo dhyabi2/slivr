@@ -269,6 +269,18 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
                       trace.push({ step, structure: { requiredScore: st.requiredScore, zero: st.zeroCategories, missing: st.missing.map((m) => m.id) } });
                     }
                   } catch { /* couldn't read the file → don't block */ }
+                  // LOCK-AND-KEY SOLVABILITY (Block 39): if the game OPTS IN by exposing window.slivrLevels,
+                  // prove every level is solvable AND soft-lock-free (ESG-CoReach) — no key spent into an
+                  // unwinnable state, the soft-lock that "a path exists / I played it once" can't see. Opt-in
+                  // via the contract → never blocks games without keys/doors. A browser-read failure → no block.
+                  if (!problem && typeof tools._certifyGameLevels === "function") {
+                    const lc = tools._certifyGameLevels(gameFile);
+                    if (lc && lc.failures.length) {
+                      const punch = lc.failures.slice(0, 6).map((f) => `  ✗ level ${f.index}: ${f.reason}`).join("\n");
+                      problem = `${lc.failures.length} of ${lc.checked} level${lc.checked === 1 ? "" : "s"} can permanently STRAND the player (not soundly completable):\n${punch}\nFix the key/door economy so every reachable state can still reach the goal, then re-verify with certify_level.`;
+                      trace.push({ step, levelCert: { checked: lc.checked, failures: lc.failures } });
+                    }
+                  }
                   // SEMANTIC FIDELITY (Block 37): pixel-richness + static structure can't tell "looks like
                   // Mario" from "colourful blobs". If structure passed and a vision judge is configured, have it
                   // derive a yes/no CHECKLIST of what the request requires and answer each by LOOKING at the

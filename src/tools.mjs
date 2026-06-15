@@ -19,7 +19,8 @@ import { buildSymbolIndex, findSymbol, findReferences, repoOverview, langOf, sym
 import { renderDom, renderShot, visibleText, screenshotWebGL } from "./eye.mjs";
 import { detectCommands, describeCommands } from "./project.mjs";
 import { detectStyle, styleBrief } from "./style.mjs";
-import { playGame, playLevels, autoPlay } from "./gameharness.mjs";
+import { playGame, playLevels, autoPlay, extractLevels } from "./gameharness.mjs";
+import { parse as parseLevel, certify as certifyLevel, recheck as recheckLevel } from "./levelcert.mjs";
 import { renderAsset } from "./asset.mjs";
 import * as bp from "./blueprint.mjs";
 import { resumeSummary, appendJournal } from "./journal.mjs";
@@ -139,6 +140,53 @@ export class Tools {
       const b64 = fs.readFileSync(cap).toString("base64");
       try { fs.unlinkSync(cap); } catch { /* */ }
       return b64 ? "data:image/png;base64," + b64 : null;
+    } catch { return null; }
+  }
+
+  // Normalize one level into an array of row-strings (accepts ["..."], {rows:[...]}, or {grid:[["#"...]]}).
+  _levelRows(lvl) {
+    if (Array.isArray(lvl) && lvl.every((r) => typeof r === "string")) return lvl;
+    if (lvl && Array.isArray(lvl.rows) && lvl.rows.every((r) => typeof r === "string")) return lvl.rows;
+    if (lvl && Array.isArray(lvl.grid)) return lvl.grid.map((r) => (Array.isArray(r) ? r.join("") : String(r)));
+    return null;
+  }
+
+  // PROVE a discrete lock-and-key level is solvable AND soft-lock-free (no key spent into an unwinnable
+  // state) — ESG-CoReach co-reachability certificate. Tiles: # wall, S spawn, G goal, . floor, k key,
+  // D door. Pass {rows:[...]} for one level or {levels:[[...],[...]]} for many. Catches the soft-locks
+  // that "a path exists" / "I played it once" miss. Returns per-level verdicts + an independent re-check.
+  certify_level({ rows, levels } = {}) {
+    const list = levels != null ? levels : (rows != null ? [rows] : null);
+    if (!Array.isArray(list) || !list.length) return { ok: false, error: "NO_LEVEL", hint: 'pass {rows:["#S.G#",...]} or {levels:[rows,...]}; tiles: # wall, S spawn, G goal, k key, D door' };
+    const results = [];
+    for (let i = 0; i < list.length; i++) {
+      const r = this._levelRows(list[i]);
+      if (!r) { results.push({ index: i, ok: false, error: "BAD_ROWS" }); continue; }
+      try {
+        const L = parseLevel(r);
+        if (!L.spawn || !L.goal) { results.push({ index: i, ok: false, error: "NO_SPAWN_OR_GOAL", hint: "every level needs an S and a G" }); continue; }
+        const c = certifyLevel(L);
+        results.push({ index: i, ok: c.ok, solvable: c.solvable, nStates: c.nStates, nSoftlock: c.nSoftlock, softlockExample: c.softlockExample, reverified: recheckLevel(c.witness).verified });
+      } catch (e) { results.push({ index: i, ok: false, error: String(e && e.message || e) }); }
+    }
+    const bad = results.filter((r) => !r.ok);
+    return { ok: bad.length === 0, levels: results.length, certified: results.length - bad.length, failures: bad, results };
+  }
+
+  // GATE helper: a game can expose window.slivrLevels (array of row-string levels). If it does, certify
+  // each; returns { checked, failures:[{index,reason}] } or null when the game doesn't expose levels (→
+  // never blocks games that don't opt in). Reads the page via the harness (browser); errors → null.
+  _certifyGameLevels(rel) {
+    try {
+      const abs = this._resolve(rel);
+      const levels = extractLevels(abs);
+      if (!Array.isArray(levels) || !levels.length) return null;
+      const cert = this.certify_level({ levels });
+      const failures = cert.results.filter((r) => !r.ok).map((r) => ({
+        index: r.index,
+        reason: r.error ? r.error : (!r.solvable ? "UNSOLVABLE (the goal can't be reached at all)" : `SOFT-LOCK (${r.nSoftlock} states can never reach the goal — a wasted key/door)`),
+      }));
+      return { checked: cert.levels, failures };
     } catch { return null; }
   }
 

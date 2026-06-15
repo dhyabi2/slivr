@@ -497,7 +497,10 @@ console.log("== 15. skills: discovery + arg substitution (no LLM) ==");
   const map = discoverSkills(proj);
   ok("discoverSkills finds project skills", map.has("echo") && map.has("noop"));
   ok("discovered skill has name+description+body", map.get("echo").description === "echoes" && map.get("echo").body === "Say: $ARGS");
-  ok("listSkills sorted by name", listSkills(proj).map(s => s.name).join(",") === "echo,noop");
+  // listSkills merges project + user (~/.slivr/skills) skills; assert it's globally name-sorted and the
+  // project skills appear in order (robust to any real user skills present — don't assume an empty dir).
+  const lsNames = listSkills(proj).map(s => s.name);
+  ok("listSkills sorted by name", lsNames.includes("echo") && lsNames.includes("noop") && lsNames.indexOf("echo") < lsNames.indexOf("noop") && lsNames.join(",") === [...lsNames].sort().join(","));
 
   const r = renderSkill("echo", ["hi", "there"], proj);
   ok("renderSkill substitutes args into body", r.ok && r.prompt === "Say: hi there");
@@ -2153,6 +2156,49 @@ console.log("== 60. production-structure model — the scene-graph contract + We
 
   // explicit-minimal request is NOT held to the production bar (no false block on what the user asked for).
   ok("structure: gate is conditioned on genre (3D drops 2D-only nodes & vice-versa)", analyzeStructure(skeleton, "x").nodes.length !== analyzeStructure(COMPLETE_GAME, "x make 3d").nodes.length || true);
+}
+
+console.log("== 61. level-solvability certifier — prove lock-and-key levels are soft-lock-free (Block 39) ==");
+{
+  const { parse, certify, recheck } = await import("./src/levelcert.mjs");
+  // vendored certifier core (ESG-CoReach): a good level certifies; a SOLVABLE-but-soft-locked trap is caught.
+  const GOOD = ["#####", "#S.G#", "#####"];
+  const TRAP = ["#######", "#S.D.G#", "#.k...#", "###D###", "#..G..#", "#######"]; // wrong key spend strands the player
+  const g = certify(parse(GOOD)), tr = certify(parse(TRAP));
+  ok("levelcert: a good level is certified (solvable + soft-lock-free)", g.ok === true && g.solvable === true && g.nSoftlock === 0);
+  ok("levelcert: a SOLVABLE-but-soft-locked trap is rejected", tr.ok === false && tr.solvable === true && tr.nSoftlock > 0);
+  ok("levelcert: independent recheck agrees (witness re-verified)", recheck(g.witness).verified === true && recheck(tr.witness).verified === false);
+
+  // certify_level TOOL (deterministic, no browser)
+  const t = new Tools(os.tmpdir());
+  ok("certify_level: clean level → ok, soft-locked → fail", t.certify_level({ rows: GOOD }).ok === true && t.certify_level({ rows: TRAP }).ok === false);
+  ok("certify_level: many levels via {levels:[...]}", (() => { const r = t.certify_level({ levels: [GOOD, TRAP] }); return r.ok === false && r.certified === 1 && r.failures.length === 1; })());
+  ok("certify_level: no level → NO_LEVEL; missing S/G → NO_SPAWN_OR_GOAL", t.certify_level({}).error === "NO_LEVEL" && t.certify_level({ rows: ["#####", "#...#", "#####"] }).results[0].error === "NO_SPAWN_OR_GOAL");
+
+  // DONE-GATE integration: a game that exposes window.slivrLevels gets each level certified (browser).
+  const { findBrowser } = await import("./src/eye.mjs");
+  if (findBrowser()) {
+    const mkProv = (script) => { let i = 0; return { model: "m", chat: async () => ({ text: JSON.stringify(script[i++] || { tool: "done", args: {} }), usage: {}, raw: {} }), totals: () => ({ model: "m", calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) }; };
+    const withLevels = (lvls) => COMPLETE_GAME.replace("loop();</script>", "loop();window.slivrLevels=" + JSON.stringify(lvls) + ";</script>");
+    // structurally-complete game that ALSO exposes a SOFT-LOCKED level → pushed back once, then accepted.
+    const db = fs.mkdtempSync(path.join(os.tmpdir(), "lcg-")); const tb = new Tools(db);
+    fs.writeFileSync(path.join(db, "index.html"), withLevels([TRAP]));
+    const rb = await runLoop({ provider: mkProv([{ tool: "done", args: {} }, { tool: "done", args: {} }]), tools: tb, toolMap: {}, systemPrompt: "s", task: "make a lock and key dungeon", maxSteps: 8 });
+    ok("levelcert gate: a game exposing a soft-locked level is pushed back at done", rb.trace.some((x) => x.levelCert && x.levelCert.failures.length === 1) && rb.done);
+    // same game, a CLEAN level → passes on turn 1 (no false block).
+    const dgd = fs.mkdtempSync(path.join(os.tmpdir(), "lcg2-")); const tgd = new Tools(dgd);
+    fs.writeFileSync(path.join(dgd, "index.html"), withLevels([GOOD]));
+    const rgd = await runLoop({ provider: mkProv([{ tool: "done", args: {} }]), tools: tgd, toolMap: {}, systemPrompt: "s", task: "make a lock and key dungeon", maxSteps: 8 });
+    ok("levelcert gate: a game exposing only clean levels passes (no false block)", !rgd.trace.some((x) => x.levelCert) && rgd.done && rgd.turns === 1);
+    // a game WITHOUT the slivrLevels contract is never level-gated (opt-in).
+    const dn = fs.mkdtempSync(path.join(os.tmpdir(), "lcg3-")); const tn = new Tools(dn);
+    fs.writeFileSync(path.join(dn, "index.html"), COMPLETE_GAME);
+    const rn = await runLoop({ provider: mkProv([{ tool: "done", args: {} }]), tools: tn, toolMap: {}, systemPrompt: "s", task: "make a platformer", maxSteps: 8 });
+    ok("levelcert gate: a game without window.slivrLevels is not level-gated", !rn.trace.some((x) => x.levelCert) && rn.done);
+    fs.rmSync(db, { recursive: true, force: true }); fs.rmSync(dgd, { recursive: true, force: true }); fs.rmSync(dn, { recursive: true, force: true });
+  } else {
+    ok("levelcert gate: (no browser — live skipped)", true);
+  }
 }
 
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");
