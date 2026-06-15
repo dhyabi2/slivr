@@ -20,6 +20,7 @@ import { detectCommands, describeCommands } from "./project.mjs";
 import { detectStyle, styleBrief } from "./style.mjs";
 import { playGame } from "./gameharness.mjs";
 import { renderAsset } from "./asset.mjs";
+import * as bp from "./blueprint.mjs";
 
 // Re-indent a replacement block to a target base indent (strip its own common indent, prepend target).
 function reindentBlock(block, indent) {
@@ -445,6 +446,98 @@ export class Tools {
     const r = renderAsset({ svg, canvas, html, width, height, bg });
     if (!r.ok) return { ok: false, error: r.error, hint: "couldn't render the asset — is Chrome installed? (note: WebGL/shader output is NOT captured headless; use svg or canvas-2d)" };
     return { ok: true, note: `asset rendered ${r.width}x${r.height} — look at it, then refine if it's not professional yet`, multimodal: { kind: "image", path: "asset", mime: "image/png", dataUrl: r.dataUrl } };
+  }
+
+  // --- Blueprint (Block 17): plan the WHOLE build up front as a deep, concrete, on-disk tree, then
+  // grind it leaf-by-leaf over hours without drifting or dropping inner parts. -------------------------
+
+  // blueprint_plan: lock in the full hierarchical build tree from the goal. `tree` is nested:
+  // [{title, leafType?, decision?, children?:[...]}]. Childless nodes are leaves (real work);
+  // nodes with children are groups. Persists to .slivr/blueprint.json (re-planning preserves progress).
+  blueprint_plan({ goal, tree } = {}) {
+    if (!goal || !String(goal).trim()) return { ok: false, error: "NO_GOAL", hint: "pass goal: the one-line description of what you're building" };
+    if (!Array.isArray(tree) || !tree.length) return { ok: false, error: "NO_TREE", hint: "pass tree: a NESTED array of concrete nodes [{title, leafType?, children?[]}] — expand to real leaves (every sprite/sound/UI state/sub-component), no abstractions" };
+    let model = bp.parseTree(goal, tree);
+    const prev = bp.loadBlueprint(this.workdir);
+    if (prev) model = bp.mergeProgress(prev, model);
+    const p = bp.saveBlueprint(this.workdir, model);
+    const cov = bp.coverage(model);
+    return { ok: true, saved: path.relative(this.workdir, p) || ".slivr/blueprint.json", coverage: cov, tree: bp.renderTree(model), note: `Blueprint locked: ${cov.totalLeaves} concrete leaves. Work them one by one; mark each done only when it's a real, finished artifact.` };
+  }
+
+  // blueprint_status: cheap orientation — the tree, coverage, and the next uncovered leaves to do.
+  blueprint_status({ next = 5 } = {}) {
+    const model = bp.loadBlueprint(this.workdir);
+    if (!model) return { ok: false, error: "NO_BLUEPRINT", hint: "call blueprint_plan first to lock in the build tree" };
+    const upcoming = bp.nextUncovered(model, next).map(n => ({ id: n.id, title: n.title, leafType: n.leafType }));
+    return { ok: true, coverage: bp.coverage(model), next: upcoming, tree: bp.renderTree(model) };
+  }
+
+  // blueprint_mark: update a node's status (+evidence/decision). MATERIALIZATION-FIRST gate: a leaf can
+  // only become "done" with `evidence` (a real file/artifact path) whose content is NOT a stub/placeholder.
+  blueprint_mark({ id, status, evidence, decision } = {}) {
+    const model = bp.loadBlueprint(this.workdir);
+    if (!model) return { ok: false, error: "NO_BLUEPRINT", hint: "call blueprint_plan first" };
+    const node = model.nodes[id];
+    if (!node) return { ok: false, error: "NO_SUCH_NODE", id, hint: "use blueprint_status to see node ids" };
+    if (status && !bp.STATUSES.includes(status)) return { ok: false, error: "BAD_STATUS", hint: `status ∈ ${bp.STATUSES.join("|")}` };
+    if (status === "done" && node.kind === "leaf") {
+      const ev = evidence || node.evidence;
+      if (!ev) return { ok: false, error: "NO_EVIDENCE", hint: "to mark a leaf done, pass evidence: the real file/artifact that satisfies it (zero-abstraction — no stubs)" };
+      // read the evidence file (if it's a path in the workdir) and reject stubs/placeholders.
+      let txt = null;
+      try { txt = fs.readFileSync(this._resolve(ev), "utf8"); } catch { txt = null; }
+      if (txt !== null && bp.looksStub(txt)) return { ok: false, error: "STUB_EVIDENCE", hint: `${ev} still contains a stub/placeholder (TODO/placeholder/not-implemented/empty). Finish it for real, then mark done.` };
+    }
+    if (status) node.status = status;
+    if (evidence != null) node.evidence = String(evidence);
+    if (decision != null) node.decision = String(decision);
+    bp.saveBlueprint(this.workdir, model);
+    const cov = bp.coverage(model);
+    const upcoming = bp.nextUncovered(model, 3).map(n => ({ id: n.id, title: n.title }));
+    return { ok: true, node: { id: node.id, title: node.title, status: node.status, evidence: node.evidence }, coverage: cov, next: upcoming };
+  }
+
+  // blueprint_add: graft newly-discovered nodes under a parent (e.g. after the completeness critic finds
+  // a missing part). parentId omitted/"" = add as new roots. `nodes` is the same nested shape as plan.
+  blueprint_add({ parentId = "", nodes } = {}) {
+    const model = bp.loadBlueprint(this.workdir);
+    if (!model) return { ok: false, error: "NO_BLUEPRINT", hint: "call blueprint_plan first" };
+    if (!Array.isArray(nodes) || !nodes.length) return { ok: false, error: "NO_NODES", hint: "pass nodes: a nested array to add" };
+    const parent = parentId ? model.nodes[parentId] : null;
+    if (parentId && !parent) return { ok: false, error: "NO_SUCH_PARENT", id: parentId };
+    // build a sub-model rooted at the parent's id-space, then splice it in.
+    const base = parent ? parent.children.length : model.roots.length;
+    const walk = (arr, par, prefix, startIdx) => {
+      const ids = [];
+      arr.forEach((raw, i) => {
+        const idx = startIdx + i + 1;
+        const id = prefix ? `${prefix}.${idx}` : `${idx}`;
+        const kids = Array.isArray(raw.children) ? raw.children : [];
+        const kind = kids.length ? "group" : (raw.kind === "group" ? "group" : "leaf");
+        model.nodes[id] = { id, parent: par, title: String(raw.title || "").trim() || "(untitled)", kind, leafType: raw.leafType ? String(raw.leafType) : (kind === "leaf" ? "part" : null), status: "uncovered", evidence: "", decision: raw.decision ? String(raw.decision) : "" };
+        ids.push(id);
+        model.nodes[id].children = walk(kids, id, id, 0);
+      });
+      return ids;
+    };
+    const newIds = walk(nodes, parent ? parent.id : null, parent ? parent.id : "", base);
+    if (parent) { parent.children.push(...newIds); if (parent.kind === "leaf") parent.kind = "group"; }
+    else model.roots.push(...newIds);
+    bp.saveBlueprint(this.workdir, model);
+    return { ok: true, added: newIds.length, coverage: bp.coverage(model), tree: bp.renderTree(model) };
+  }
+
+  // blueprint_audit: the completeness critic. Returns the original goal, the full tree, and STRUCTURAL
+  // findings (empty groups, done-without-evidence, stub/missing evidence). The agent then does the
+  // SEMANTIC pass: re-read the goal and add (blueprint_add) anything in it not yet a leaf — 100% coverage.
+  blueprint_audit() {
+    const model = bp.loadBlueprint(this.workdir);
+    if (!model) return { ok: false, error: "NO_BLUEPRINT", hint: "call blueprint_plan first" };
+    const findings = bp.structuralAudit(model, (rel) => {
+      try { return fs.readFileSync(this._resolve(rel), "utf8"); } catch { return null; }
+    });
+    return { ok: true, goal: model.goal, coverage: bp.coverage(model), structural: findings, tree: bp.renderTree(model), note: "Now do the SEMANTIC check: re-read the goal above and list anything implied but NOT present as a leaf (inner parts, small assets, edge states). Add them with blueprint_add so coverage is 100%." };
   }
 
   // view_pdf: PRIMARY path sends the PDF to the model via OpenRouter's file-parser plugin (so the

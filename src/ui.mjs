@@ -48,6 +48,11 @@ export function describeStep({ tool, args = {} }) {
     case "house_style": return `house_style`;
     case "see_page": return `see_page ${args.path ?? "?"}${args.visual ? " (visual)" : ""}`;
     case "see_asset": return `see_asset ${args.svg ? "svg" : args.canvas ? "canvas" : "html"}`;
+    case "blueprint_plan": return `blueprint_plan${Array.isArray(args.tree) ? ` (${args.tree.length} top-level)` : ""}`;
+    case "blueprint_status": return `blueprint_status`;
+    case "blueprint_mark": return `blueprint_mark ${args.id ?? "?"} → ${args.status ?? "?"}`;
+    case "blueprint_add": return `blueprint_add${args.parentId ? ` → ${args.parentId}` : ""}`;
+    case "blueprint_audit": return `blueprint_audit`;
     case "play_game": return `play_game ${args.path ?? "?"}${args.steps ? ` (${args.steps} steps)` : ""}`;
     case "run_command": return `run \`${clip(String(args.command ?? ""), 80)}\``;
     case "edit_file": return `edit ${args.path ?? "?"}`;

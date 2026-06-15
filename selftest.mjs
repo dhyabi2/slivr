@@ -1382,6 +1382,45 @@ console.log("== 36. see_asset — the Asset Studio: generate → SEE → refine 
   }
 }
 
+console.log("== 37. blueprint — plan-the-whole-build, zero-abstraction, 100% coverage (Block 17) ==");
+{
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "bp-"));
+  const t = new Tools(d);
+  const tree = [
+    { title: "Player", children: [{ title: "idle sprite", leafType: "sprite" }, { title: "jump sound", leafType: "sound" }] },
+    { title: "Level 1", children: [{ title: "tilemap", leafType: "data" }] },
+  ];
+  const plan = t.blueprint_plan({ goal: "a 2D platformer", tree });
+  ok("blueprint_plan: locks the tree and persists it", plan.ok && plan.coverage.totalLeaves === 3 && fs.existsSync(path.join(d, ".slivr", "blueprint.json")));
+  ok("blueprint_plan: requires goal + tree", t.blueprint_plan({}).ok === false && t.blueprint_plan({ goal: "x" }).ok === false);
+
+  const st = t.blueprint_status();
+  ok("blueprint_status: reports coverage + next uncovered leaves", st.ok && st.coverage.done === 0 && st.next.length === 3 && st.next[0].id === "1.1");
+
+  // zero-abstraction gate: can't mark a leaf done without evidence...
+  ok("blueprint_mark: rejects done with no evidence", t.blueprint_mark({ id: "1.1", status: "done" }).error === "NO_EVIDENCE");
+  // ...and rejects stub/placeholder evidence...
+  fs.writeFileSync(path.join(d, "sprite.js"), "// TODO: draw the real sprite here\n");
+  ok("blueprint_mark: rejects stub/placeholder evidence", t.blueprint_mark({ id: "1.1", status: "done", evidence: "sprite.js" }).error === "STUB_EVIDENCE");
+  // ...but accepts a real, concrete artifact.
+  fs.writeFileSync(path.join(d, "sprite.js"), "export function drawIdle(ctx){ctx.fillStyle='#c33';ctx.fillRect(0,0,16,24);}\n");
+  const m1 = t.blueprint_mark({ id: "1.1", status: "done", evidence: "sprite.js", decision: "16x24 canvas sprite" });
+  ok("blueprint_mark: accepts a real concrete artifact and advances coverage", m1.ok && m1.node.status === "done" && m1.coverage.done === 1);
+
+  // completeness critic: add a missing inner part, then audit.
+  const add = t.blueprint_add({ parentId: "1", nodes: [{ title: "hurt sound", leafType: "sound" }] });
+  ok("blueprint_add: grafts a newly-found inner part under a parent", add.ok && add.added === 1 && add.coverage.totalLeaves === 4);
+  const audit = t.blueprint_audit();
+  ok("blueprint_audit: returns goal + structural findings (clean here)", audit.ok && audit.goal === "a 2D platformer" && Array.isArray(audit.structural) && audit.structural.length === 0);
+
+  // re-plan preserves progress (settled work isn't wiped).
+  const plan2 = t.blueprint_plan({ goal: "a 2D platformer", tree });
+  ok("blueprint_plan: re-planning preserves prior progress by id", plan2.ok && plan2.coverage.done === 1);
+
+  ok("blueprint_status: errors before any plan exists", new Tools(tmp).blueprint_status().error === "NO_BLUEPRINT");
+  fs.rmSync(d, { recursive: true, force: true });
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

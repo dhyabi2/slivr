@@ -45,6 +45,11 @@ wastes the turn). The JSON object looks like:
   {"tool":"delegate","args":{"task":"a focused, self-contained sub-task to run in a fresh sub-agent"}}
   {"tool":"parallel","args":{"tasks":["independent subtask A","independent subtask B"]}}
   {"tool":"pipeline","args":{"tasks":[{"id":"a","task":"do A","deps":[]},{"id":"b","task":"do B using A","deps":["a"]}]}}
+  {"tool":"blueprint_plan","args":{"goal":"a clear 2D platformer with 3 levels","tree":[{"title":"Player","children":[{"title":"idle sprite","leafType":"sprite"},{"title":"jump sound","leafType":"sound"}]},{"title":"Level 1","children":[{"title":"tilemap","leafType":"data"}]}]}}
+  {"tool":"blueprint_status","args":{}}
+  {"tool":"blueprint_mark","args":{"id":"1.2","status":"done","evidence":"src/audio.js","decision":"WebAudio square-wave + decay envelope"}}
+  {"tool":"blueprint_add","args":{"parentId":"1","nodes":[{"title":"hurt sound","leafType":"sound"}]}}
+  {"tool":"blueprint_audit","args":{}}
   {"tool":"plan","args":{"steps":["step 1","step 2","step 3"]}}
   {"tool":"replan","args":{"reason":"step 2 failed because X","steps":["revised remaining step","next step"]}}
   {"tool":"task_write","args":{"tasks":[{"id":"1","subject":"do X","status":"in_progress"},{"subject":"then Y","status":"pending"}]}}
@@ -176,6 +181,27 @@ ASSET STUDIO (look at the art you make, then make it better): most agents emit "
   NOT capturable by the headless eye, so stick to svg/canvas for anything you need to see.) Once an asset
   looks right, inline it into the game/page (SVG markup, or the canvas draw code / a generated dataURL).
 
+BUILD BIG, ZERO ABSTRACTION (blueprint-first — for games, apps, or any large multi-part build): do NOT
+  one-shot a big build into a thin "basic visualization" that skips the inner parts. Instead, plan the
+  WHOLE thing up front, then grind it leaf-by-leaf so 100% of it gets built and nothing is silently
+  dropped:
+  1. FIGURE OUT THE REAL GOAL: read the user's intent and expand it — a "platformer" implies a player
+     (idle/run/jump sprites, jump/land/hurt sounds, a hit state), enemies, levels (tilemap, background,
+     hazards), HUD (score, lives, pause), title + game-over screens, win/lose. Infer the full content
+     from genre/convention; do NOT stop at the literal words and do NOT pepper the user with questions.
+  2. blueprint_plan {goal, tree}: lock the build as a DEEP, NESTED tree of CONCRETE leaves — every sprite,
+     sound, UI state, screen, mechanic, sub-component is its own leaf. No abstractions, no "TODO: assets",
+     no "etc." A leaf is a real artifact you will actually make. It persists to disk and survives turns.
+  3. WORK IT LEAF BY LEAF: call blueprint_status to see the next uncovered leaves, build one for REAL,
+     then blueprint_mark {id, status:"done", evidence:"<the real file>"}. The done-gate REJECTS stubs/
+     placeholders — you cannot check off a leaf whose evidence is empty or contains TODO/placeholder/
+     not-implemented. Record settled choices in the node's decision field so you never re-litigate them. Use "blocked"
+     (not "done") when something is genuinely stuck. Keep going until every leaf is done.
+  4. blueprint_audit before you finish: it flags structural gaps (empty groups, done-without-evidence,
+     stub evidence); then RE-READ the goal yourself and blueprint_add anything implied but missing. Only
+     call done when coverage is 100% and the audit is clean. This is how you cover the small inner parts
+     other agents drop — persistence and focus over a long build, not a quick basic demo.
+
 DRAFT-FIRST (important for HARD tasks): do NOT spend all your turns planning or reasoning. Commit a
   SIMPLE, COMPLETE, runnable solution EARLY — even a naive/brute-force one — then improve it. Always
   have working code written before you run out of steps; a correct-but-slow solution beats none.
@@ -214,6 +240,11 @@ export function makeAgent(workdir, opts = {}) {
     see_page: (a) => tools.see_page(a),
     play_game: (a) => tools.play_game(a),
     see_asset: (a) => tools.see_asset(a),
+    blueprint_plan: (a) => tools.blueprint_plan(a),
+    blueprint_status: (a) => tools.blueprint_status(a),
+    blueprint_mark: (a) => tools.blueprint_mark(a),
+    blueprint_add: (a) => tools.blueprint_add(a),
+    blueprint_audit: (a) => tools.blueprint_audit(a),
     delegate: (a) => delegateSubAgent(a, workdir, opts),
     parallel: (a) => parallelSubAgents(a, workdir, opts),
     pipeline: (a) => pipelineSubAgents(a, workdir, opts),
@@ -243,7 +274,7 @@ const SUBAGENT_BRIEF =
 // READ/INFORMATIONAL tools (not edits/commits), de-noised and length-capped.
 const FINDING_TOOLS = new Set([
   "read_file", "list_dir", "grep", "glob", "repo_map", "project_info", "house_style", "find_symbol", "find_refs", "run_command", "web_search",
-  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "git_status", "git_diff", "git_log",
+  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
 ]);
 export function extractFindings(sub, maxTotal = 2000) {
   const out = [];
@@ -508,6 +539,11 @@ export class Session {
       see_page: (a) => t.see_page(a),
       play_game: (a) => t.play_game(a),
       see_asset: (a) => t.see_asset(a),
+      blueprint_plan: (a) => t.blueprint_plan(a),
+      blueprint_status: (a) => t.blueprint_status(a),
+      blueprint_mark: (a) => t.blueprint_mark(a),
+      blueprint_add: (a) => t.blueprint_add(a),
+      blueprint_audit: (a) => t.blueprint_audit(a),
       delegate: (a) => delegateSubAgent(a, this.workdir, this.opts),
       parallel: (a) => parallelSubAgents(a, this.workdir, this.opts),
       pipeline: (a) => pipelineSubAgents(a, this.workdir, this.opts),
