@@ -657,7 +657,7 @@ export class Session {
   totals() { return this.provider.totals(); }
 
   // Run ONE user turn against the persistent thread. opts: { onStep, beforeStep, signal, verify }.
-  async runTurn(task, { onStep, beforeTool, signal, verify, maxRepairs } = {}) {
+  async runTurn(task, { onStep, beforeTool, signal, verify, maxRepairs, bridge } = {}) {
     const res = await runLoop({
       provider: this.provider,
       tools: this.tools,
@@ -671,6 +671,7 @@ export class Session {
       signal,
       verify,
       maxRepairs,
+      bridge,
     });
     this.messages = res.messages; // persist the thread for the next turn
     return res;

@@ -1587,6 +1587,51 @@ window.slivrView={setCamera:function(s){this._a=${responsive ? "(s.yaw||0)*Math.
   }
 }
 
+console.log("== 42. bridge — autonomous agent-to-agent mode (Sentinel, Block 22) ==");
+{
+  const { makeBridge, applyControl, controlToMessage } = await import("./src/bridge.mjs");
+
+  // applyControl normalizes raw commands (pure)
+  ok("applyControl: maps inject/redirect/answer/abort/pause/resume", applyControl({ cmd: "inject", text: "x" }).kind === "inject" && applyControl({ cmd: "disrupt", goal: "y" }).kind === "redirect" && applyControl({ cmd: "answer", text: "z" }).kind === "answer" && applyControl({ cmd: "abort" }).kind === "abort" && applyControl({ cmd: "pause" }).kind === "pause" && applyControl({ cmd: "huh" }).kind === "noop");
+  ok("controlToMessage: builds an injectable message for guidance/redirect/answer", /GUIDANCE/.test(controlToMessage({ kind: "inject", text: "a" })) && /REDIRECT/.test(controlToMessage({ kind: "redirect", text: "b" })) && controlToMessage({ kind: "abort" }) === "");
+
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-"));
+  const cf = path.join(d, "control.jsonl");
+  fs.writeFileSync(cf, "");
+  const lines = [];
+  const out = { write: (s) => { lines.push(s.replace(/\n$/, "")); return true; } };
+  const br = makeBridge({ out, controlFile: cf, clock: () => 1 });
+
+  br.emit("start", { task: "demo" });
+  ok("bridge: emit writes one NDJSON event line with a type + seq", lines.length === 1 && JSON.parse(lines[0]).t === "start" && JSON.parse(lines[0]).seq === 0);
+
+  // controller appends commands; poll reads only NEW lines (byte offset)
+  fs.appendFileSync(cf, JSON.stringify({ id: "c1", cmd: "inject", text: "prefer small edits" }) + "\n");
+  fs.appendFileSync(cf, JSON.stringify({ id: "c2", cmd: "redirect", goal: "switch to task B" }) + "\n");
+  const got = br.poll();
+  ok("bridge: poll drains new control commands via byte offset", got.length === 2 && got[0].cmd === "inject" && got[1].cmd === "redirect");
+  ok("bridge: a second poll with no new lines returns nothing", br.poll().length === 0);
+
+  // ack is appended and NOT read back as a command
+  br.ack("c1", "applied");
+  fs.appendFileSync(cf, JSON.stringify({ id: "c3", cmd: "abort" }) + "\n");
+  const after = br.poll();
+  ok("bridge: ack is written and skipped on re-poll; real commands still seen", after.length === 1 && after[0].cmd === "abort" && /\"t\":\"ack\"/.test(fs.readFileSync(cf, "utf8")));
+
+  // malformed lines never halt processing
+  fs.appendFileSync(cf, "{not json}\n" + JSON.stringify({ cmd: "inject", text: "ok" }) + "\n");
+  ok("bridge: malformed control lines are skipped, valid ones still parsed", br.poll().filter((c) => c.cmd === "inject").length === 1);
+
+  // a fresh bridge starts reading at the file's CURRENT end (no replay of old commands)
+  const br2 = makeBridge({ out, controlFile: cf, clock: () => 1 });
+  ok("bridge: a new session does not replay pre-existing control lines", br2.poll().length === 0);
+
+  // emit-only mode (no control file) still works
+  const eo = makeBridge({ out: { write: () => true } });
+  ok("bridge: emit-only mode (no control file) polls empty without error", eo.poll().length === 0 && eo.emit("turn", {}).t === "turn");
+  fs.rmSync(d, { recursive: true, force: true });
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

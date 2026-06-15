@@ -25,6 +25,7 @@ import { detectCommands } from "../src/project.mjs";
 import { isDestructive, needsApproval } from "../src/safety.mjs";
 import { connectAll, closeAll } from "../src/mcp.mjs";
 import { listSkills, renderSkill } from "../src/skills.mjs";
+import { makeBridge } from "../src/bridge.mjs";
 import { spawnBackground, runBackgroundJob, runScheduler, startSchedulerDaemon, stopSchedulerDaemon, schedulerStatus } from "../src/scheduler.mjs";
 import { listJobs, readJob, logPath, makeScheduled, addScheduled, readSchedule, clearSchedule, groupSchedule } from "../src/jobs.mjs";
 
@@ -36,6 +37,8 @@ const VERSION = (() => {
 })();
 
 // ---- tiny flag parser -------------------------------------------------------
+function clip(s, max = 200) { const t = String(s == null ? "" : s); return t.length > max ? t.slice(0, max - 1) + "…" : t; }
+
 function parseArgs(argv) {
   const flags = {};
   const positional = [];
@@ -68,6 +71,11 @@ function parseArgs(argv) {
     else if (a === "--cron") { [flags.cron, i] = val(i, "--cron"); }
     else if (a === "--every") { [flags.every, i] = val(i, "--every"); }
     else if (a === "--watch") flags.watch = true;
+    else if (a === "--skill") { [flags.skill, i] = val(i, "--skill"); }
+    else if (a === "--control") { [flags.control, i] = val(i, "--control"); }
+    else if (a === "--standing") flags.standing = true;
+    else if (a.startsWith("--skill=")) flags.skill = a.slice(8);
+    else if (a.startsWith("--control=")) flags.control = a.slice(10);
     else if (a === "--daemon") flags.daemon = true;
     else if (a === "--__daemon-child") flags.daemonChild = true;
     else if (a === "--__bg-run") { [flags.bgRun, i] = val(i, "--__bg-run"); }
@@ -83,7 +91,7 @@ function parseArgs(argv) {
 }
 
 // Known first-positional subcommands — used to catch typos before a stray word is sent to the model.
-const SUBCOMMANDS = ["config", "upgrade", "update", "mcp", "skills", "skill", "bg", "jobs", "logs", "schedule", "scheduler", "help", "version"];
+const SUBCOMMANDS = ["config", "upgrade", "update", "mcp", "skills", "skill", "sentinel", "agent", "bg", "jobs", "logs", "schedule", "scheduler", "help", "version"];
 
 function levenshtein(a, b) {
   const m = a.length, n = b.length;
@@ -103,6 +111,10 @@ USAGE
   slivr config                print the resolved configuration (and where each value came from)
   slivr skills                list available skills (.slivr/skills/*.md, ~/.slivr/skills/*.md)
   slivr skill <name> [args]   run a skill one-shot (a reusable prompt template)
+  slivr sentinel "<task>" [dir]   autonomous agent-to-agent mode: run NON-STOP, emit an
+                              NDJSON event stream, and take live control commands from another
+                              agent via .slivr/control.jsonl (see docs/AGENT-PROTOCOL.md).
+                              --skill <name> as directive · --standing keep alive · --control <file>
   slivr mcp list              connect configured MCP servers and print their tools
   slivr mcp add <name> -- <cmd...>   add an MCP server to ./.slivr.json
   slivr bg "<task>" [dir]     run a task in a DETACHED background process (POSIX only)
@@ -528,6 +540,74 @@ async function main() {
     const dir = flags.dir || process.cwd();
     process.stderr.write(p.dim(`skill: ${name}\n`));
     return runOneShot(r.prompt, dir, config, palette, { auto, plan, verify: flags.verify, repair: flags.repair });
+  }
+
+  // ---- autonomous agent-to-agent mode (Sentinel, Block 22) --------------------
+  // `slivr sentinel "<task>" [dir]` (alias: agent) runs NON-STOP with NO human prompts, emitting a
+  // machine-readable NDJSON event stream on stdout so another agent ("Hermes") can consume it, and
+  // polling an append-only control file (.slivr/control.jsonl) between turns so that agent can inject
+  // guidance / redirect / answer / abort mid-run. --skill <name> uses a skill as the standing directive;
+  // --standing keeps the agent alive after a turn, awaiting the next control directive.
+  if (subcommand === "sentinel" || subcommand === "agent") {
+    let task, dirArg;
+    if (flags.skill) {
+      const r = renderSkill(flags.skill, [], process.cwd());
+      if (!r.ok) { process.stderr.write(`no skill "${flags.skill}". available: ${r.available.join(", ") || "(none)"}\n`); return 1; }
+      task = r.prompt; dirArg = positional[1];
+    } else { task = positional[1]; dirArg = positional[2]; }
+    if (!task) { process.stderr.write('usage: slivr sentinel "<task>" [dir]   |   slivr sentinel --skill <name> [dir]\n'); return 1; }
+    const dir = flags.dir || dirArg || process.cwd();
+    if (!fs.existsSync(dir)) { process.stderr.write(`directory not found: ${dir}\n`); return 2; }
+
+    const session = new Session(dir, {
+      model: config.model, apiKey: config.apiKey, baseUrl: config.baseUrl,
+      maxSteps: config.maxSteps, maxTokensPerTurn: config.maxTokensPerTurn,
+    });
+    const controlFile = flags.control || path.join(dir, ".slivr", "control.jsonl");
+    try { fs.mkdirSync(path.dirname(controlFile), { recursive: true }); if (!fs.existsSync(controlFile)) fs.writeFileSync(controlFile, ""); } catch { /* */ }
+    const bridge = makeBridge({ out: process.stdout, controlFile });
+    // auto-approve within guardrails: destructive shell commands are still hard-blocked (reported as events).
+    const beforeTool = async ({ tool, args }) => {
+      if (tool === "run_command") { const v = isDestructive(args.command || ""); if (v.blocked) { bridge.emit("blocked", { tool, reason: v.why, command: clip(args.command || "", 200) }); return { deny: true, reason: v.why }; } }
+      return { deny: false };
+    };
+    const emitState = (res) => {
+      const state = res.aborted ? "aborted" : res.error ? "error" : res.done ? "done" : "blocked";
+      bridge.emit("state", { state, summary: clip(res.summary || "", 800), stopped: res.stopped || null, error: res.error || null, turns: res.turns, tokens: res.totals.totalTokens, cost: res.totals.cost });
+      return state;
+    };
+    bridge.emit("start", { task: clip(task, 400), dir, model: session.provider.model, control: controlFile });
+    if (!session.provider.hasKey()) bridge.emit("warn", { message: "no API key — set OPENROUTER_API_KEY or apiKey in ~/.slivr.json" });
+
+    let res, code = 0;
+    try { res = await session.runTurn(task, { bridge, beforeTool }); }
+    catch (e) { bridge.emit("error", { message: e?.message || String(e) }); return 1; }
+    emitState(res);
+    code = res.done ? 0 : 1;
+
+    // --standing: stay alive as a daemon Hermes can keep feeding. Wait for the next control directive
+    // (redirect/inject/answer becomes the next task; abort ends it), run it, repeat.
+    if (flags.standing) {
+      bridge.emit("standing", { note: "awaiting control directives; send {cmd:'redirect'|'inject', text} to assign work, {cmd:'abort'} to stop" });
+      let alive = true;
+      while (alive) {
+        const cmds = bridge.poll();
+        let next = null;
+        for (const raw of cmds) {
+          const c = String(raw.cmd || raw.type || "").toLowerCase();
+          if (c === "abort" || c === "stop") { bridge.ack(raw.id, "applied"); alive = false; next = null; break; }
+          if (c === "redirect" || c === "disrupt" || c === "inject" || c === "answer" || c === "guide") { next = String(raw.text || raw.goal || raw.directive || ""); bridge.ack(raw.id, "applied"); }
+        }
+        if (!alive) break;
+        if (next) {
+          bridge.emit("accept", { task: clip(next, 300) });
+          try { res = await session.runTurn(next, { bridge, beforeTool }); emitState(res); }
+          catch (e) { bridge.emit("error", { message: e?.message || String(e) }); }
+        } else { await new Promise((r) => setTimeout(r, 400)); }
+      }
+      bridge.emit("state", { state: "stopped", note: "standing loop ended" });
+    }
+    return code;
   }
 
   // ---- background jobs --------------------------------------------------------
