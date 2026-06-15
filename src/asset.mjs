@@ -10,6 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { renderShot } from "./eye.mjs";
+import { ARTKIT } from "./artkit.mjs";
 
 // A tiny value-noise helper the agent can call inside canvas code (seamless-ish, zero-dep), so it
 // doesn't have to reinvent noise for natural textures. Exposed in the wrapper as `noise(x,y)`.
@@ -28,7 +29,7 @@ function htmlFor({ svg, canvas, html, width = 256, height = 256, bg = "#ffffff" 
   }
   if (canvas) {
     const pre = bg === "transparent" ? "" : `ctx.fillStyle=${JSON.stringify(bg)};ctx.fillRect(0,0,W,H);`;
-    return `<!doctype html><html><body style="margin:0"><canvas id="c" width="${width}" height="${height}"></canvas><script>${NOISE_LIB}
+    return `<!doctype html><html><body style="margin:0"><canvas id="c" width="${width}" height="${height}"></canvas><script>${NOISE_LIB}${ARTKIT}
 var c=document.getElementById('c'),ctx=c.getContext('2d'),W=${width},H=${height};${pre}
 try{(function(ctx,W,H){ ${canvas} })(ctx,W,H);}catch(e){document.title='ASSET_ERR:'+e.message;}
 </script></body></html>`;

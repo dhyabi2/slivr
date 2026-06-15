@@ -60,6 +60,7 @@ export function describeStep({ tool, args = {} }) {
     case "style_profile": return `style_profile ${args.target ?? "?"}`;
     case "style_check": return `style_check ${args.render || args.candidate || "?"}`;
     case "art_review": return `art_review ${args.render || args.candidate || "?"}`;
+    case "artkit": return `artkit`;
     case "orbit_scene": return `orbit_scene ${args.path ?? "?"}${Array.isArray(args.angles) ? ` (${args.angles.length} angles)` : ""}`;
     case "world_map": return `world_map ${args.action ?? "show"}${args.name ? " " + args.name : ""}`;
     case "play_game": return `play_game ${args.path ?? "?"}${args.steps ? ` (${args.steps} steps)` : ""}`;

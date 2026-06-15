@@ -1927,6 +1927,29 @@ console.log("== 51. art_review — rate visual richness, catch programmer art (B
   }
 }
 
+console.log("== 52. artkit — draw RICH art (closes the richness gap, Block 30) ==");
+{
+  const { renderAsset } = await import("./src/asset.mjs");
+  const { artReview } = await import("./src/match.mjs");
+  const { findBrowser } = await import("./src/eye.mjs");
+  const t = new Tools(tmp);
+  const kit = t.artkit();
+  ok("artkit: returns canvas helpers + the noise/fbm they need", kit.ok && /shadedBall/.test(kit.source) && /shadedBox/.test(kit.source) && /function fbm/.test(kit.source) && /contactShadow/.test(kit.source));
+  if (findBrowser()) {
+    const flat = renderAsset({ canvas: "ctx.fillStyle='#7ec8f0';ctx.fillRect(0,0,W,H);ctx.fillStyle='#5fa84f';ctx.fillRect(0,160,W,60);ctx.fillStyle='#d94b3b';ctx.fillRect(40,130,30,30);ctx.fillStyle='#ffd23f';ctx.fillRect(120,140,16,16);", width: 320, height: 220, bg: "#7ec8f0" });
+    fs.writeFileSync(path.join(tmp, "flat2.png"), Buffer.from(flat.dataUrl.split(",")[1], "base64"));
+    const rich = renderAsset({ canvas: "sky(ctx,W,H,205,55);hills(ctx,W,H,H*0.55,150,1.2);hills(ctx,W,H,H*0.68,120,3.4);shadedBox(ctx,0,H-46,W*0.42,46,110);shadedBox(ctx,W*0.55,H-70,W*0.4,70,110);shadedBall(ctx,W*0.32,H-90,12,48);shadedBall(ctx,W*0.7,H-96,18,28);eyes(ctx,W*0.7,H-100,12);contactShadow(ctx,72,H-46,52);shadedBox(ctx,54,H-104,36,46,8);shadedBall(ctx,72,H-118,18,18);eyes(ctx,72,H-122,12);grain(ctx,0,0,W,H,0.06);", width: 320, height: 220, bg: "#bfe3f5" });
+    fs.writeFileSync(path.join(tmp, "rich2.png"), Buffer.from(rich.dataUrl.split(",")[1], "base64"));
+    const af = artReview(path.join(tmp, "flat2.png"));
+    const ar = artReview(path.join(tmp, "rich2.png"));
+    ok("artkit: flat rectangles score low (programmer art)", af.ok && af.richness < 40);
+    ok("artkit: the SAME scene drawn with the kit scores high + has real gradients", ar.ok && ar.richness >= 60 && ar.gradientPct > 20);
+    ok("artkit: closes a large richness gap vs flat (≥30 points)", ar.richness - af.richness >= 30);
+  } else {
+    ok("artkit: (no browser installed — live render skipped)", true);
+  }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

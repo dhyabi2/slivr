@@ -25,6 +25,7 @@ import * as bp from "./blueprint.mjs";
 import { resumeSummary, appendJournal } from "./journal.mjs";
 import { checkPageJs, pageConsoleErrors } from "./webcheck.mjs";
 import { compareImages, cropImage, compareRegions, styleProfile, styleAdherence, hexColor, artReview } from "./match.mjs";
+import { ARTKIT, NOISE_FBM_SRC } from "./artkit.mjs";
 import { orbitScene } from "./scene3d.mjs";
 import * as world from "./world.mjs";
 
@@ -798,6 +799,17 @@ export class Tools {
       try { out.multimodal = { kind: "image", path: "art", mime: "image/png", dataUrl: "data:image/png;base64," + fs.readFileSync(imgAbs).toString("base64") }; } catch { /* */ }
       return out;
     } finally { if (tmpShot) { try { fs.unlinkSync(tmpShot); } catch { /* */ } } }
+  }
+
+  // artkit (Block 30 — draw rich art, not blocks): returns the slivr ARTKIT source — canvas helpers that
+  // bake in the techniques that move art_review richness toward 100: palette() (harmonized, no raw
+  // primaries), shadedBall()/shadedBox() (gradient shading + outline + rim + AO), eyes() (with catchlights),
+  // grain() (procedural texture), contactShadow(), sky() + hills() (gradient + parallax depth). Paste the
+  // returned source into the game's <script> (the noise/fbm helpers are included) and draw with these
+  // instead of fillRect. (see_asset already has them built in for single assets.)
+  artkit() {
+    return { ok: true, source: NOISE_FBM_SRC + ARTKIT,
+      note: "Inline this <script> source into your game, then draw with sky/hills/shadedBox/shadedBall/eyes/contactShadow/grain/palette instead of flat fillRect (light is top-left). After building, run art_review {render:'index.html'} and aim for richness ≥ 60." };
   }
 
   // orbit_scene (Block 21 — the 3D eye): drive a WebGL/Three.js scene's CAMERA to many angles and SEE each
