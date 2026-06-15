@@ -857,6 +857,10 @@ console.log("== 21. UX hardening regressions ==");
   const { approvalPrompt } = await import("./src/ui.mjs");
   const ap = await approvalPrompt("apply?", { input: { isTTY: false }, output: { write() {} } });
   ok("approvalPrompt non-TTY denies", ap === "no");
+  // interactive default is ALLOW: pressing Enter (empty answer) applies — no more blocking on the prompt
+  const mkRl = (answer) => ({ question: (_q, cb) => cb(answer) });
+  ok("approvalPrompt: Enter/empty → ALLOW (apply by default)", (await approvalPrompt("apply?", { input: { isTTY: true }, output: { write() {} }, rl: mkRl("") })) === "yes");
+  ok("approvalPrompt: 'n' still declines, 's' still stops", (await approvalPrompt("apply?", { input: { isTTY: true }, output: { write() {} }, rl: mkRl("n") })) === "no" && (await approvalPrompt("apply?", { input: { isTTY: true }, output: { write() {} }, rl: mkRl("s") })) === "stop");
 
   // banner elides a very long cwd
   ok("banner shortens long cwd", banner({ model: "m", approval: "edits", cwd: "/a/".repeat(60) }, makePalette(false)).includes("…"));

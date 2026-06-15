@@ -345,9 +345,11 @@ export async function confirm(question, opts = {}) {
 export async function approvalPrompt(question, opts = {}) {
   const { input = process.stdin, output = process.stdout } = opts;
   if (!input.isTTY) { output.write(question + " " + NON_INTERACTIVE + "\n"); return "no"; }
-  const ans = (await ask(question + " [y]es / [N]o / [a]ll / [s]top: ", opts) || "").trim().toLowerCase();
+  // Default is ALLOW (pressing Enter applies): the user opted into a mode that prompts, but the common
+  // case is "yes, go ahead", so an empty answer should not block the agent. Type n/s to decline/stop.
+  const ans = (await ask(question + " [Y]es / [n]o / [a]ll / [s]top: ", opts) || "").trim().toLowerCase();
   if (/^a/.test(ans)) return "all";
   if (/^s/.test(ans)) return "stop";
-  if (/^y(es)?$/.test(ans)) return "yes";
-  return "no"; // default deny
+  if (/^n/.test(ans)) return "no";
+  return "yes"; // default ALLOW (empty/anything-else)
 }
