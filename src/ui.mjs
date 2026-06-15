@@ -53,6 +53,7 @@ export function describeStep({ tool, args = {} }) {
     case "blueprint_mark": return `blueprint_mark ${args.id ?? "?"} → ${args.status ?? "?"}`;
     case "blueprint_add": return `blueprint_add${args.parentId ? ` → ${args.parentId}` : ""}`;
     case "blueprint_audit": return `blueprint_audit`;
+    case "compare_image": return `compare_image ${args.target ?? "?"} vs ${args.render || args.candidate || "?"}`;
     case "play_game": return `play_game ${args.path ?? "?"}${args.steps ? ` (${args.steps} steps)` : ""}`;
     case "run_command": return `run \`${clip(String(args.command ?? ""), 80)}\``;
     case "edit_file": return `edit ${args.path ?? "?"}`;

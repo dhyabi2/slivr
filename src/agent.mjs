@@ -50,6 +50,7 @@ wastes the turn). The JSON object looks like:
   {"tool":"blueprint_mark","args":{"id":"1.2","status":"done","evidence":"src/audio.js","decision":"WebAudio square-wave + decay envelope"}}
   {"tool":"blueprint_add","args":{"parentId":"1","nodes":[{"title":"hurt sound","leafType":"sound"}]}}
   {"tool":"blueprint_audit","args":{}}
+  {"tool":"compare_image","args":{"target":"reference.png","render":"index.html"}}
   {"tool":"plan","args":{"steps":["step 1","step 2","step 3"]}}
   {"tool":"replan","args":{"reason":"step 2 failed because X","steps":["revised remaining step","next step"]}}
   {"tool":"task_write","args":{"tasks":[{"id":"1","subject":"do X","status":"in_progress"},{"subject":"then Y","status":"pending"}]}}
@@ -202,6 +203,19 @@ BUILD BIG, ZERO ABSTRACTION (blueprint-first — for games, apps, or any large m
      call done when coverage is 100% and the audit is clean. This is how you cover the small inner parts
      other agents drop — persistence and focus over a long build, not a quick basic demo.
 
+MATCH A REFERENCE PICTURE (when the user gives a target image to recreate — a mockup, a game screenshot,
+  a scene): don't approximate it — recreate it faithfully and VERIFY, in both planning and execution.
+  1. SEE the target first: view_image the reference, then list EVERY visible element (objects/sprites,
+     their positions and sizes, the colour palette, background, HUD/text, art style). blueprint_plan a
+     leaf for each — that is your PLAN verification: every element in the picture has a planned counterpart.
+  2. Build it (use see_asset for individual sprites, canvas/SVG for art), then VERIFY EXECUTION with
+     compare_image {target:"<reference>", render:"<your index.html>"} (or candidate:"<an image>"). It
+     returns a similarity score 0–100, the worst-matching REGIONS (top-left, middle, …), and a composite
+     image — target | yours | heatmap (red = mismatch) — that you LOOK at.
+  3. REFINE the worst regions (wrong colour/position/missing element), then compare_image AGAIN. Keep
+     looping until similarity is high (aim ≥90). Do NOT declare a visual match done on a low score; if the
+     score stops improving across iterations, change approach (re-examine the target) rather than giving up.
+
 DRAFT-FIRST (important for HARD tasks): do NOT spend all your turns planning or reasoning. Commit a
   SIMPLE, COMPLETE, runnable solution EARLY — even a naive/brute-force one — then improve it. Always
   have working code written before you run out of steps; a correct-but-slow solution beats none.
@@ -245,6 +259,7 @@ export function makeAgent(workdir, opts = {}) {
     blueprint_mark: (a) => tools.blueprint_mark(a),
     blueprint_add: (a) => tools.blueprint_add(a),
     blueprint_audit: (a) => tools.blueprint_audit(a),
+    compare_image: (a) => tools.compare_image(a),
     delegate: (a) => delegateSubAgent(a, workdir, opts),
     parallel: (a) => parallelSubAgents(a, workdir, opts),
     pipeline: (a) => pipelineSubAgents(a, workdir, opts),
@@ -274,7 +289,7 @@ const SUBAGENT_BRIEF =
 // READ/INFORMATIONAL tools (not edits/commits), de-noised and length-capped.
 const FINDING_TOOLS = new Set([
   "read_file", "list_dir", "grep", "glob", "repo_map", "project_info", "house_style", "find_symbol", "find_refs", "run_command", "web_search",
-  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
+  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "compare_image", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
 ]);
 export function extractFindings(sub, maxTotal = 2000) {
   const out = [];
@@ -544,6 +559,7 @@ export class Session {
       blueprint_mark: (a) => t.blueprint_mark(a),
       blueprint_add: (a) => t.blueprint_add(a),
       blueprint_audit: (a) => t.blueprint_audit(a),
+      compare_image: (a) => t.compare_image(a),
       delegate: (a) => delegateSubAgent(a, this.workdir, this.opts),
       parallel: (a) => parallelSubAgents(a, this.workdir, this.opts),
       pipeline: (a) => pipelineSubAgents(a, this.workdir, this.opts),

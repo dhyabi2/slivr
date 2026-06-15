@@ -1421,6 +1421,42 @@ console.log("== 37. blueprint — plan-the-whole-build, zero-abstraction, 100% c
   fs.rmSync(d, { recursive: true, force: true });
 }
 
+console.log("== 38. compare_image — recreate a reference picture, verified (Block 18) ==");
+{
+  const { renderAsset } = await import("./src/asset.mjs");
+  const { findBrowser } = await import("./src/eye.mjs");
+  const t = new Tools(tmp);
+
+  ok("compare_image: requires a target", t.compare_image({ candidate: "x.png" }).error === "NO_TARGET");
+  ok("compare_image: requires a candidate or render", t.compare_image({ target: "x.png" }).error === "NO_CANDIDATE");
+
+  if (findBrowser()) {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "match-"));
+    const tt = new Tools(d);
+    const circle = '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><circle cx="100" cy="100" r="70" fill="#3fbf5f"/></svg>';
+    const rect = '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect x="10" y="10" width="180" height="60" fill="#bf3f3f"/></svg>';
+    const write = (name, svg, bg) => { const r = renderAsset({ svg, width: 200, height: 200, bg }); fs.writeFileSync(path.join(d, name), Buffer.from(r.dataUrl.split(",")[1], "base64")); return name; };
+    write("target.png", circle, "#101820");
+    write("same.png", circle, "#101820");
+    write("diff.png", rect, "#f0f0f0");
+
+    const rSame = tt.compare_image({ target: "target.png", candidate: "same.png" });
+    ok("compare_image: identical images score ~100 + attach a composite", rSame.ok && rSame.similarity >= 98 && !!rSame.multimodal && rSame.multimodal.kind === "image");
+    const rDiff = tt.compare_image({ target: "target.png", candidate: "diff.png" });
+    ok("compare_image: very different images score low + locate worst regions", rDiff.ok && rDiff.similarity < 70 && Array.isArray(rDiff.worstRegions) && rDiff.worstRegions.length > 0 && typeof rDiff.worstRegions[0].region === "string");
+    ok("compare_image: the close match scores strictly higher than the far one", rSame.similarity > rDiff.similarity);
+
+    // render path: screenshot an HTML page, then compare to a target image
+    fs.writeFileSync(path.join(d, "page.html"), '<!doctype html><html><body style="margin:0;background:#101820"><svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><circle cx="100" cy="100" r="70" fill="#3fbf5f"/></svg></body></html>');
+    const rRender = tt.compare_image({ target: "target.png", render: "page.html" });
+    ok("compare_image: renders an HTML page and compares it to the target", rRender.ok && typeof rRender.similarity === "number");
+    ok("compare_image: missing target file is reported", tt.compare_image({ target: "nope.png", candidate: "same.png" }).error === "TARGET_NOT_FOUND");
+    fs.rmSync(d, { recursive: true, force: true });
+  } else {
+    ok("compare_image: (no browser installed — live diff skipped)", true);
+  }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

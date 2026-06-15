@@ -10,6 +10,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { execSync, execFileSync } from "node:child_process";
 import { applyEdit } from "./seal.mjs";
 import { localPdfText } from "./pdftext.mjs";
@@ -21,6 +22,7 @@ import { detectStyle, styleBrief } from "./style.mjs";
 import { playGame } from "./gameharness.mjs";
 import { renderAsset } from "./asset.mjs";
 import * as bp from "./blueprint.mjs";
+import { compareImages } from "./match.mjs";
 
 // Re-indent a replacement block to a target base indent (strip its own common indent, prepend target).
 function reindentBlock(block, indent) {
@@ -538,6 +540,46 @@ export class Tools {
       try { return fs.readFileSync(this._resolve(rel), "utf8"); } catch { return null; }
     });
     return { ok: true, goal: model.goal, coverage: bp.coverage(model), structural: findings, tree: bp.renderTree(model), note: "Now do the SEMANTIC check: re-read the goal above and list anything implied but NOT present as a leaf (inner parts, small assets, edge states). Add them with blueprint_add so coverage is 100%." };
+  }
+
+  // compare_image (Block 18 — Match a reference picture): diff your built result against a TARGET image and
+  // get a SIMILARITY score 0–100 + the worst-matching regions + a composite (target | yours | heatmap) you
+  // can SEE. Pass `target` (the reference image) and EITHER `candidate` (an image to compare) OR `render`
+  // (an .html/page path — it's screenshotted first). Loop: build → compare_image → fix the worst regions →
+  // re-compare, until similarity is high. Never declare a visual match done on a low score.
+  compare_image({ target, candidate, render, grid } = {}) {
+    if (!target) return { ok: false, error: "NO_TARGET", hint: "pass target: the reference image path to match" };
+    if (!candidate && !render) return { ok: false, error: "NO_CANDIDATE", hint: "pass candidate: an image path, OR render: an html/page path to screenshot and compare" };
+    const readable = (rel) => { // allow a target outside the workdir (a reference picture the user named), read-only
+      try { const a = this._resolve(rel); if (fs.existsSync(a)) return a; } catch { /* fall through */ }
+      if (path.isAbsolute(rel) && fs.existsSync(rel)) return rel;
+      try { return this._resolve(rel); } catch (e) { return null; }
+    };
+    const targetAbs = readable(target);
+    if (!targetAbs || !fs.existsSync(targetAbs)) return { ok: false, error: "TARGET_NOT_FOUND", path: target };
+
+    let candAbs, tmpShot = null;
+    if (render) {
+      let pageAbs; try { pageAbs = this._resolve(render); } catch (e) { return { ok: false, error: e.message }; }
+      if (!fs.existsSync(pageAbs)) return { ok: false, error: "RENDER_NOT_FOUND", path: render };
+      tmpShot = path.join(os.tmpdir(), `slivr-cand-${process.pid}-${Date.now()}.png`);
+      const shot = renderShot(pageAbs, tmpShot, { width: 1000, height: 750 });
+      if (!shot.ok) return { ok: false, error: "RENDER_SCREENSHOT_FAILED", hint: shot.error };
+      candAbs = tmpShot;
+    } else {
+      candAbs = readable(candidate);
+      if (!candAbs || !fs.existsSync(candAbs)) return { ok: false, error: "CANDIDATE_NOT_FOUND", path: candidate };
+    }
+
+    try {
+      const r = compareImages(targetAbs, candAbs, { grid });
+      if (!r.ok) return { ok: false, error: r.error, hint: "couldn't diff — is Chrome installed and are both files real images?" };
+      const worst = r.worst.map((w) => `${w.region} (${w.sim}% match)`).join(", ");
+      const verdict = r.similarity >= 90 ? "close match" : r.similarity >= 75 ? "getting there — keep refining" : "far off — fix the worst regions and re-compare";
+      const out = { ok: true, similarity: r.similarity, mae: r.mae, worstRegions: r.worst, note: `${r.similarity}% similar to the target — ${verdict}. Worst regions: ${worst || "n/a"}. Look at the heatmap (red = mismatch), fix those areas, and compare again.` };
+      if (r.dataUrl) out.multimodal = { kind: "image", path: "diff", mime: "image/png", dataUrl: r.dataUrl };
+      return out;
+    } finally { if (tmpShot) { try { fs.unlinkSync(tmpShot); } catch { /* */ } } }
   }
 
   // view_pdf: PRIMARY path sends the PDF to the model via OpenRouter's file-parser plugin (so the
