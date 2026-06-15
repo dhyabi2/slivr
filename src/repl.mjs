@@ -5,6 +5,9 @@
 // turns (Session keeps the thread). Ctrl-C interrupts the CURRENT turn without killing the session;
 // a second Ctrl-C at the prompt exits. REPL commands: /help /model /cost /reset /exit.
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import readline from "node:readline";
 import { Session, planGate } from "./agent.mjs";
 import { makePalette, colorEnabled, stepLine, footer, banner, confirm, approvalPrompt, renderPlan, renderTasks, planPrompt, readPlanEdit } from "./ui.mjs";
@@ -13,6 +16,18 @@ import { isDestructive, needsApproval } from "./safety.mjs";
 import { applyEdit as _applyEdit } from "./seal.mjs";
 import { listSkills, renderSkill, discoverSkills } from "./skills.mjs";
 import { listJobs } from "./jobs.mjs";
+
+// Persist an API key to ~/.slivr.json (merging into any existing config). Returns true on success.
+function saveKeyToConfig(key) {
+  try {
+    const file = path.join(os.homedir(), ".slivr.json");
+    let cfg = {};
+    try { cfg = JSON.parse(fs.readFileSync(file, "utf8")); } catch { /* new or unparseable → start fresh */ }
+    cfg.apiKey = key;
+    fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
+    return true;
+  } catch { return false; }
+}
 
 // Pure command parser — testable without a terminal. Returns { cmd, arg } or null (not a command).
 export function parseCommand(line) {
@@ -25,6 +40,7 @@ export function parseCommand(line) {
 
 const HELP = `commands:
   /help            show this help
+  /key <sk-or-…>   set + save your OpenRouter API key (to ~/.slivr.json)
   /model <id>      switch model (e.g. anthropic/claude-sonnet-4, openai/gpt-4o)
   /cost            show session tokens + cost so far
   /plan [on|off]   toggle plan-mode (agent must plan + get approval before editing)
@@ -53,7 +69,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
   // No key: show clear, actionable guidance (the agent still opens so the user can read it).
   if (!session.provider.hasKey()) {
     process.stdout.write(p.yellow("no API key — the agent can't call the model.\n"));
-    process.stdout.write(p.dim("  fix: export OPENROUTER_API_KEY=sk-or-…  (or add \"apiKey\" to ~/.slivr.json) · keys: https://openrouter.ai/keys\n"));
+    process.stdout.write(p.dim("  set one right here:  ") + p.cyan("/key sk-or-…") + p.dim("   (saved to ~/.slivr.json · keys: https://openrouter.ai/keys)\n"));
   }
   // Connect any configured MCP servers up front; their tools become callable as mcp__<server>__<tool>.
   if (config.mcpServers) {
@@ -280,7 +296,10 @@ export async function startRepl({ workdir, config, palette } = {}) {
       // / normal summary — so a turn never ends as just a bare footer with no explanation.
       let footerStatus = "ok";
       if (res.aborted) { process.stdout.write(p.yellow("\n∅ interrupted\n")); footerStatus = "interrupted"; }
-      else if (res.error) { process.stdout.write(p.red(`\n✗ ${res.error}\n`)); footerStatus = "error"; }
+      else if (res.error) {
+        process.stdout.write(p.red(`\n✗ ${res.error}\n`)); footerStatus = "error";
+        if (/no API key/i.test(res.error)) process.stdout.write(p.dim("  set one now:  ") + p.cyan("/key sk-or-…") + "\n");
+      }
       else {
         if (res.summary) process.stdout.write("\n" + res.summary + "\n");
         if (res.stopped) { process.stdout.write(p.yellow(`\n∅ ${res.stopped}\n`)); footerStatus = "incomplete"; }
@@ -321,6 +340,21 @@ export async function startRepl({ workdir, config, palette } = {}) {
     pump();   // drains any remaining queued input, then resolves via pump's end-check
   });
 
+  // First-run onboarding: if there's no key and we're interactive, ASK for it (rather than make the
+  // user discover /key). Reuses the main readline; pressing Enter skips. Saved to ~/.slivr.json.
+  if (!session.provider.hasKey() && process.stdin.isTTY) {
+    const k = await prompting(() => new Promise((resolve) => {
+      rl.question(p.cyan("paste your OpenRouter API key (or press Enter to skip): "), (a) => resolve((a || "").trim()));
+    }));
+    if (k) {
+      session.provider.key = k;
+      if (saveKeyToConfig(k)) process.stdout.write(p.green(`✓ key saved to ${path.join(os.homedir(), ".slivr.json")}\n`));
+      else process.stdout.write(p.yellow("key set for this session (could not save to ~/.slivr.json)\n"));
+    } else {
+      process.stdout.write(p.dim("skipped — set it any time with  /key sk-or-…\n"));
+    }
+  }
+
   rl.prompt();
   await done;
 
@@ -350,6 +384,20 @@ async function handleCommand(command, ctx) {
     case "help":
       process.stdout.write(p.dim(HELP) + "\n");
       return;
+    case "key": {
+      const k = (command.arg || "").trim();
+      if (!k) {
+        process.stdout.write(session.provider.hasKey()
+          ? p.dim("an API key is set. To replace it: /key sk-or-…\n")
+          : p.dim("no API key set. Usage: /key sk-or-…  (saved to ~/.slivr.json · keys: https://openrouter.ai/keys)\n"));
+        return;
+      }
+      session.provider.key = k;   // apply to the live session immediately
+      if (saveKeyToConfig(k)) process.stdout.write(p.green(`✓ key set and saved to ${path.join(os.homedir(), ".slivr.json")}\n`));
+      else process.stdout.write(p.yellow("key set for this session, but could not save it to ~/.slivr.json\n"));
+      if (!/^sk-/.test(k)) process.stdout.write(p.yellow("  note: that doesn't look like an OpenRouter key (expected sk-or-…).\n"));
+      return;
+    }
     case "clear":
       // Clear the screen + scrollback (ANSI). Distinct from /reset which clears the conversation.
       process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
@@ -448,7 +496,7 @@ async function handleCommand(command, ctx) {
   }
 }
 
-const BUILTIN_COMMANDS = ["help", "model", "cost", "plan", "skills", "run", "mcp", "jobs", "clear", "reset", "exit", "quit"];
+const BUILTIN_COMMANDS = ["help", "key", "model", "cost", "plan", "skills", "run", "mcp", "jobs", "clear", "reset", "exit", "quit"];
 
 // Cheap edit-distance "did you mean" for command typos. Returns the closest name within distance 2.
 function nearestCommand(input, names) {

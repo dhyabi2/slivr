@@ -23,7 +23,9 @@ for s in ("review.md", "test.md", "commit.md"):
     if os.path.exists(src): shutil.copy(src, os.path.join(wd, ".slivr", "skills", s))
 
 master, slave = pty.openpty()
-env = dict(os.environ); env.pop("OPENROUTER_API_KEY", None); env["NO_COLOR"] = "1"  # no key (no LLM), no color
+# no key (no LLM), no color, and an ISOLATED HOME so we don't read/write the real ~/.slivr.json
+env = dict(os.environ); env.pop("OPENROUTER_API_KEY", None); env.pop("SLIVR_API_KEY", None)
+env["NO_COLOR"] = "1"; env["HOME"] = wd
 proc = subprocess.Popen(["node", BIN], stdin=slave, stdout=slave, stderr=slave,
                         cwd=wd, env=env, start_new_session=True, close_fds=True)
 os.close(slave)
@@ -47,6 +49,10 @@ def expect(sub, timeout=6.0):
 def send(s): os.write(master, s if isinstance(s, bytes) else s.encode())
 
 try:
+    # 0. first-run onboarding: with no key, the REPL asks for one. Skip it with Enter.
+    ok(expect("paste your OpenRouter API key"), "first-run: prompts for an API key when none is set")
+    send("\r")
+
     # 1. prompt shows the default mode label
     ok(expect("slivr [edits]"), "prompt shows mode label: slivr [edits]")
 
