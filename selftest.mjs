@@ -69,6 +69,11 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "slivr-"));
   ok("create_file refuses overwrite", !cf2.ok && cf2.error === "FILE_EXISTS");
   const cf3 = t.create_file({ path: "empty.txt" }); // missing content must NOT crash — make an empty file
   ok("create_file with no content → empty file (no crash)", cf3.ok && cf3.bytes === 0);
+  // a malformed edit_file (missing path) must give a CLEAN actionable error, not a cryptic Node throw
+  const eNoPath = t.edit_file({ anchor: "x", replacement: "y" });
+  ok("edit_file with no path → clean NO_PATH (not 'paths[1]' Node error)", eNoPath.error === "NO_PATH" && /needs a "path"/.test(eNoPath.hint));
+  ok("edit_file with no anchor → clean NO_ANCHOR", t.edit_file({ path: "new.js", replacement: "y" }).error === "NO_ANCHOR");
+  ok("_resolve(undefined) throws a CLEAR message", (() => { try { t._resolve(undefined); return false; } catch (e) { return /'path' string/.test(e.message); } })());
 
   let escaped = false;
   try { t.read_file({ path: "../../../etc/passwd" }); } catch (err) { escaped = /SANDBOX/.test(err.message); }

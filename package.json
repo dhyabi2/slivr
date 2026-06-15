@@ -1,6 +1,6 @@
 {
   "name": "slivr",
-  "version": "0.27.0",
+  "version": "0.27.1",
   "type": "module",
   "description": "Slivr — a fast, low-cost CLI coding agent with a precise anchor-based edit engine (never re-sends whole files). Provider-agnostic via OpenRouter; MCP, multimodal, plan-mode, parallel orchestration.",
   "bin": {

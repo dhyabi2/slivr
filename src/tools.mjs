@@ -115,6 +115,7 @@ export class Tools {
   }
 
   _resolve(rel) {
+    if (typeof rel !== "string" || !rel) throw new Error("a 'path' string argument is required (you passed none)");
     const abs = path.resolve(this.workdir, rel);
     const wd = this.workdir.endsWith(path.sep) ? this.workdir : this.workdir + path.sep;
     if (abs !== this.workdir && !abs.startsWith(wd)) {
@@ -192,6 +193,9 @@ export class Tools {
 
   // COMPACT edit protocol (slivr). Returns structured repair packet on failure.
   edit_file({ path: rel, anchor, replacement, op = "replace", occurrence }) {
+    if (typeof rel !== "string" || !rel) return { ok: false, error: "NO_PATH", hint: 'edit_file needs a "path" (string), an "anchor" (a small VERBATIM snippet copied from the file to locate the edit), and a "replacement". Example: {"tool":"edit_file","args":{"path":"index.html","anchor":"<old lines>","replacement":"<new lines>"}}' };
+    if (typeof anchor !== "string" || !anchor) return { ok: false, error: "NO_ANCHOR", path: rel, hint: 'edit_file needs an "anchor": a small verbatim snippet copied character-for-character from the file at the spot to change. To create a NEW file use create_file instead.' };
+    if (replacement == null) return { ok: false, error: "NO_REPLACEMENT", path: rel, hint: 'pass "replacement": the new text to put in place of the anchor (use "" to delete the anchor).' };
     const abs = this._resolve(rel);
     if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
     const content = fs.readFileSync(abs, "utf8");

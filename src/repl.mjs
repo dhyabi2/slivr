@@ -375,7 +375,10 @@ export async function startRepl({ workdir, config, palette } = {}) {
           const hint = detectRunHint(workdir, createdThisTurn);
           if (hint) {
             process.stdout.write("\n" + p.cyan(`▶ run ${hint.what} with:  ${hint.cmd}`) + "\n");
-            if (process.stdin.isTTY) await demonstrate(hint);
+            // Only OFFER to open/demonstrate on a CLEAN finish. If the turn STOPPED with errors, the
+            // artifact is likely broken — show the command but don't auto-open a broken page.
+            if (process.stdin.isTTY && res.done && !res.stopped) await demonstrate(hint);
+            else if (res.stopped) process.stdout.write(p.dim("  (the turn stopped before finishing — the page is likely incomplete/broken; fix the errors above first)\n"));
           }
         }
       }
