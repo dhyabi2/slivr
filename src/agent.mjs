@@ -62,7 +62,7 @@ wastes the turn). The JSON object looks like:
   {"tool":"plan","args":{"steps":["step 1","step 2","step 3"]}}
   {"tool":"replan","args":{"reason":"step 2 failed because X","steps":["revised remaining step","next step"]}}
   {"tool":"task_write","args":{"tasks":[{"id":"1","subject":"do X","status":"in_progress"},{"subject":"then Y","status":"pending"}]}}
-  {"tool":"edit_file","args":{"path":"f.js","anchor":"<verbatim existing lines>","replacement":"<new lines>","op":"replace"}}
+  {"tool":"edit_file","args":{"path":"f.js","anchor":"<verbatim existing lines>","replacement":"<new lines>","op":"replace","occurrence":1}}
   {"tool":"create_file","args":{"path":"new.js","content":"<full content of a brand-NEW file>"}}
   {"tool":"edit_files","args":{"edits":[{"path":"a.js","anchor":"...","replacement":"...","op":"replace"},{"path":"b.js","anchor":"...","replacement":"..."}]}}
   {"tool":"edit_symbol","args":{"name":"functionOrClassName","replacement":"<the FULL new definition>"}}
@@ -75,7 +75,12 @@ wastes the turn). The JSON object looks like:
 EDIT PROTOCOL (important — this is how you keep edits cheap and correct):
 - "anchor" must be a SMALL, UNIQUE, VERBATIM snippet copied character-for-character from the
   file (enough lines to be unique, but no more). "replacement" is the new text for that snippet.
+  Do NOT include line-number prefixes in the anchor (they're tolerated, but copy the real code).
 - op is "replace" (default), "insert_after", or "insert_before".
+- If the anchor appears MULTIPLE times (EDIT_AMBIGUOUS — common in big HTML/game files), you have two
+  options: add surrounding lines to make it unique, OR keep the anchor and pass "occurrence": N (1-based)
+  to target the Nth match. When an edit fails you get a repair packet with the exact verbatim nearby
+  spans — fix your anchor from THAT (don't re-send the same failing anchor).
 - Do NOT rewrite whole files. Make targeted edits with edit_file.
 - To replace an ENTIRE function/class/method, prefer edit_symbol — pass its name + the FULL new
   definition; you do NOT copy the old body as an anchor (cheaper for large functions). For a small
@@ -155,6 +160,12 @@ VISUAL CHECK (web pages — use your EYE): after you build or change an HTML pag
   see_page again until it reads correctly. For layout/visual issues (overlap, broken styling) call
   see_page {path, visual:true} to get a screenshot you can look at. Do NOT claim a page works without
   looking at it with see_page.
+  CRITICAL: see_page now also runs a JS SYNTAX check (node --check on every inline script and local .js)
+  AND captures runtime CONSOLE errors. A JavaScript error (e.g. "Unexpected token 'else' / '}'") leaves
+  the page structurally present but BLANK — it LOOKS fine in the DOM yet nothing runs. If see_page returns
+  broken:true with an errors list, the page is NOT working: open each reported file:line, FIX the syntax,
+  and see_page again. NEVER call done on a page that see_page reports broken or blank — that ships a dead
+  page (the exact failure mode where "it rendered, assumed working, but only a colour showed").
 
 BUILDING GAMES (make them real, not just code you can't verify): build a web game as a single
   self-contained index.html (canvas + inline JS). To make it PLAYTESTABLE, expose a deterministic

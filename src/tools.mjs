@@ -23,6 +23,7 @@ import { playGame, playLevels } from "./gameharness.mjs";
 import { renderAsset } from "./asset.mjs";
 import * as bp from "./blueprint.mjs";
 import { resumeSummary, appendJournal } from "./journal.mjs";
+import { checkPageJs, pageConsoleErrors } from "./webcheck.mjs";
 import { compareImages, cropImage, compareRegions, styleProfile, styleAdherence, hexColor } from "./match.mjs";
 import { orbitScene } from "./scene3d.mjs";
 import * as world from "./world.mjs";
@@ -189,11 +190,11 @@ export class Tools {
   }
 
   // COMPACT edit protocol (slivr). Returns structured repair packet on failure.
-  edit_file({ path: rel, anchor, replacement, op = "replace" }) {
+  edit_file({ path: rel, anchor, replacement, op = "replace", occurrence }) {
     const abs = this._resolve(rel);
     if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
     const content = fs.readFileSync(abs, "utf8");
-    const res = applyEdit(content, { anchor, replacement, op });
+    const res = applyEdit(content, { anchor, replacement, op, occurrence });
     if (!res.ok) return { ok: false, repair: res.repair };
     fs.writeFileSync(abs, res.content);
     return { ok: true, tier: res.tier, path: rel };
@@ -234,7 +235,7 @@ export class Tools {
         if (!fs.existsSync(abs)) { failures.push({ index: i, path: rel, error: "FILE_NOT_FOUND" }); return; }
         buffers.set(rel, fs.readFileSync(abs, "utf8"));
       }
-      const res = applyEdit(buffers.get(rel), { anchor: e.anchor, replacement: e.replacement, op: e.op || "replace" });
+      const res = applyEdit(buffers.get(rel), { anchor: e.anchor, replacement: e.replacement, op: e.op || "replace", occurrence: e.occurrence });
       if (!res.ok) { failures.push({ index: i, path: rel, repair: res.repair }); return; }
       buffers.set(rel, res.content);
       applied.push({ index: i, path: rel, tier: res.tier });
@@ -419,11 +420,23 @@ export class Tools {
       try { fs.unlinkSync(out); } catch { /* ignore */ }
       return { ok: true, path: rel, multimodal: { kind: "image", path: `${rel} (rendered)`, mime: "image/png", dataUrl: `data:image/png;base64,${b64}` }, note: `rendered ${rel} (${r.browser}) — screenshot shown to you` };
     }
+    // CATCH BROKEN PAGES (Block 27): static JS syntax check + runtime console-error capture. A SyntaxError
+    // leaves the DOM intact (so it "looks fine") but nothing runs → blank page. Surface these FIRST.
+    const jsErrors = [];
+    try { const jc = checkPageJs(abs, (s) => this._resolve(path.join(path.dirname(rel), s))); for (const e of jc.errors) jsErrors.push(`${e.where}: ${e.message}`); } catch { /* */ }
+    let consoleErrors = [];
+    try { const ce = pageConsoleErrors(abs); consoleErrors = ce.errors || []; } catch { /* */ }
+    const allErrors = [...jsErrors.map((e) => "JS SYNTAX — " + e), ...consoleErrors.map((e) => "CONSOLE — " + e)];
+
     const d = renderDom(abs);
     if (!d.ok) return { ok: false, error: d.error, hint: "couldn't render the page — install Chrome, or reason about the code directly" };
     const text = visibleText(d.dom);
-    if (!text) return { ok: true, path: rel, rendered: "", blank: true, note: "the page rendered BLANK (no visible text) — likely a JS error or an empty body. Check your script." };
-    return { ok: true, path: rel, rendered: text.slice(0, 4000), note: "this is the VISIBLE rendered text (post-JS). Check it reads correctly — e.g. line breaks render as breaks, not a literal \\n. For layout, call see_page with visual:true." };
+    if (allErrors.length) {
+      return { ok: true, path: rel, errors: allErrors, broken: true, rendered: text.slice(0, 2000),
+        note: `THIS PAGE IS BROKEN — ${allErrors.length} error(s) found; the script never ran (that's why it looks blank):\n- ${allErrors.slice(0, 8).join("\n- ")}\nFIX these (open the file:line and correct the syntax), then see_page again. Do NOT declare done while errors remain.` };
+    }
+    if (!text) return { ok: true, path: rel, rendered: "", blank: true, note: "the page rendered BLANK (no visible text) and no JS error was detected — the script may not be drawing anything. Verify it actually renders content (a game: use play_game; a canvas scene: see_page visual:true and look)." };
+    return { ok: true, path: rel, rendered: text.slice(0, 4000), note: "no JS/console errors. This is the VISIBLE rendered text (post-JS). Check it reads correctly — e.g. line breaks render as breaks, not a literal \\n. For layout, call see_page with visual:true." };
   }
 
   // play_game (Block 15): DRIVE a web game headlessly and observe it — the keystone for making real

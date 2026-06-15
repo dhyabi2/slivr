@@ -14,6 +14,7 @@ import { runLoop } from "./src/loop.mjs";
 import { findStub } from "./src/blueprint.mjs";
 import { appendJournal, readJournal, resumeSummary } from "./src/journal.mjs";
 import { applyPromptCache, cachedTokensOf } from "./src/provider.mjs";
+import { checkPageJs, extractScripts, nodeCheckCode } from "./src/webcheck.mjs";
 import { resolveConfig, DEFAULTS, parseMaxSteps } from "./src/config.mjs";
 import { isDestructive, needsApproval } from "./src/safety.mjs";
 import { unifiedDiff, diffStat, diffLines } from "./src/diff.mjs";
@@ -1808,6 +1809,55 @@ console.log("== 46. prompt caching — token efficiency with ZERO text change (B
 
   // cached-token accounting across provider usage shapes
   ok("cachedTokensOf: reads OpenAI + Anthropic shapes", cachedTokensOf({ prompt_tokens_details: { cached_tokens: 900 } }) === 900 && cachedTokensOf({ cache_read_input_tokens: 50 }) === 50 && cachedTokensOf({}) === 0);
+}
+
+console.log("== 47. edit reliability — line-number prefixes + occurrence selector (Block 27) ==");
+{
+  const file = "function add(a, b) {\n  return a + b;\n}\n\nconst x = 1;\nconst y = 2;\n";
+  ok("edit: a line-number-prefixed anchor now applies (tab/space/colon/pipe)",
+    applyEdit(file, { anchor: "5\tconst x = 1;", replacement: "const x = 10;" }).ok &&
+    applyEdit(file, { anchor: "     5  const x = 1;", replacement: "const x = 10;" }).ok &&
+    applyEdit(file, { anchor: "5: const x = 1;", replacement: "const x = 10;" }).ok &&
+    applyEdit(file, { anchor: "5 | const x = 1;", replacement: "const x = 10;" }).ok);
+  ok("edit: de-lined tier is labelled so it's traceable", /\+delined/.test(applyEdit(file, { anchor: "5\tconst x = 1;", replacement: "z" }).tier || ""));
+  // must NOT strip legitimate leading numbers in real code
+  const arr = "const nums = [\n  5,\n  6,\n];\n";
+  const r = applyEdit(arr, { anchor: "  5,", replacement: "  50," });
+  ok("edit: does NOT mistake real leading numbers for line-number prefixes", r.ok && r.tier === "exact" && /50,/.test(r.content));
+  // occurrence selector disambiguates a repeated anchor (the big-game-file case)
+  const game = "ctx.fillStyle=\"#111\";\nfoo();\nctx.fillStyle=\"#111\";\n";
+  const amb = applyEdit(game, { anchor: "ctx.fillStyle=\"#111\";", replacement: "X" });
+  ok("edit: ambiguous anchor still rejected (correctness) + offers occurrence in the packet", !amb.ok && amb.repair.error === "EDIT_AMBIGUOUS" && /occurrence/.test(amb.repair.instruction));
+  const occ = applyEdit(game, { anchor: "ctx.fillStyle=\"#111\";", replacement: "ctx.fillStyle=\"#f00\";", occurrence: 2 });
+  ok("edit: occurrence:N targets the Nth match", occ.ok && occ.content.indexOf("#f00") > occ.content.indexOf("foo"));
+}
+
+console.log("== 48. web verification — catch a JS-broken / blank page before done (Block 27) ==");
+{
+  ok("nodeCheckCode: catches a syntax error with a line; clean code passes",
+    nodeCheckCode("function f(){ if(a){} else } }").ok === false && nodeCheckCode("function f(){ return 1; }").ok === true);
+  ok("nodeCheckCode: accepts ES module syntax (import/export) when isModule", nodeCheckCode("import x from 'y'; export const z=1;", true).ok === true);
+
+  const html = '<html><head></head><body><canvas></canvas><script src="game.js"></script><script>const ok=1;</script><script src="https://cdn/three.js"></script></body></html>';
+  const ex = extractScripts(html);
+  ok("extractScripts: separates inline, LOCAL srcs, skips remote", ex.inline.length === 1 && ex.srcs.length === 1 && ex.srcs[0].src === "game.js");
+
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "web-"));
+  fs.writeFileSync(path.join(d, "index.html"), '<html><body><canvas id="c"></canvas><script src="game.js"></script></body></html>');
+  fs.writeFileSync(path.join(d, "game.js"), "let s=0;\nfunction t(){\n  if(s>10){s=0;} else\n    s++;\n  }\n}\n");
+  const jc = checkPageJs(path.join(d, "index.html"), (s) => path.join(d, s));
+  ok("checkPageJs: catches the broken game.js with a file:line (the reported bug)", !jc.ok && jc.errors.length === 1 && /game\.js:\d/.test(jc.errors[0].where) && /Unexpected token/.test(jc.errors[0].message));
+
+  // see_page now reports broken:true with the errors (the verification gap, closed)
+  const t = new Tools(d);
+  const sp = t.see_page({ path: "index.html" });
+  ok("see_page: flags a JS-broken page as broken with the syntax error surfaced", sp.broken === true && sp.errors.some((e) => /SyntaxError/.test(e)) && /NOT declare done|NOT working|BROKEN/.test(sp.note));
+
+  // a clean page is NOT flagged
+  fs.writeFileSync(path.join(d, "game.js"), "let s=0;\nfunction t(){ if(s>10){s=0;} else { s++; } }\nt();\n");
+  const ok2 = t.see_page({ path: "index.html" });
+  ok("see_page: a syntactically clean page is not flagged broken", !ok2.broken);
+  fs.rmSync(d, { recursive: true, force: true });
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

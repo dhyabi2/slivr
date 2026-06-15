@@ -470,7 +470,7 @@ due jobs against a temp HOME). 145 checks, all green.
 
 ## License
 
-**[PolyForm Noncommercial License 1.0.0](LICENSE)** — Slivr is **source-available, not open-source**.
-You may use, copy, modify, and share it for **any noncommercial purpose** (personal projects,
-research, education, evaluation, and noncommercial-organization use). **Commercial use requires a
-separate license** from the author. See [`LICENSE`](LICENSE) for the exact terms.
+**[GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE)** — Slivr is **free and open source**.
+You may use, study, modify, and redistribute it under the terms of the AGPL-3.0. If you run a modified
+version to provide a network service, you must also make your modified source available to its users.
+See [`LICENSE`](LICENSE) for the exact terms.

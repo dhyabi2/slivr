@@ -98,25 +98,48 @@ function ambiguousPacket(content, fileLines, edit, best, n, kind) {
   p.error = 'EDIT_AMBIGUOUS';
   p.reason = `Your anchor matches ${n} ${kind} locations — it is NOT unique, so applying it could edit the WRONG one.`;
   p.occurrences = n;
-  p.instruction = 'Re-emit your edit with a LARGER anchor that includes enough surrounding lines (above and/or below) to match EXACTLY ONE location. Copy it verbatim from the file.';
+  p.instruction = `Re-emit your edit with a LARGER anchor (include surrounding lines above/below) to match EXACTLY ONE location, copied verbatim — OR keep this anchor and add "occurrence": <1..${n}> to pick which one (see nearestRealSpans for each location's startLine).`;
   return p;
+}
+
+// Models very commonly paste anchors that still carry LINE-NUMBER PREFIXES (e.g. "42  code" or
+// "42:\tcode" or "  42 | code") from a numbered file view — which then never match the real source.
+// If EVERY non-empty anchor line is so prefixed, return the de-numbered anchor; else null. Conservative
+// so it never strips legitimate leading numbers in real code (every line must match the pattern).
+function stripLineNumberPrefixes(anchor) {
+  const lines = String(anchor).split('\n');
+  const nonEmpty = lines.filter((l) => l.trim());
+  if (nonEmpty.length === 0) return null;
+  const re = /^\s*\d+\s*(?:[:|.│]\s?|\t| {1,4})(.*)$/;   // "42 ", "42:", "42|", "42.", "42\t"
+  if (!nonEmpty.every((l) => re.test(l))) return null;
+  const stripped = lines.map((l) => { if (!l.trim()) return l; const m = l.match(re); return m ? m[1] : l; }).join('\n');
+  return stripped === anchor ? null : stripped;
 }
 
 // Apply one edit — CORRECTNESS-FIRST: only apply on a UNIQUE exact or unique normalized match.
 // Never silently apply a fuzzy match or a non-unique anchor (those cause wrong-location edits that
 // report success); instead return a packet (with fuzzy spans as SUGGESTIONS) for the model to retry.
+// An optional 1-based `occurrence` disambiguates a repeated anchor (common in big game/HTML files).
 export function applyEdit(content, edit) {
-  const { anchor, replacement, op = 'replace' } = edit;
+  const { anchor, replacement, op = 'replace', occurrence } = edit;
   const fileLines = content.split('\n');
 
-  // --- Tier 1: EXACT + UNIQUE ---
+  // --- Tier 1: EXACT + UNIQUE (or a chosen occurrence) ---
   const nExact = countExact(content, anchor);
   if (nExact === 1) {
     if (op === 'replace') return { ok: true, tier: 'exact', content: content.replace(anchor, replacement) };
     const repl = op === 'insert_after' ? anchor + '\n' + replacement : replacement + '\n' + anchor;
     return { ok: true, tier: 'exact', content: content.replace(anchor, repl) };
   }
-  if (nExact > 1) return { ok: false, repair: ambiguousPacket(content, fileLines, edit, bestSpan(fileLines, anchor), nExact, 'exact') };
+  if (nExact > 1) {
+    // The model can pick WHICH one with occurrence:N instead of having to craft a unique anchor.
+    if (Number.isInteger(occurrence) && occurrence >= 1 && occurrence <= nExact) {
+      let idx = -1; for (let k = 0; k < occurrence; k++) idx = content.indexOf(anchor, idx + 1);
+      const repl = op === 'replace' ? replacement : op === 'insert_after' ? anchor + '\n' + replacement : replacement + '\n' + anchor;
+      return { ok: true, tier: 'exact#' + occurrence, content: content.slice(0, idx) + repl + content.slice(idx + anchor.length) };
+    }
+    return { ok: false, repair: ambiguousPacket(content, fileLines, edit, bestSpan(fileLines, anchor), nExact, 'exact') };
+  }
 
   // --- Tier 2: WHITESPACE-NORMALIZED + UNIQUE ---
   const norm = normalizedMatches(fileLines, anchor);
@@ -127,6 +150,16 @@ export function applyEdit(content, edit) {
     return { ok: true, tier: 'whitespace', content: spliceLines(fileLines, span, reIndented, op) };
   }
   if (norm.length > 1) return { ok: false, repair: ambiguousPacket(content, fileLines, edit, bestSpan(fileLines, anchor), norm.length, 'normalized') };
+
+  // --- Tier 2.5: the anchor may carry LINE-NUMBER PREFIXES — strip them and retry ONCE (still must be
+  // unique to apply, so correctness is preserved). This recovers a huge class of "anchor not found".
+  if (!edit._delined) {
+    const stripped = stripLineNumberPrefixes(anchor);
+    if (stripped) {
+      const retry = applyEdit(content, { ...edit, anchor: stripped, _delined: true });
+      if (retry.ok) return { ...retry, tier: retry.tier + '+delined' };
+    }
+  }
 
   // --- Tier 3: NO fuzzy auto-apply -> packet with fuzzy spans as SUGGESTIONS ---
   return { ok: false, repair: buildRepairPacket(content, fileLines, edit, bestSpan(fileLines, anchor)) };
