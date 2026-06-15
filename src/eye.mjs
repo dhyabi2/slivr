@@ -7,7 +7,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 
 const CANDIDATES = [
   process.env.CHROME_PATH, process.env.SLIVR_CHROME,
@@ -52,6 +52,25 @@ export const screenshotArgs = (url, outPng, { width = 1000, height = 750 } = {})
 const GL_COMMON = ["--headless=new", "--use-angle=swiftshader", "--no-sandbox", "--no-first-run"];
 export const dumpDomGLArgs = (url, budget = 9000) => [...GL_COMMON, `--virtual-time-budget=${budget}`, "--dump-dom", url];
 
+// ASYNC Chrome render (non-blocking). Required when loading a URL served by an IN-PROCESS proxy: spawnSync
+// would block the event loop so the proxy could never answer Chrome's request (deadlock). spawn() keeps the
+// loop free. Returns { ok, dom } | { ok, error }.
+function renderArgsAsync(args, timeoutMs, maxBuffer) {
+  const browser = findBrowser();
+  if (!browser) return Promise.resolve({ ok: false, error: "no headless browser found — install Google Chrome, or set CHROME_PATH" });
+  return new Promise((resolve) => {
+    let out = "", done = false;
+    const finish = (r) => { if (done) return; done = true; clearTimeout(timer); try { ch.kill("SIGKILL"); } catch { /* */ } resolve(r); };
+    const ch = spawn(browser, args, { stdio: ["ignore", "pipe", "ignore"] });
+    const timer = setTimeout(() => finish({ ok: false, error: "render timed out" }), timeoutMs);
+    ch.stdout.on("data", (d) => { out += d; if (out.length > maxBuffer) finish({ ok: out.length ? true : false, dom: out }); });
+    ch.on("error", (e) => finish({ ok: false, error: `render failed: ${e.message}` }));
+    ch.on("close", () => finish(out ? { ok: true, dom: out } : { ok: false, error: "render failed: no output" }));
+  });
+}
+export function renderDomUrl(url) { return renderArgsAsync(dumpDomArgs(toTarget(url)), 30000, 16 << 20); }
+export function renderDomGLUrl(url, budget = 9000) { return renderArgsAsync(dumpDomGLArgs(toTarget(url), budget), budget + 30000, 64 << 20); }
+
 // TIER 1 (cheap): the post-JS rendered DOM as text. { ok:true, dom } | { ok:false, error }.
 export function renderDom(htmlAbs) {
   const browser = findBrowser();
@@ -73,23 +92,35 @@ export function renderDomGL(htmlAbs, budget = 9000) {
 
 // WebGL screenshot: --screenshot renders WebGL BLANK (--disable-gpu). Instead capture the page's own
 // canvas via toDataURL on the GPU path (renderDomGL). Writes the PNG to outPng. { ok } | { ok:false, error }.
+const glCaptureInject = (budget) => `<script>window.addEventListener('load',function(){var n=0;(function poll(){var cv=document.querySelector('canvas');var u=cv?cv.toDataURL('image/png'):'';n+=200;if((u.length>800)||(n>=${budget - 1500})){var p=document.createElement('pre');p.id='__slivr_shot';p.style.display='none';p.textContent=u;document.body.appendChild(p);return;}setTimeout(poll,200);})();});</script>`;
+const glCapInject = (html, budget) => (/<\/body>/i.test(html) ? html.replace(/<\/body>/i, glCaptureInject(budget) + "</body>") : html + glCaptureInject(budget));
+function writeGlShot(dom, outPng) {
+  if (!dom.ok) return { ok: false, error: dom.error };
+  const m = dom.dom.match(/<pre id="__slivr_shot"[^>]*>([\s\S]*?)<\/pre>/);
+  const u = m ? m[1].trim() : "";
+  if (!u || u.length < 200) return { ok: false, error: "blank or no canvas" };
+  try { fs.writeFileSync(outPng, Buffer.from(u.split(",")[1], "base64")); return { ok: true, browser: "chrome-gl" }; }
+  catch (e) { return { ok: false, error: String(e.message || e) }; }
+}
+
 export function screenshotWebGL(htmlAbs, outPng, { budget = 11000 } = {}) {
   let html = ""; try { html = fs.readFileSync(htmlAbs, "utf8"); } catch { return { ok: false, error: "read failed" }; }
-  const cap = `<script>window.addEventListener('load',function(){var n=0;(function poll(){var cv=document.querySelector('canvas');var u=cv?cv.toDataURL('image/png'):'';n+=200;if((u.length>800)||(n>=${budget - 1500})){var p=document.createElement('pre');p.id='__slivr_shot';p.style.display='none';p.textContent=u;document.body.appendChild(p);return;}setTimeout(poll,200);})();});</script>`;
-  const merged = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, cap + "</body>") : html + cap;
   const dir = path.dirname(htmlAbs);
   const tmp = path.join(dir, `.slivr-glshot-${process.pid}-${Date.now()}.html`);
   try {
-    fs.writeFileSync(tmp, merged);
-    const dom = renderDomGL(tmp, budget);
-    if (!dom.ok) return { ok: false, error: dom.error };
-    const m = dom.dom.match(/<pre id="__slivr_shot"[^>]*>([\s\S]*?)<\/pre>/);
-    const url = m ? m[1].trim() : "";
-    if (!url || url.length < 200) return { ok: false, error: "blank or no canvas" };
-    fs.writeFileSync(outPng, Buffer.from(url.split(",")[1], "base64"));
-    return { ok: true, browser: "chrome-gl" };
+    fs.writeFileSync(tmp, glCapInject(html, budget));
+    return writeGlShot(renderDomGL(tmp, budget), outPng);
   } catch (e) { return { ok: false, error: String(e.message || e) }; }
   finally { try { fs.unlinkSync(tmp); } catch { /* */ } }
+}
+
+// Capture a SERVED game's canvas over HTTP (Block 42): inject the toDataURL capture via the proxy, render
+// on the GL backend, write the PNG. Lets the served done-gate measure canvas richness like a static file. async.
+export async function screenshotWebGLUrl(url, outPng, { budget = 11000 } = {}) {
+  const { startInjectProxy } = await import("./proxy.mjs");
+  const proxy = await startInjectProxy(url, (html) => glCapInject(html, budget));
+  try { return writeGlShot(await renderDomGLUrl(proxy.url, budget), outPng); }
+  finally { await proxy.close(); }
 }
 
 // TIER 2 (visual): a PNG screenshot. { ok:true, browser } | { ok:false, error }.

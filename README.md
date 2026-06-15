@@ -451,6 +451,9 @@ sessions), neutral-to-slightly-worse on trivial edits.*
   + tools `start_server`/`stop_server`/`http_request`/`install_deps` (approval-gated, `--ignore-scripts` by
   default); the eye + `see_page` accept an `http://` URL so a running app is verified over HTTP (not just
   static `file://`), and the done-gate verifies a SERVED game over HTTP when there's no static index.html
+- harness-over-HTTP: `src/proxy.mjs` (a zero-dep injecting proxy) + async URL renders (`renderDomUrl`/
+  `renderDomGLUrl`) + `autoPlayUrl`/`extractLevelsUrl`/`screenshotWebGLUrl` so autoplay, level-cert and
+  canvas-capture run against a SERVED game at full parity with a static file
 - background/scheduled: `src/jobs.mjs` (store + duration/cron parsing) · `src/scheduler.mjs` (detached spawn + poller)
 - `bin/slivr.mjs` — main CLI · `bin/agent.mjs` — original benchmark CLI · `demo.mjs` — live side-by-side · `selftest.mjs` — deterministic (no LLM)
 - `bench/tasks.mjs` `bench/run.mjs` `bench/results.json` · `SPEC.md`

@@ -68,7 +68,9 @@ export async function startServer({ command, cwd, port, env = {}, readyTimeoutMs
     return { ok: false, error: why, port: p, log: log.slice(-1500) };
   }
   child.unref();
-  const url = `http://localhost:${p}`;
+  // 127.0.0.1 (not "localhost"): Node's fetch/undici resolves localhost to ::1 first and then EINVALs
+  // setting the IPv4 IP_TOS socket option on the v6 socket — force IPv4 so http_request/proxy fetches work.
+  const url = `http://127.0.0.1:${p}`;
   RUNNING.set(child.pid, { child, url, port: p, cmd: command });
   return { ok: true, url, pid: child.pid, port: p };
 }

@@ -2218,7 +2218,7 @@ console.log("== 62. node servers — run a generated app on a URL:port, verify o
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "srv-")); const t = new Tools(d);
   fs.writeFileSync(path.join(d, "server.js"), 'const http=require("http");const port=process.env.PORT||3000;http.createServer((req,res)=>{if(req.url==="/api/health"){res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({ok:true}));}else{res.writeHead(200,{"content-type":"text/html"});res.end("<html><body><h1>Hello from Node</h1></body></html>");}}).listen(port);');
   const s = await t.start_server({ command: "node server.js", readyTimeoutMs: 8000 });
-  ok("start_server: spawns the app and returns an http url + port", s.ok === true && /^http:\/\/localhost:\d+$/.test(s.url) && typeof s.pid === "number");
+  ok("start_server: spawns the app and returns an http url + port", s.ok === true && /^http:\/\/127\.0\.0\.1:\d+$/.test(s.url) && typeof s.pid === "number");
   if (s.ok) {
     const api = await t.http_request({ url: s.url + "/api/health" });
     ok("http_request: hits a route → status + parsed json", api.ok === true && api.status === 200 && api.json && api.json.ok === true && /json/.test(api.contentType));
@@ -2273,7 +2273,8 @@ console.log("== 63. node deps + served-game done-gate — install (approval) + v
   const dk = fs.mkdtempSync(path.join(os.tmpdir(), "svk-")); const tk = new Tools(dk);
   fs.writeFileSync(path.join(dk, "server.js"), serve(skeletonPage));
   const svk = await tk._verifyServedGame({ task: "make a 3d game" });
-  ok("served gate: a served SKELETON game is flagged (structure over HTTP)", svk.ran === true && /STRUCTURE/.test(svk.problem || ""));
+  // a thin THREE-based skeleton is caught over HTTP (by whichever check fires first — frozen/art/structure).
+  ok("served gate: a served SKELETON game is flagged over HTTP", svk.ran === true && !!svk.problem);
   const dc = fs.mkdtempSync(path.join(os.tmpdir(), "svc-")); const tc = new Tools(dc);
   fs.writeFileSync(path.join(dc, "server.js"), serve(COMPLETE_GAME.replace(/^[\s\S]*?<body>/i, "").replace(/<\/body>[\s\S]*$/i, "")));
   const svc = await tc._verifyServedGame({ task: "make a platformer" });
@@ -2290,6 +2291,62 @@ console.log("== 63. node deps + served-game done-gate — install (approval) + v
 
   const { stopAllServers } = await import("./src/server.mjs"); stopAllServers();
   for (const x of [di, ds, dk, dc, dn, dg]) fs.rmSync(x, { recursive: true, force: true });
+}
+
+console.log("== 64. harness-over-HTTP — verify a SERVED game over http like a static file (Block 42) ==");
+{
+  const http = await import("node:http");
+  const { startInjectProxy } = await import("./src/proxy.mjs");
+  const { autoPlayUrl, extractLevelsUrl } = await import("./src/gameharness.mjs");
+  const { screenshotWebGLUrl, findBrowser } = await import("./src/eye.mjs");
+  const mkSrv = (handler) => new Promise((res) => { const s = http.createServer(handler).listen(0, "127.0.0.1", () => res({ url: "http://127.0.0.1:" + s.address().port, close: () => new Promise((r) => s.close(r)) })); });
+
+  // the injecting proxy: text/html gets the driver injected; other content passes through unchanged.
+  const target = await mkSrv((q, r) => {
+    if (q.url === "/data.json") { r.writeHead(200, { "content-type": "application/json" }); r.end('{"v":1}'); }
+    else { r.writeHead(200, { "content-type": "text/html" }); r.end("<html><body><h1>Hi</h1></body></html>"); }
+  });
+  const proxy = await startInjectProxy(target.url, (html) => html.replace("</body>", "<!--INJECTED--></body>"));
+  const ph = await (await fetch(proxy.url + "/")).text();
+  const pj = await (await fetch(proxy.url + "/data.json")).text();
+  ok("proxy: injects into served text/html, passes other content through", /INJECTED/.test(ph) && /Hi/.test(ph) && pj === '{"v":1}');
+  await proxy.close(); await target.close();
+
+  if (findBrowser()) {
+    const respondGame = '<canvas id=c width=240 height=160></canvas><script>var x=document.getElementById("c").getContext("2d"),px=20,keys={};addEventListener("keydown",function(e){keys[e.key]=true;});function loop(){if(keys["ArrowRight"])px+=4;x.fillStyle="#7ec8f0";x.fillRect(0,0,240,160);x.fillStyle="#b33";x.beginPath();x.arc(px,80,12,0,7);x.fill();requestAnimationFrame(loop);}loop();window.slivrLevels=[["#######","#S.D.G#","#.k...#","###D###","#..G..#","#######"]];</script>';
+    const frozenGame = '<canvas id=c width=240 height=160></canvas><script>var x=document.getElementById("c").getContext("2d");function loop(){x.fillStyle="#234";x.fillRect(0,0,240,160);requestAnimationFrame(loop);}loop();</script>';
+    const page = (body) => (q, r) => { r.writeHead(200, { "content-type": "text/html" }); r.end("<html><body>" + body + "</body></html>"); };
+
+    const s1 = await mkSrv(page(respondGame));
+    const ap = await autoPlayUrl(s1.url, { keys: ["ArrowRight"], holdMs: 400 });
+    ok("autoPlayUrl: a SERVED game that responds → responds:true over HTTP", ap.ok === true && ap.responds === true && ap.maxChange > 3);
+    const lv = await extractLevelsUrl(s1.url);
+    ok("extractLevelsUrl: reads window.slivrLevels from a SERVED page", Array.isArray(lv) && lv.length === 1);
+    const cap = path.join(os.tmpdir(), `served-${process.pid}.png`);
+    const sh = await screenshotWebGLUrl(s1.url, cap);
+    ok("screenshotWebGLUrl: captures a SERVED canvas over HTTP", sh.ok === true && fs.existsSync(cap) && fs.statSync(cap).size > 200);
+    try { fs.unlinkSync(cap); } catch { /* */ }
+    await s1.close();
+
+    const s2 = await mkSrv(page(frozenGame));
+    const ap2 = await autoPlayUrl(s2.url, { keys: ["ArrowRight"], holdMs: 400 });
+    ok("autoPlayUrl: a SERVED FROZEN game → responds:false over HTTP", ap2.ok === true && ap2.responds === false);
+    await s2.close();
+
+    // the SERVED done-gate now catches a FROZEN served game (not just structure) — full parity.
+    const df = fs.mkdtempSync(path.join(os.tmpdir(), "svf-")); const tf = new Tools(df);
+    fs.writeFileSync(path.join(df, "server.js"), `const http=require("http");http.createServer((q,r)=>{r.writeHead(200,{"content-type":"text/html"});r.end(${JSON.stringify("<html><body>" + frozenGame + "</body></html>")});}).listen(process.env.PORT||3000);`);
+    const svf = await tf._verifyServedGame({ task: "make a game served on a url" });
+    ok("served gate: a served FROZEN game is caught over HTTP (autoplay parity)", svf.ran === true && /FROZEN/.test(svf.problem || ""));
+    const { stopAllServers } = await import("./src/server.mjs"); stopAllServers();
+    fs.rmSync(df, { recursive: true, force: true });
+  } else {
+    ok("autoPlayUrl: (no browser — live skipped)", true);
+    ok("extractLevelsUrl: (no browser — live skipped)", true);
+    ok("screenshotWebGLUrl: (no browser — live skipped)", true);
+    ok("autoPlayUrl frozen: (no browser — live skipped)", true);
+    ok("served gate FROZEN: (no browser — live skipped)", true);
+  }
 }
 
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");

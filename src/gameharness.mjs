@@ -15,7 +15,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { renderDom, renderDomGL, renderShot } from "./eye.mjs";
+import { renderDom, renderDomGL, renderShot, renderDomUrl, renderDomGLUrl } from "./eye.mjs";
+import { startInjectProxy } from "./proxy.mjs";
 
 function read(p) { try { return fs.readFileSync(p, "utf8"); } catch { return ""; } }
 function decodeEntities(s) {
@@ -26,22 +27,33 @@ function decodeEntities(s) {
 // exposing window.slivrLevels — an array where each level is row-strings (["#S.G#",…]) or {rows:[…]} or
 // {grid:[…]} (tiles: # wall, S spawn, G goal, k key, D door). Returns that array, or null when the game
 // doesn't expose it (so the certifier never blocks games that don't use keys/doors). Mirrors buildHarness.
+const LEVELS_DRIVER = `<script>(function(){function out(o){var el=document.getElementById('__slivr_levels_data');if(!el){el=document.createElement('pre');el.id='__slivr_levels_data';el.style.display='none';document.body.appendChild(el);}el.textContent=JSON.stringify(o);}function run(){try{var L=window.slivrLevels;if(L==null){out({error:'NO_LEVELS'});return;}out({ok:true,levels:L});}catch(e){out({error:String(e&&e.message||e)});}}if(document.readyState==='complete')run();else window.addEventListener('load',run);})();</script>`;
+const inject = (html, driver) => (/<\/body>/i.test(html) ? html.replace(/<\/body>/i, driver + "</body>") : html + driver);
+const parseLevelsDom = (dom) => {
+  if (!dom.ok) return null;
+  const m = dom.dom.match(/<pre id="__slivr_levels_data"[^>]*>([\s\S]*?)<\/pre>/);
+  if (!m) return null;
+  let r = null; try { r = JSON.parse(decodeEntities(m[1])); } catch { return null; }
+  return r && r.ok && Array.isArray(r.levels) ? r.levels : null;
+};
+
 export function extractLevels(htmlAbs) {
   const gameHtml = read(htmlAbs);
   if (!gameHtml) return null;
-  const driver = `<script>(function(){function out(o){var el=document.getElementById('__slivr_levels_data');if(!el){el=document.createElement('pre');el.id='__slivr_levels_data';el.style.display='none';document.body.appendChild(el);}el.textContent=JSON.stringify(o);}function run(){try{var L=window.slivrLevels;if(L==null){out({error:'NO_LEVELS'});return;}out({ok:true,levels:L});}catch(e){out({error:String(e&&e.message||e)});}}if(document.readyState==='complete')run();else window.addEventListener('load',run);})();</script>`;
-  const harnessed = /<\/body>/i.test(gameHtml) ? gameHtml.replace(/<\/body>/i, driver + "</body>") : gameHtml + driver;
   const dir = path.dirname(htmlAbs);
   const tmp = path.join(dir, `.slivr-levels-${process.pid}-${Date.now()}.html`);
   try {
-    fs.writeFileSync(tmp, harnessed);
-    const dom = renderDom(tmp);
-    if (!dom.ok) return null;
-    const m = dom.dom.match(/<pre id="__slivr_levels_data"[^>]*>([\s\S]*?)<\/pre>/);
-    if (!m) return null;
-    let r = null; try { r = JSON.parse(decodeEntities(m[1])); } catch { return null; }
-    return r && r.ok && Array.isArray(r.levels) ? r.levels : null;
+    fs.writeFileSync(tmp, inject(gameHtml, LEVELS_DRIVER));
+    return parseLevelsDom(renderDom(tmp));
   } finally { try { fs.unlinkSync(tmp); } catch { /* */ } }
+}
+
+// extractLevels over HTTP: same window.slivrLevels contract, but for a SERVED page (Block 42) — inject the
+// driver via the proxy and read it back. Returns the levels array or null. async.
+export async function extractLevelsUrl(url) {
+  const proxy = await startInjectProxy(url, (html) => inject(html, LEVELS_DRIVER));
+  try { return parseLevelsDom(await renderDomUrl(proxy.url)); }
+  finally { await proxy.close(); }
 }
 
 // Build a harness HTML: the game + an injected driver that runs the Simulacrum and writes a JSON
@@ -231,37 +243,51 @@ function buildAutoplayDriver(plan = {}) {
 
 // Drive a game with REAL input events and report whether it responds. Returns { ok, responds, maxChange,
 // perStep, errors, dataUrl(contact sheet) } | { ok:false, error }.
+// Inject the RAF shim + the autoplay driver into a game's HTML (shared by the file + url paths).
+// requestAnimationFrame does NOT tick under headless --dump-dom (no compositor), so a game's RAF loop would
+// never advance and every frame would look identical (false "frozen"). Shim RAF→setTimeout FIRST (before
+// the game script) so the loop advances deterministically under --virtual-time-budget.
+function injectAutoplay(gameHtml, plan) {
+  const driver = buildAutoplayDriver(plan);
+  const RAF_SHIM = `<script>window.requestAnimationFrame=function(cb){return setTimeout(function(){cb(Date.now());},16);};window.cancelAnimationFrame=function(id){clearTimeout(id);};</script>`;
+  const withShim = /<head[^>]*>/i.test(gameHtml) ? gameHtml.replace(/<head[^>]*>/i, (h) => h + RAF_SHIM) : RAF_SHIM + gameHtml;
+  return /<\/body>/i.test(withShim) ? withShim.replace(/<\/body>/i, driver + "</body>") : withShim + driver;
+}
+
+// Turn the rendered autoplay DOM into the result (responds/maxChange + a contact sheet the agent SEES).
+function finishAutoplay(dom) {
+  if (!dom.ok) return { ok: false, error: dom.error };
+  const m = dom.dom.match(/<pre id="__slivr_play"[^>]*>([\s\S]*?)<\/pre>/);
+  let res = null;
+  if (m) { try { res = JSON.parse(decodeEntities(m[1])); } catch { /* */ } }
+  if (!res) return { ok: false, error: "AUTOPLAY_PARSE_FAILED" };
+  if (res.error) return { ok: false, error: res.error };
+  let dataUrl = null;
+  const png = path.join(os.tmpdir(), `slivr-autoplay-${process.pid}-${Date.now()}.png`);
+  const sheet = path.join(os.tmpdir(), `slivr-autoplay-${process.pid}-${Date.now()}.html`);
+  try {
+    const cells = (res.frames || []).slice(0, 8).map((f, i) => `<div style="text-align:center">${f ? `<img src="${f}" style="width:200px;border:1px solid #333;background:#000">` : "no frame"}<div style="color:#bbb;font:11px monospace">${i === 0 ? "start" : "step " + i}</div></div>`).join("");
+    fs.writeFileSync(sheet, `<!doctype html><body style="margin:0;background:#0b0b0b;display:flex;flex-wrap:wrap;gap:8px;padding:8px">${cells}</body>`);
+    const shot = renderShot(sheet, png, { width: 1100, height: 600 });
+    if (shot.ok) dataUrl = "data:image/png;base64," + fs.readFileSync(png).toString("base64");
+  } catch { /* */ } finally { try { fs.unlinkSync(png); } catch { /* */ } try { fs.unlinkSync(sheet); } catch { /* */ } }
+  return { ok: true, responds: res.responds, maxChange: res.maxChange, perStep: res.perStep, errors: res.errors || [], dataUrl };
+}
+
 export function autoPlay(htmlAbs, plan = {}) {
   const gameHtml = read(htmlAbs);
   if (!gameHtml) return { ok: false, error: "FILE_NOT_FOUND_OR_EMPTY" };
   const dir = path.dirname(htmlAbs);
   const tmp = path.join(dir, `.slivr-autoplay-${process.pid}-${Date.now()}.html`);
   try {
-    const driver = buildAutoplayDriver(plan);
-    // requestAnimationFrame does NOT tick under headless --dump-dom (no compositor), so a game's RAF loop
-    // would never advance and every frame would look identical (false "frozen"). Shim RAF→setTimeout FIRST
-    // (before the game script) so the loop advances deterministically under --virtual-time-budget.
-    const RAF_SHIM = `<script>window.requestAnimationFrame=function(cb){return setTimeout(function(){cb(Date.now());},16);};window.cancelAnimationFrame=function(id){clearTimeout(id);};</script>`;
-    let withShim = /<head[^>]*>/i.test(gameHtml) ? gameHtml.replace(/<head[^>]*>/i, (h) => h + RAF_SHIM) : RAF_SHIM + gameHtml;
-    const merged = /<\/body>/i.test(withShim) ? withShim.replace(/<\/body>/i, driver + "</body>") : withShim + driver;
-    fs.writeFileSync(tmp, merged);
-    const dom = renderDomGL(tmp, plan.budget || 9000);
-    if (!dom.ok) return { ok: false, error: dom.error };
-    const m = dom.dom.match(/<pre id="__slivr_play"[^>]*>([\s\S]*?)<\/pre>/);
-    let res = null;
-    if (m) { try { res = JSON.parse(decodeEntities(m[1])); } catch { /* */ } }
-    if (!res) return { ok: false, error: "AUTOPLAY_PARSE_FAILED" };
-    if (res.error) return { ok: false, error: res.error };
-    // contact sheet: start + each held-input frame, so the agent SEES it play
-    let dataUrl = null;
-    const png = path.join(os.tmpdir(), `slivr-autoplay-${process.pid}-${Date.now()}.png`);
-    const sheet = path.join(os.tmpdir(), `slivr-autoplay-${process.pid}-${Date.now()}.html`);
-    try {
-      const cells = (res.frames || []).slice(0, 8).map((f, i) => `<div style="text-align:center">${f ? `<img src="${f}" style="width:200px;border:1px solid #333;background:#000">` : "no frame"}<div style="color:#bbb;font:11px monospace">${i === 0 ? "start" : "step " + i}</div></div>`).join("");
-      fs.writeFileSync(sheet, `<!doctype html><body style="margin:0;background:#0b0b0b;display:flex;flex-wrap:wrap;gap:8px;padding:8px">${cells}</body>`);
-      const shot = renderShot(sheet, png, { width: 1100, height: 600 });
-      if (shot.ok) dataUrl = "data:image/png;base64," + fs.readFileSync(png).toString("base64");
-    } catch { /* */ } finally { try { fs.unlinkSync(png); } catch { /* */ } try { fs.unlinkSync(sheet); } catch { /* */ } }
-    return { ok: true, responds: res.responds, maxChange: res.maxChange, perStep: res.perStep, errors: res.errors || [], dataUrl };
+    fs.writeFileSync(tmp, injectAutoplay(gameHtml, plan));
+    return finishAutoplay(renderDomGL(tmp, plan.budget || 9000));
   } finally { try { fs.unlinkSync(tmp); } catch { /* */ } }
+}
+
+// autoPlay over HTTP: drive a SERVED game with real input via the injecting proxy (Block 42). async.
+export async function autoPlayUrl(url, plan = {}) {
+  const proxy = await startInjectProxy(url, (html) => injectAutoplay(html, plan));
+  try { return finishAutoplay(await renderDomGLUrl(proxy.url, plan.budget || 9000)); }
+  finally { await proxy.close(); }
 }

@@ -16,10 +16,10 @@ import { applyEdit } from "./seal.mjs";
 import { localPdfText } from "./pdftext.mjs";
 import { costUSD } from "./provider.mjs";
 import { buildSymbolIndex, findSymbol, findReferences, repoOverview, langOf, symbolSpan } from "./repomap.mjs";
-import { renderDom, renderShot, visibleText, screenshotWebGL } from "./eye.mjs";
+import { renderDom, renderShot, visibleText, screenshotWebGL, screenshotWebGLUrl } from "./eye.mjs";
 import { detectCommands, describeCommands } from "./project.mjs";
 import { detectStyle, styleBrief } from "./style.mjs";
-import { playGame, playLevels, autoPlay, extractLevels } from "./gameharness.mjs";
+import { playGame, playLevels, autoPlay, extractLevels, autoPlayUrl, extractLevelsUrl } from "./gameharness.mjs";
 import { parse as parseLevel, certify as certifyLevel, recheck as recheckLevel } from "./levelcert.mjs";
 import { startServer, stopServer, listServers } from "./server.mjs";
 import { analyzeStructure, wantsMinimal } from "./structure.mjs";
@@ -319,10 +319,24 @@ export class Tools {
     return null;
   }
 
-  // DONE-GATE helper for SERVED games (Block 41): when there's no static game file but the project serves
-  // one, start the server (or reuse a running one), fetch the entry HTML, and verify it over HTTP — broken
-  // check (see_page {url}) + production-structure check on the served HTML. Returns { ran, problem }.
-  // Graceful: a project that isn't a startable server, or whose served page isn't a game, → { ran:false }.
+  // Canvas richness of a SERVED game (over HTTP via the injecting proxy) — the served analog of
+  // _gameArtRichness. null = couldn't capture (no browser / blank).
+  async _servedCanvasRichness(url) {
+    const cap = path.join(os.tmpdir(), `slivr-servedart-${process.pid}-${Date.now()}.png`);
+    try {
+      const shot = await screenshotWebGLUrl(url, cap);
+      if (!shot.ok) { try { fs.unlinkSync(cap); } catch { /* */ } return null; }
+      const a = artReview(cap);
+      try { fs.unlinkSync(cap); } catch { /* */ }
+      return a.ok ? a.richness : null;
+    } catch { try { fs.unlinkSync(cap); } catch { /* */ } return null; }
+  }
+
+  // DONE-GATE helper for SERVED games (Blocks 41–42): when there's no static game file but the project
+  // serves one, start the server (or reuse a running one), fetch the entry HTML, and verify it over HTTP at
+  // FULL parity with the static gate — broken (see_page {url}), FROZEN (autoplay over HTTP), flat-boxes art
+  // (canvas capture over HTTP), structure contract, and lock-and-key solvability (window.slivrLevels over
+  // HTTP). All HTTP-harness checks degrade gracefully (no browser → skipped). Returns { ran, problem }.
   async _verifyServedGame({ task } = {}) {
     let url = null, startedPid = null;
     const running = listServers();
@@ -342,11 +356,31 @@ export class Tools {
       const sp = this.see_page({ url });
       if (sp && sp.broken) return { ran: true, problem: `the served page at ${url} is BROKEN: ${(sp.errors || []).slice(0, 3).join("; ")}` };
       if (!wantsMinimal(task)) {
+        // FROZEN — drive it with real input over HTTP
+        try {
+          const ap = await autoPlayUrl(url, { keys: ["ArrowRight", "ArrowUp", "Space"], holdMs: 400 });
+          if (ap && ap.ok && ap.responds === false) return { ran: true, problem: `the served game is FROZEN — it does NOT respond to real keyboard/click input (only ${ap.maxChange}% screen change). It isn't actually playable.` };
+        } catch { /* no browser → skip */ }
+        // FLAT-BOXES art — capture the served canvas over HTTP and rate it
+        try {
+          const rich = await this._servedCanvasRichness(url);
+          if (rich != null && rich < 18) return { ran: true, problem: `the served game's ART is flat PROGRAMMER ART (canvas richness ${rich}/100) — coloured boxes, not a real themed game.` };
+        } catch { /* skip */ }
+        // STRUCTURE contract on the served HTML
         const st = analyzeStructure(html, task);
         if (!st.pass) {
           const punch = st.missing.slice(0, 9).map((m) => "  ✗ " + m.label + (m.anti ? " (placeholder / wrong primitive)" : "")).join("\n");
           return { ran: true, problem: `the SERVED game's STRUCTURE is only ~${st.requiredScore}% of a production game — ${st.zeroCategories.length} whole layer${st.zeroCategories.length === 1 ? "" : "s"} missing (${st.zeroCategories.join(", ") || "—"}):\n${punch}` };
         }
+        // LOCK-AND-KEY solvability — certify window.slivrLevels exposed over HTTP
+        try {
+          const levels = await extractLevelsUrl(url);
+          if (Array.isArray(levels) && levels.length) {
+            const cert = this.certify_level({ levels });
+            const fails = cert.results.filter((r) => !r.ok);
+            if (fails.length) return { ran: true, problem: `${fails.length} of ${cert.levels} served level${cert.levels === 1 ? "" : "s"} can permanently STRAND the player (soft-lock / unsolvable). Fix the key/door economy.` };
+          }
+        } catch { /* skip */ }
       }
       return { ran: true, problem: null };
     } finally {
