@@ -15,6 +15,7 @@ import { applyEdit } from "./seal.mjs";
 import { localPdfText } from "./pdftext.mjs";
 import { costUSD } from "./provider.mjs";
 import { buildSymbolIndex, findSymbol, findReferences, repoOverview, langOf, symbolSpan } from "./repomap.mjs";
+import { renderDom, renderShot, visibleText } from "./eye.mjs";
 
 // Re-indent a replacement block to a target base indent (strip its own common indent, prepend target).
 function reindentBlock(block, indent) {
@@ -371,6 +372,29 @@ export class Tools {
     const bytes = Buffer.byteLength(b64, "utf8");
     // marker the loop turns into an image block; result stays small in the trace.
     return { ok: true, path: rel, multimodal: { kind: "image", path: rel, mime, dataUrl: `data:${mime};base64,${b64}` }, note: `image loaded (${ext}, ~${Math.round((bytes * 3) / 4)} bytes); shown to the model` };
+  }
+
+  // see_page (Block 11): the agent's EYE on a web page it built. Renders the HTML headlessly with the
+  // system browser. DEFAULT is text-first + cheap: returns the post-JS RENDERED visible text (catches a
+  // literal "\n" on screen, a blank page, wrong text) with no vision-token cost. Pass visual:true for a
+  // SCREENSHOT (attached to the model) when you need to judge layout/visual appearance.
+  see_page({ path: rel, visual } = {}) {
+    if (!rel) return { ok: false, error: "NO_PATH", hint: 'pass {"path":"index.html"} (visual:true for a screenshot)' };
+    let abs; try { abs = this._resolve(rel); } catch (e) { return { ok: false, error: e.message }; }
+    if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
+    if (visual) {
+      const out = path.join(os.tmpdir(), `slivr-shot-${process.pid}-${Date.now()}.png`);
+      const r = renderShot(abs, out);
+      if (!r.ok) return { ok: false, error: r.error, hint: "couldn't get a visual — use see_page (text mode) or reason about the code" };
+      let b64; try { b64 = fs.readFileSync(out).toString("base64"); } catch (e) { return { ok: false, error: String(e.message || e) }; }
+      try { fs.unlinkSync(out); } catch { /* ignore */ }
+      return { ok: true, path: rel, multimodal: { kind: "image", path: `${rel} (rendered)`, mime: "image/png", dataUrl: `data:image/png;base64,${b64}` }, note: `rendered ${rel} (${r.browser}) — screenshot shown to you` };
+    }
+    const d = renderDom(abs);
+    if (!d.ok) return { ok: false, error: d.error, hint: "couldn't render the page — install Chrome, or reason about the code directly" };
+    const text = visibleText(d.dom);
+    if (!text) return { ok: true, path: rel, rendered: "", blank: true, note: "the page rendered BLANK (no visible text) — likely a JS error or an empty body. Check your script." };
+    return { ok: true, path: rel, rendered: text.slice(0, 4000), note: "this is the VISIBLE rendered text (post-JS). Check it reads correctly — e.g. line breaks render as breaks, not a literal \\n. For layout, call see_page with visual:true." };
   }
 
   // view_pdf: PRIMARY path sends the PDF to the model via OpenRouter's file-parser plugin (so the

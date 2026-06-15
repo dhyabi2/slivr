@@ -28,6 +28,7 @@ wastes the turn). The JSON object looks like:
   {"tool":"web_fetch","args":{"url":"https://..."}}
   {"tool":"view_image","args":{"path":"shot.png"}}
   {"tool":"view_pdf","args":{"path":"spec.pdf"}}
+  {"tool":"see_page","args":{"path":"index.html"}}
   {"tool":"delegate","args":{"task":"a focused, self-contained sub-task to run in a fresh sub-agent"}}
   {"tool":"parallel","args":{"tasks":["independent subtask A","independent subtask B"]}}
   {"tool":"pipeline","args":{"tasks":[{"id":"a","task":"do A","deps":[]},{"id":"b","task":"do B using A","deps":["a"]}]}}
@@ -115,6 +116,13 @@ UNDERSTAND INTENT (do this FIRST): a request is usually underspecified. Infer wh
   something runnable, did you run it and confirm it actually works? Your done summary MUST tell the user
   how to SEE / RUN / VERIFY the result.
 
+VISUAL CHECK (web pages — use your EYE): after you build or change an HTML page, call see_page {path}
+  to READ how it ACTUALLY renders (the post-JS visible text). Look for render bugs — a literal "\n"
+  shown on screen instead of a line break, a BLANK page, wrong/missing/garbled text — then FIX them and
+  see_page again until it reads correctly. For layout/visual issues (overlap, broken styling) call
+  see_page {path, visual:true} to get a screenshot you can look at. Do NOT claim a page works without
+  looking at it with see_page.
+
 DRAFT-FIRST (important for HARD tasks): do NOT spend all your turns planning or reasoning. Commit a
   SIMPLE, COMPLETE, runnable solution EARLY — even a naive/brute-force one — then improve it. Always
   have working code written before you run out of steps; a correct-but-slow solution beats none.
@@ -148,6 +156,7 @@ export function makeAgent(workdir, opts = {}) {
     web_search: (a) => tools.web_search(a),
     view_image: (a) => tools.view_image(a),
     view_pdf: (a) => tools.view_pdf(a),
+    see_page: (a) => tools.see_page(a),
     delegate: (a) => delegateSubAgent(a, workdir, opts),
     parallel: (a) => parallelSubAgents(a, workdir, opts),
     pipeline: (a) => pipelineSubAgents(a, workdir, opts),
@@ -177,7 +186,7 @@ const SUBAGENT_BRIEF =
 // READ/INFORMATIONAL tools (not edits/commits), de-noised and length-capped.
 const FINDING_TOOLS = new Set([
   "read_file", "list_dir", "grep", "glob", "repo_map", "find_symbol", "find_refs", "run_command", "web_search",
-  "web_fetch", "view_pdf", "view_image", "git_status", "git_diff", "git_log",
+  "web_fetch", "view_pdf", "view_image", "see_page", "git_status", "git_diff", "git_log",
 ]);
 export function extractFindings(sub, maxTotal = 2000) {
   const out = [];
@@ -436,6 +445,7 @@ export class Session {
       web_search: (a) => t.web_search(a),
       view_image: (a) => t.view_image(a),
       view_pdf: (a) => t.view_pdf(a),
+      see_page: (a) => t.see_page(a),
       delegate: (a) => delegateSubAgent(a, this.workdir, this.opts),
       parallel: (a) => parallelSubAgents(a, this.workdir, this.opts),
       pipeline: (a) => pipelineSubAgents(a, this.workdir, this.opts),

@@ -1190,6 +1190,33 @@ console.log("== 30. run-hint — anticipate intent / show how to run it (Block 9
   fs.rmSync(d, { recursive: true, force: true });
 }
 
+console.log("== 31. see_page — the agent's eye (Block 11) ==");
+{
+  const { findBrowser, dumpDomArgs, screenshotArgs, visibleText } = await import("./src/eye.mjs");
+
+  // pure pieces (no browser needed)
+  ok("eye: dumpDomArgs builds a --dump-dom command", dumpDomArgs("file:///x.html").includes("--dump-dom"));
+  ok("eye: screenshotArgs targets a PNG + viewport", (() => { const a = screenshotArgs("file:///x.html", "/o.png", { width: 800, height: 600 }); return a.some(x => x === "--screenshot=/o.png") && a.some(x => x === "--window-size=800,600"); })());
+  // visibleText: strips tags/scripts, PRESERVES newlines so a literal "\n" bug is visible to the model
+  ok("eye: visibleText strips tags + keeps text", visibleText("<div><script>x()</script>Hello <b>world</b></div>") === "Hello world");
+  ok("eye: visibleText preserves rendered newlines (the \\n bug is catchable)", visibleText("<p>You won!\nGuesses: 3</p>").includes("\n"));
+
+  // tool wiring + graceful errors (no real browser needed)
+  const t = new Tools(tmp);
+  ok("see_page: requires a path", t.see_page({}).ok === false);
+  ok("see_page: missing file → FILE_NOT_FOUND", t.see_page({ path: "nope.html" }).error === "FILE_NOT_FOUND");
+
+  // REAL render — only if a headless browser is installed (skipped cleanly otherwise).
+  if (findBrowser()) {
+    fs.writeFileSync(path.join(tmp, "buggy.html"), "<!doctype html><html><body><div id=o></div><script>document.getElementById('o').textContent='You won!\\nGuesses: 3';</script></body></html>");
+    const r = t.see_page({ path: "buggy.html" });
+    ok("see_page: renders + exposes the literal-newline bug as text", r.ok && /You won!/.test(r.rendered) && r.rendered.includes("\n"));
+  } else {
+    ok("see_page: (no browser installed — real-render test skipped)", true);
+    console.log("    note: no headless browser found; install Chrome to exercise see_page live.");
+  }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);
