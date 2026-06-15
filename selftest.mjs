@@ -1491,6 +1491,52 @@ console.log("== 39. crop_image + compare_regions — per-asset extraction & over
   }
 }
 
+console.log("== 40. style_profile + style_check — extrapolate beyond the frame, in style (Block 20) ==");
+{
+  const { renderAsset } = await import("./src/asset.mjs");
+  const { findBrowser } = await import("./src/eye.mjs");
+  const { parseTree, coverage } = await import("./src/blueprint.mjs");
+
+  // blueprint origin tagging + coverage breakdown (no browser needed)
+  const m = parseTree("a town game", [
+    { title: "Sun", origin: "pictured" },
+    { title: "Hidden cave (off-screen)", origin: "world" },
+    { title: "Pause menu", origin: "world" },
+  ]);
+  const cov = coverage(m);
+  ok("blueprint: leaves carry origin (pictured/world) + coverage breaks down by origin", cov.byOrigin && cov.byOrigin.pictured.total === 1 && cov.byOrigin.world.total === 2);
+
+  const t = new Tools(tmp);
+  ok("style_profile: requires a target", t.style_profile({}).error === "NO_TARGET");
+  ok("style_check: requires a candidate/render", t.style_check({}).error === "NO_CANDIDATE");
+  ok("style_check: errors with no anchor and no target", t.style_check({ candidate: "x.png" }).error === "NO_ANCHOR" || t.style_check({ candidate: "x.png" }).error === "CANDIDATE_NOT_FOUND");
+
+  if (findBrowser()) {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "frame-"));
+    const tt = new Tools(d);
+    const w = (name, canvas, bg) => { const r = renderAsset({ canvas, width: 200, height: 200, bg }); fs.writeFileSync(path.join(d, name), Buffer.from(r.dataUrl.split(",")[1], "base64")); };
+    // anchor: earthy/sky scene
+    w("reference.png", 'var g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,"#bfe3f5");g.addColorStop(1,"#eaf6ff");ctx.fillStyle=g;ctx.fillRect(0,0,W,H);ctx.fillStyle="#7bc96a";ctx.fillRect(0,H-60,W,60);ctx.fillStyle="#6b4423";ctx.fillRect(80,90,30,70);ctx.fillStyle="#2e8b3d";ctx.beginPath();ctx.arc(95,80,34,0,7);ctx.fill();', "#bfe3f5");
+    // invented in-style asset (sky + green/brown) vs off-style neon asset
+    w("instyle.png", 'ctx.fillStyle="#cfeaf7";ctx.fillRect(0,0,W,H);ctx.fillStyle="#6b4423";ctx.fillRect(90,120,20,50);ctx.fillStyle="#2e8b3d";ctx.beginPath();ctx.arc(100,110,40,0,7);ctx.fill();', "#cfeaf7");
+    w("offstyle.png", 'ctx.fillStyle="#120024";ctx.fillRect(0,0,W,H);ctx.fillStyle="#ff2fd0";ctx.fillRect(40,40,120,120);ctx.fillStyle="#00f0ff";ctx.fillRect(70,70,60,60);', "#120024");
+
+    const prof = tt.style_profile({ target: "reference.png" });
+    ok("style_profile: extracts a palette + tone and persists the anchor", prof.ok && Array.isArray(prof.palette) && prof.palette.length > 0 && fs.existsSync(path.join(d, ".slivr", "style-anchor.json")));
+
+    const inS = tt.style_check({ candidate: "instyle.png" });
+    const offS = tt.style_check({ candidate: "offstyle.png" });
+    ok("style_check: scores an in-style invented asset high + attaches a composite", inS.ok && inS.adherence >= 85 && !!inS.multimodal);
+    ok("style_check: scores an off-style invented asset lower", offS.ok && offS.adherence < inS.adherence && offS.adherence < 80);
+    // anchor-on-the-fly via target (no persisted file needed)
+    const fly = new Tools(d).style_check({ candidate: "instyle.png", target: "reference.png" });
+    ok("style_check: can profile the anchor on the fly via target", fly.ok && fly.adherence >= 85);
+    fs.rmSync(d, { recursive: true, force: true });
+  } else {
+    ok("style_profile/style_check: (no browser installed — live skipped)", true);
+  }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

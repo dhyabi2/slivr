@@ -56,6 +56,8 @@ export function describeStep({ tool, args = {} }) {
     case "compare_image": return `compare_image ${args.target ?? "?"} vs ${args.render || args.candidate || "?"}`;
     case "compare_regions": return `compare_regions ${args.target ?? "?"}${Array.isArray(args.regions) ? ` (${args.regions.length} assets)` : ""}`;
     case "crop_image": return `crop_image ${args.src ?? "?"} → ${args.out ?? "?"}`;
+    case "style_profile": return `style_profile ${args.target ?? "?"}`;
+    case "style_check": return `style_check ${args.render || args.candidate || "?"}`;
     case "play_game": return `play_game ${args.path ?? "?"}${args.steps ? ` (${args.steps} steps)` : ""}`;
     case "run_command": return `run \`${clip(String(args.command ?? ""), 80)}\``;
     case "edit_file": return `edit ${args.path ?? "?"}`;
