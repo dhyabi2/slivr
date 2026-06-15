@@ -51,6 +51,7 @@ wastes the turn). The JSON object looks like:
   {"tool":"blueprint_mark","args":{"id":"1.2","status":"done","evidence":"src/audio.js","decision":"WebAudio square-wave + decay envelope"}}
   {"tool":"blueprint_add","args":{"parentId":"1","nodes":[{"title":"hurt sound","leafType":"sound"}]}}
   {"tool":"blueprint_audit","args":{}}
+  {"tool":"resume","args":{}}
   {"tool":"compare_image","args":{"target":"reference.png","render":"index.html"}}
   {"tool":"crop_image","args":{"src":"reference.png","x":0.5,"y":0.2,"w":0.25,"h":0.3,"out":"assets/ref-tower.png"}}
   {"tool":"compare_regions","args":{"target":"reference.png","render":"index.html","regions":[{"label":"tower","x":0.5,"y":0.2,"w":0.25,"h":0.3},{"label":"park","x":0.1,"y":0.6,"w":0.3,"h":0.2}]}}
@@ -294,6 +295,20 @@ DISCOVER THE OUTER WORLD (turn one picture into a whole map): a reference shows 
     world_map {action:"tile", id, file, styleScore}. Keep world_map {action:"show"} as your spatial oversight
     so the world is coherent and connected — a real explorable landscape grown from one seed picture.
 
+CONTINUITY (pick up where you left off — don't restart from scratch): when you begin work in a project that
+  may already have progress, call resume FIRST. It reconstructs where the last session stopped from the
+  persisted blueprint + world map + git state + the journal handoff — what's done, what's in progress, what's
+  next. Continue from the NEXT items; do NOT redo finished leaves. A session journal is written automatically
+  at the end of each run so the next session continues seamlessly.
+
+DON'T GET STUCK (when a step keeps FAILING the same way, fixing the retry won't help): if a tool fails,
+  read the error — it usually tells you the EXACT fix (e.g. STUB_EVIDENCE gives the file:line of the stray
+  TODO/placeholder to remove). Fix that ROOT CAUSE, then proceed. NEVER re-issue the same failing call hoping
+  it passes — especially blueprint_mark: a STUB_EVIDENCE means the evidence file still has a placeholder
+  somewhere; open that file:line, finish the real content, THEN mark done. Many leaves can share one file, so
+  one stray marker blocks them all — fix it once. If you truly cannot resolve it, mark the node "blocked" and
+  move on rather than looping.
+
 DRAFT-FIRST (important for HARD tasks): do NOT spend all your turns planning or reasoning. Commit a
   SIMPLE, COMPLETE, runnable solution EARLY — even a naive/brute-force one — then improve it. Always
   have working code written before you run out of steps; a correct-but-slow solution beats none.
@@ -338,6 +353,7 @@ export function makeAgent(workdir, opts = {}) {
     blueprint_mark: (a) => tools.blueprint_mark(a),
     blueprint_add: (a) => tools.blueprint_add(a),
     blueprint_audit: (a) => tools.blueprint_audit(a),
+    resume: (a) => tools.resume(a),
     compare_image: (a) => tools.compare_image(a),
     crop_image: (a) => tools.crop_image(a),
     compare_regions: (a) => tools.compare_regions(a),
@@ -374,7 +390,7 @@ const SUBAGENT_BRIEF =
 // READ/INFORMATIONAL tools (not edits/commits), de-noised and length-capped.
 const FINDING_TOOLS = new Set([
   "read_file", "list_dir", "grep", "glob", "repo_map", "project_info", "house_style", "find_symbol", "find_refs", "run_command", "web_search",
-  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "play_levels", "compare_image", "compare_regions", "crop_image", "style_profile", "style_check", "orbit_scene", "world_map", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
+  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "play_levels", "compare_image", "compare_regions", "crop_image", "style_profile", "style_check", "orbit_scene", "world_map", "resume", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
 ]);
 export function extractFindings(sub, maxTotal = 2000) {
   const out = [];
@@ -645,6 +661,7 @@ export class Session {
       blueprint_mark: (a) => t.blueprint_mark(a),
       blueprint_add: (a) => t.blueprint_add(a),
       blueprint_audit: (a) => t.blueprint_audit(a),
+      resume: (a) => t.resume(a),
       compare_image: (a) => t.compare_image(a),
       crop_image: (a) => t.crop_image(a),
       compare_regions: (a) => t.compare_regions(a),

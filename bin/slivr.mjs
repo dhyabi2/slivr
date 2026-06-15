@@ -26,6 +26,7 @@ import { isDestructive, needsApproval } from "../src/safety.mjs";
 import { connectAll, closeAll } from "../src/mcp.mjs";
 import { listSkills, renderSkill } from "../src/skills.mjs";
 import { makeBridge } from "../src/bridge.mjs";
+import { appendJournal } from "../src/journal.mjs";
 import { spawnBackground, runBackgroundJob, runScheduler, startSchedulerDaemon, stopSchedulerDaemon, schedulerStatus } from "../src/scheduler.mjs";
 import { listJobs, readJob, logPath, makeScheduled, addScheduled, readSchedule, clearSchedule, groupSchedule } from "../src/jobs.mjs";
 
@@ -286,6 +287,8 @@ async function runOneShot(task, dir, config, palette, { auto, plan, verify, repa
   if (createdThisTurn.length) { const hint = runHintLine(dir, createdThisTurn); if (hint) process.stderr.write("\n" + p.cyan(hint) + "\n"); }
   if (session.tools.tasks.length) process.stderr.write("\n" + renderTasks(session.tools.tasks, p) + "\n");
   process.stderr.write(footer({ turns: res.turns, totalTokens: res.totals.totalTokens, cost: res.totals.cost, model: session.provider.model, status: footerStatus }, p) + "\n");
+  // Session continuity (Block 25): write a journal handoff so the next session resumes seamlessly.
+  if (!res.error) { try { appendJournal(dir, { task, summary: res.summary || res.stopped || "(no summary)", files: createdThisTurn, next: res.stopped ? "resolve: " + res.stopped : "" }); } catch { /* */ } }
   // exit 0 only on a clean finish AND (if verifying) a passing verification.
   if (res.error || res.verified === false) return 1;
   return res.done ? 0 : 1;

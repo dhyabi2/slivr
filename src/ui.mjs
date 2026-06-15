@@ -53,6 +53,7 @@ export function describeStep({ tool, args = {} }) {
     case "blueprint_mark": return `blueprint_mark ${args.id ?? "?"} → ${args.status ?? "?"}`;
     case "blueprint_add": return `blueprint_add${args.parentId ? ` → ${args.parentId}` : ""}`;
     case "blueprint_audit": return `blueprint_audit`;
+    case "resume": return `resume`;
     case "compare_image": return `compare_image ${args.target ?? "?"} vs ${args.render || args.candidate || "?"}`;
     case "compare_regions": return `compare_regions ${args.target ?? "?"}${Array.isArray(args.regions) ? ` (${args.regions.length} assets)` : ""}`;
     case "crop_image": return `crop_image ${args.src ?? "?"} → ${args.out ?? "?"}`;
@@ -123,6 +124,7 @@ export function summarizeResult({ tool, args = {}, result, diff, diffs } = {}, d
     case "play_levels": return r.count != null ? `${r.count} levels · ${r.uniqueLevels} distinct${r.clones?.length ? ` · ${r.clones.length} CLONES` : ""}` : "drove levels";
     case "blueprint_plan": return r.coverage ? `${r.coverage.totalLeaves} leaves` : "planned";
     case "blueprint_status": case "blueprint_audit": return r.coverage ? `${r.coverage.done}/${r.coverage.totalLeaves} done (${r.coverage.pct}%)` : "";
+    case "resume": return r.hasState ? (r.coverage ? `resumed · ${r.coverage.done}/${r.coverage.totalLeaves} done` : "resumed") : "fresh project";
     case "blueprint_mark": return r.coverage ? `${r.node?.status || "marked"} · ${r.coverage.done}/${r.coverage.totalLeaves}` : "marked";
     case "web_search": return Array.isArray(r.results) ? `${r.results.length} results` : "searched";
     case "web_fetch": return r.title ? clip(r.title, 60) : "fetched";
