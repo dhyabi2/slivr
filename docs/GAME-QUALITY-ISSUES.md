@@ -29,5 +29,13 @@ measurement (no quantified "X% matches", no enumerated missing elements, no scor
 
 slivr now closes the worst of these: ADVANCED/complete is the DEFAULT (the user never says "super");
 the done-gate verifies a game actually PLAYS (autoplay, real input) AND isn't flat boxes (canvas
-art_review < 18 → pushed back) before accepting done. The deeper items (a strong independent vision
-critic that scores fidelity-to-request + a regenerate-to-target loop) are the roadmap.
+art_review < 18 → pushed back) before accepting done.
+
+It also closes the SEMANTIC-FIDELITY gap with a vision CHECKLIST (Block 37): a strong vision model
+(gemini-3.5-flash) derives a yes/no punch-list of the concrete things THIS request requires — a
+recognizable character (not a box), enemies, collectibles, HUD, textured ground, themed background, the
+genre's iconic elements — then answers present:yes/no for each by LOOKING at the rendered canvas. The
+game is verified ONLY when every item is "yes"; any "no" becomes the punch-list fed back to the agent.
+A checklist beats a single fuzzy score: it forces a commit per requirement and tells the user exactly
+WHICH thing is missing, not just "looks ~35% right". Remaining roadmap: a reference exemplar per genre
+and a bounded generate→checklist→regenerate loop until all-yes.

@@ -2067,44 +2067,47 @@ console.log("== 58. playability done-gate — a game must actually PLAY before d
   }
 }
 
-console.log("== 59. semantic vision critic — judge game fidelity-to-request in the done-gate (Block 37) ==");
+console.log("== 59. semantic vision checklist — yes/no QA of game vs request in the done-gate (Block 37) ==");
 {
   const { findBrowser } = await import("./src/eye.mjs");
-  // A vision-judge provider: hasKey()=true, chat() returns a scripted JSON critique (image is ignored here —
-  // we test the gate's parse + threshold + push-back wiring, not the live model).
-  const mkJudge = (loopScript, critiqueText) => {
+  // A vision-judge provider: hasKey()=true, chat() returns a scripted JSON checklist for the vision call
+  // (image ignored here — we test the gate's parse + "all yes = verified" + push-back wiring, not the model).
+  const mkJudge = (loopScript, checklistText) => {
     let i = 0;
     return {
       model: "m", hasKey: () => true,
       chat: async (msgs, o = {}) => {
         const isVision = Array.isArray(msgs) && msgs.length === 1 && Array.isArray(msgs[0].content) && msgs[0].content.some((b) => b.type === "image_url");
-        if (isVision) return { text: critiqueText, usage: {}, raw: {} };
+        if (isVision) return { text: checklistText, usage: {}, raw: {} };
         return { text: JSON.stringify(loopScript[i++] || { tool: "done", args: {} }), usage: {}, raw: {} };
       },
       totals: () => ({ model: "m", calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }),
     };
   };
+  const cl = (...pairs) => JSON.stringify({ checklist: pairs.map(([item, present]) => ({ item, present })) });
+  const SOME_MISSING = cl(["recognizable character (not a box)", false], ["enemies", false], ["coins/collectibles", true], ["score HUD", true], ["textured ground", true]);
+  const ALL_PRESENT = cl(["recognizable character", true], ["enemies", true], ["coins/collectibles", true], ["score HUD", true], ["textured ground", true]);
   if (findBrowser()) {
     // a WORKING, richly-drawn game (responds + not flat boxes) so the gate reaches the VISION step.
     const richHtml = '<!doctype html><html><body><canvas id=c width=240 height=160></canvas><script>var cv=document.getElementById("c"),x=cv.getContext("2d"),px=20,keys={};addEventListener("keydown",function(e){keys[e.key]=true;});function loop(){if(keys["ArrowRight"])px+=4;var g=x.createLinearGradient(0,0,0,160);g.addColorStop(0,"#7ec8f0");g.addColorStop(1,"#cdeafe");x.fillStyle=g;x.fillRect(0,0,240,160);x.fillStyle="#5fa84f";x.fillRect(0,128,240,32);for(var i=0;i<240;i+=3){x.fillStyle="rgba(0,0,0,0.05)";x.fillRect(i,128,1,6);}var rg=x.createRadialGradient(px+6,80,2,px+10,86,15);rg.addColorStop(0,"#ffeedd");rg.addColorStop(1,"#bb3322");x.fillStyle=rg;x.beginPath();x.arc(px+10,86,13,0,7);x.fill();x.fillStyle="#fff";x.beginPath();x.arc(px+6,80,3,0,7);x.fill();requestAnimationFrame(loop);}loop();</script></body></html>';
-    // LOW score → the critic blocks the done (one push-back), then the 2nd done is accepted.
+    // SOME items NO → not all yes → blocked once (push-back names the missing items), then 2nd done accepted.
     const dl = fs.mkdtempSync(path.join(os.tmpdir(), "vc-lo-")); const tl = new Tools(dl);
     fs.writeFileSync(path.join(dl, "index.html"), richHtml);
-    const rl = await runLoop({ provider: mkJudge([{ tool: "done", args: {} }, { tool: "done", args: {} }], '{"score": 12, "verdict": "FAIL", "missing": "Mario sprite, enemies, coins"}'), tools: tl, toolMap: {}, systemPrompt: "s", task: "make a super mario game", maxSteps: 8, verifyModel: "google/gemini-3.5-flash" });
-    ok("vision critic: a LOW fidelity score is pushed back at done", rl.trace.some((x) => x.gameGate && /vision critic/.test(String(x.gameGate))) && rl.done);
-    // HIGH score → the critic does NOT block (no false push-back); the game passes on turn 1.
+    const rl = await runLoop({ provider: mkJudge([{ tool: "done", args: {} }, { tool: "done", args: {} }], SOME_MISSING), tools: tl, toolMap: {}, systemPrompt: "s", task: "make a super mario game", maxSteps: 8, verifyModel: "google/gemini-3.5-flash" });
+    ok("vision checklist: a NOT-all-yes checklist is pushed back at done", rl.trace.some((x) => x.gameGate && /checklist/.test(String(x.gameGate))) && rl.trace.some((x) => x.visionChecklist && x.visionChecklist.missing.length === 2) && rl.done);
+    // ALL items YES → verified → passes on turn 1, no false block.
     const dh = fs.mkdtempSync(path.join(os.tmpdir(), "vc-hi-")); const th = new Tools(dh);
     fs.writeFileSync(path.join(dh, "index.html"), richHtml);
-    const rh = await runLoop({ provider: mkJudge([{ tool: "done", args: {} }], '{"score": 78, "verdict": "PASS", "missing": "minor polish"}'), tools: th, toolMap: {}, systemPrompt: "s", task: "make a super mario game", maxSteps: 8, verifyModel: "google/gemini-3.5-flash" });
-    ok("vision critic: a HIGH fidelity score passes (no false block)", !rh.trace.some((x) => x.gameGate) && rh.done && rh.turns === 1);
+    const rh = await runLoop({ provider: mkJudge([{ tool: "done", args: {} }], ALL_PRESENT), tools: th, toolMap: {}, systemPrompt: "s", task: "make a super mario game", maxSteps: 8, verifyModel: "google/gemini-3.5-flash" });
+    ok("vision checklist: all-yes verifies and passes (no false block)", !rh.trace.some((x) => x.gameGate) && rh.done && rh.turns === 1);
     // NO verifyModel → the vision step is skipped entirely (offline default for selftest's other blocks).
     const ds = fs.mkdtempSync(path.join(os.tmpdir(), "vc-skip-")); const ts = new Tools(ds);
     fs.writeFileSync(path.join(ds, "index.html"), richHtml);
-    const rs = await runLoop({ provider: mkJudge([{ tool: "done", args: {} }], '{"score": 1, "verdict": "FAIL", "missing": "everything"}'), tools: ts, toolMap: {}, systemPrompt: "s", task: "make a super mario game", maxSteps: 8 });
-    ok("vision critic: skipped when no verifyModel configured", !rs.trace.some((x) => x.gameGate && /vision critic/.test(String(x.gameGate))) && rs.done);
+    const rs = await runLoop({ provider: mkJudge([{ tool: "done", args: {} }], SOME_MISSING), tools: ts, toolMap: {}, systemPrompt: "s", task: "make a super mario game", maxSteps: 8 });
+    ok("vision checklist: skipped when no verifyModel configured", !rs.trace.some((x) => x.gameGate && /checklist/.test(String(x.gameGate))) && rs.done);
     fs.rmSync(dl, { recursive: true, force: true }); fs.rmSync(dh, { recursive: true, force: true }); fs.rmSync(ds, { recursive: true, force: true });
   } else {
-    ok("vision critic: (no browser — live skipped)", true);
+    ok("vision checklist: (no browser — live skipped)", true);
   }
   // Session default: verifyModel is on by default and "none" disables it.
   const { Session } = await import("./src/agent.mjs");

@@ -25,13 +25,15 @@ function detectGameFile(workdir) {
   return null;
 }
 
-// SEMANTIC VISION CRITIC (Block 37): the deterministic gates check STRUCTURE (renders, responds, not
-// flat boxes) but not whether the render actually LOOKS like what the user asked for. This asks a strong
-// VISION model to look at the game canvas and score fidelity-to-request + list what's missing — the one
-// thing pixel-stats can't judge. Returns { score:0-100, verdict, missing } or null (couldn't run).
-async function visionCritiqueGame(provider, model, task, dataUrl, signal) {
+// SEMANTIC VISION CHECKLIST (Block 37): the deterministic gates check STRUCTURE (renders, responds, not
+// flat boxes) but not whether the render actually LOOKS like what the user asked for. A single fuzzy
+// "fidelity score" is unreliable; instead we ask a strong VISION model to derive a CHECKLIST of the
+// concrete things a real, complete version must visibly have — then answer present:yes/no for each by
+// LOOKING at the canvas. Verified ⇔ every item is present; otherwise the missing items are the punch-list.
+// Returns { items:[{item,present}], missing:[item…], total, present } or null (couldn't run / unparseable).
+async function visionChecklistGame(provider, model, task, dataUrl, signal) {
   if (!provider || typeof provider.chat !== "function" || !model || !dataUrl) return null;
-  const prompt = `You are a STRICT game-art reviewer. The user asked for this game:\n"${String(task || "").slice(0, 400)}"\n\nLook at this screenshot of the actual rendered game canvas. Judge how faithfully it matches a REAL, complete, polished version of what was asked — recognizable themed characters/enemies (not coloured boxes), real backdrop art, HUD, the genre's iconic elements.\nReply with ONLY a compact JSON object, no prose:\n{"score": <0-100 fidelity>, "verdict": "PASS" or "FAIL", "missing": "<≤12 words: the top concrete things absent>"}`;
+  const prompt = `You are a STRICT visual QA inspector. The user asked for this:\n"${String(task || "").slice(0, 400)}"\n\nThink about what a REAL, complete, polished version MUST visibly contain — the concrete, checkable things (e.g. for a platformer: a recognizable themed CHARACTER that is clearly NOT a plain coloured box; enemies; collectibles/coins; a score/HUD; textured ground or platforms; a themed background; etc. — tailor the list to THIS request). Write 5-9 such items.\nNow LOOK at this screenshot of the actual rendered output and answer, for EACH item, whether it is genuinely visible. Be strict: a plain rectangle is NOT a character; flat colour is NOT texture.\nReply with ONLY this JSON, no prose:\n{"checklist":[{"item":"<short concrete requirement>","present":true|false}, ...]}`;
   try {
     const r = await provider.chat(
       [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: dataUrl } }] }],
@@ -40,9 +42,14 @@ async function visionCritiqueGame(provider, model, task, dataUrl, signal) {
     const m = String(r?.text || "").match(/\{[\s\S]*\}/);
     if (!m) return null;
     const o = JSON.parse(m[0]);
-    const score = typeof o.score === "number" ? o.score : Number(o.score);
-    if (!Number.isFinite(score)) return null;
-    return { score, verdict: String(o.verdict || "").toUpperCase(), missing: String(o.missing || "").slice(0, 120) };
+    const raw = Array.isArray(o.checklist) ? o.checklist : (Array.isArray(o.items) ? o.items : null);
+    if (!raw || !raw.length) return null;
+    const items = raw
+      .filter((x) => x && typeof (x.item ?? x.requirement ?? x.q) === "string")
+      .map((x) => ({ item: String(x.item ?? x.requirement ?? x.q).slice(0, 80), present: x.present === true || /^(yes|true)$/i.test(String(x.present)) }));
+    if (!items.length) return null;
+    const missing = items.filter((i) => !i.present).map((i) => i.item);
+    return { items, missing, total: items.length, present: items.length - missing.length };
   } catch { return null; }
 }
 
@@ -238,14 +245,17 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
                 const rich = typeof tools._gameArtRichness === "function" ? tools._gameArtRichness(gameFile) : null;
                 if (rich != null && rich < 18) problem = `the ART is flat PROGRAMMER ART (canvas richness ${rich}/100) — coloured boxes/blocks, not a real themed game. Build recognizable characters/enemies + textured art with the artkit (the user expects the ADVANCED game by default).`;
                 // SEMANTIC FIDELITY (Block 37): pixel-richness can't tell "looks like Mario" from "colourful
-                // blobs". When a vision judge model is configured, have it LOOK at the canvas and score
-                // fidelity-to-request; a low score → push back with the concrete missing elements. Gated on a
-                // real key + verifyModel so offline/selftest runs skip it. Network/parse failures never block.
+                // blobs". When a vision judge model is configured, have it derive a yes/no CHECKLIST of what
+                // the request requires and answer each by LOOKING at the canvas — verified ⇔ every item is
+                // present; any missing item is the punch-list fed back. Gated on a real key + verifyModel so
+                // offline/selftest runs skip it. A short/garbled checklist or any error never blocks.
                 else if (verifyModel && provider && typeof provider.hasKey === "function" && provider.hasKey() && typeof tools._gameCanvasDataURL === "function") {
                   const dataUrl = tools._gameCanvasDataURL(gameFile);
-                  const crit = await visionCritiqueGame(provider, verifyModel, task, dataUrl, signal);
-                  if (crit && (crit.verdict === "FAIL" || crit.score < 35)) {
-                    problem = `the vision critic (${String(verifyModel).split("/").pop()}) scored it ${crit.score}/100 fidelity to your request — it doesn't yet look like the real game. MISSING: ${crit.missing || "recognizable characters, themed art, iconic elements"}.`;
+                  const crit = await visionChecklistGame(provider, verifyModel, task, dataUrl, signal);
+                  if (crit && crit.total >= 4 && crit.missing.length) {
+                    const punch = crit.missing.slice(0, 8).map((m) => "  ✗ " + m).join("\n");
+                    problem = `the vision QA checklist (${String(verifyModel).split("/").pop()}) found ${crit.present}/${crit.total} required things present — these are NOT visible in your render yet:\n${punch}\nAdd each so EVERY checklist item is present, then verify again.`;
+                    trace.push({ step, visionChecklist: { present: crit.present, total: crit.total, missing: crit.missing.slice(0, 8) } });
                   }
                 }
               }
