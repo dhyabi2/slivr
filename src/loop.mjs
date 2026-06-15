@@ -210,11 +210,18 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
             else {
               const ap = tools.autoplay({ path: gameFile, keys: ["ArrowRight", "ArrowUp", "Space"], holdMs: 400 });
               if (ap && ap.ok && ap.responds === false) problem = `${gameFile} is FROZEN — it does NOT respond to real keyboard/click input (only ${ap.maxChange}% screen change). The game isn't actually playable.`;
+              // not frozen → unless the user EXPLICITLY asked for a minimal/simple game, check the CANVAS
+              // ART isn't flat coloured "boxes" (advanced/complete is the default). Rate the canvas, not
+              // the page; a low threshold catches only egregious programmer-art (boxes), not modest art.
+              else if (typeof tools._gameArtRichness === "function" && !/\b(simple|minimal|basic|prototype|barebones|quick|rough)\b/i.test(String(task || ""))) {
+                const rich = tools._gameArtRichness(gameFile);
+                if (rich != null && rich < 18) problem = `the ART is flat PROGRAMMER ART (canvas richness ${rich}/100) — coloured boxes/blocks, not a real themed game. Build recognizable characters/enemies + textured art with the artkit (the user expects the ADVANCED game by default).`;
+              }
             }
           } catch { /* checks couldn't run (no Chrome) → don't block */ }
           if (problem) {
             noProgress = 0;
-            messages.push({ role: "user", content: `You called done, but the GAME isn't actually working: ${problem}\nFix the REAL input handlers + update/render loop (not just a stub contract), verify again with autoplay/see_page, THEN call done. Do not declare a non-playable game done.` });
+            messages.push({ role: "user", content: `You called done, but the GAME isn't finished to the bar: ${problem}\nFix it for real (recognizable characters not boxes, real input + render loop, and it must actually play), verify again with see_page/autoplay/art_review, THEN call done. The DEFAULT is an advanced, complete game — do not declare a boxes/basic prototype done.` });
             trace.push({ step, gameGate: clip(problem, 80) });
             continue;
           }
