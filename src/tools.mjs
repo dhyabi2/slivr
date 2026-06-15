@@ -23,6 +23,8 @@ import { playGame } from "./gameharness.mjs";
 import { renderAsset } from "./asset.mjs";
 import * as bp from "./blueprint.mjs";
 import { compareImages, cropImage, compareRegions, styleProfile, styleAdherence, hexColor } from "./match.mjs";
+import { orbitScene } from "./scene3d.mjs";
+import * as world from "./world.mjs";
 
 // Re-indent a replacement block to a target base indent (strip its own common indent, prepend target).
 function reindentBlock(block, indent) {
@@ -695,6 +697,52 @@ export class Tools {
       if (r.dataUrl) out.multimodal = { kind: "image", path: "style", mime: "image/png", dataUrl: r.dataUrl };
       return out;
     } finally { if (tmpShot) { try { fs.unlinkSync(tmpShot); } catch { /* */ } } }
+  }
+
+  // orbit_scene (Block 21 — the 3D eye): drive a WebGL/Three.js scene's CAMERA to many angles and SEE each
+  // view as a contact sheet, so you build REAL 3D (camera rig + landscape + 360°) instead of a flat
+  // single-view billboard. The scene must expose window.slivrView={setCamera({yaw,pitch,dist,target}),
+  // render()} and create its renderer with preserveDrawingBuffer:true. Returns whether the view actually
+  // RESPONDS to the camera (true 3D) vs ignores it (a flat billboard), plus the contact-sheet image.
+  orbit_scene({ path: rel, angles, pitch, dist, target, budget } = {}) {
+    if (!rel) return { ok: false, error: "NO_PATH", hint: "pass path: the html scene to orbit" };
+    let abs; try { abs = this._resolve(rel); } catch (e) { return { ok: false, error: e.message }; }
+    if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
+    const r = orbitScene(abs, { angles, pitch, dist, target, budget });
+    if (!r.ok) return { ok: false, error: r.error, hint: r.hint || "couldn't orbit — is Chrome installed? the scene must expose window.slivrView and use preserveDrawingBuffer:true" };
+    const verdict = r.responds ? "the view CHANGES as the camera orbits — real 3D" : "the view does NOT change as the camera orbits — it's a flat billboard / the camera isn't wired. Build a real camera rig + depth.";
+    const out = { ok: true, views: r.views, responds: r.responds, adjDiff: r.adjDiff, note: `Orbited ${r.views} camera angles. ${verdict} Look at the contact sheet: check for parallax, occlusion, and that the landscape has depth.` };
+    if (r.dataUrl) out.multimodal = { kind: "image", path: "orbit", mime: "image/png", dataUrl: r.dataUrl };
+    return out;
+  }
+
+  // world_map (Block 21, Challenge 2 — discover the OUTER world): the reference is the ORIGIN tile; infer
+  // the neighbouring regions (what's north / over the hill / inside) from the picture + game idea and record
+  // them as a traversable grid map, building each as a style-consistent tile (verify with style_check).
+  // action: "seed" {name, description}; "add" {name, description, fromId, direction|x,y}; "tile" {id, file,
+  // styleScore}; "show" (default) renders the compass map + coverage.
+  world_map({ action = "show", name, description, fromId, direction, x, y, id, file, styleScore } = {}) {
+    let model = world.loadWorld(this.workdir);
+    if (action === "seed") {
+      model = world.seedWorld(name || "origin (the reference)", description || "");
+      world.saveWorld(this.workdir, model);
+      return { ok: true, seeded: "r0", map: world.renderWorld(model), note: "Origin tile set from the reference. Now infer neighbouring regions from the picture + game idea and world_map add them (n/s/e/w…), then build each as a style-consistent tile." };
+    }
+    if (!model) return { ok: false, error: "NO_WORLD", hint: 'call world_map {action:"seed", name, description} first (the reference is the origin)' };
+    if (action === "add") {
+      const r = world.addRegion(model, { name, description, x, y, fromId, direction });
+      if (!r.ok) return { ok: false, error: r.error, hint: r.hint };
+      world.saveWorld(this.workdir, model);
+      return { ok: true, added: r.id, at: [r.x, r.y], coverage: world.worldCoverage(model), map: world.renderWorld(model) };
+    }
+    if (action === "tile") {
+      if (!id) return { ok: false, error: "NO_ID", hint: "pass id: the region to attach a built tile to" };
+      const r = world.setTile(model, id, file, styleScore);
+      if (!r.ok) return { ok: false, error: r.error };
+      world.saveWorld(this.workdir, model);
+      return { ok: true, coverage: world.worldCoverage(model), map: world.renderWorld(model) };
+    }
+    return { ok: true, coverage: world.worldCoverage(model), map: world.renderWorld(model) };
   }
 
   // view_pdf: PRIMARY path sends the PDF to the model via OpenRouter's file-parser plugin (so the

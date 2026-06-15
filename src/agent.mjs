@@ -55,6 +55,8 @@ wastes the turn). The JSON object looks like:
   {"tool":"compare_regions","args":{"target":"reference.png","render":"index.html","regions":[{"label":"tower","x":0.5,"y":0.2,"w":0.25,"h":0.3},{"label":"park","x":0.1,"y":0.6,"w":0.3,"h":0.2}]}}
   {"tool":"style_profile","args":{"target":"reference.png"}}
   {"tool":"style_check","args":{"render":"enemy-preview.html"}}
+  {"tool":"orbit_scene","args":{"path":"index.html","angles":[{"yaw":0},{"yaw":90},{"yaw":180},{"yaw":270}]}}
+  {"tool":"world_map","args":{"action":"add","name":"Northern Mountains","fromId":"r0","direction":"n","description":"snow peaks implied by the haze past the top edge"}}
   {"tool":"plan","args":{"steps":["step 1","step 2","step 3"]}}
   {"tool":"replan","args":{"reason":"step 2 failed because X","steps":["revised remaining step","next step"]}}
   {"tool":"task_write","args":{"tasks":[{"id":"1","subject":"do X","status":"in_progress"},{"subject":"then Y","status":"pending"}]}}
@@ -249,6 +251,33 @@ MATCH A REFERENCE PICTURE (when the user gives a target image to recreate — a 
   are complete: the pictured parts are faithful AND the invented world is present and style-coherent. The
   picture anchors the look; the game idea defines how much bigger the world must be — build that whole world.
 
+BUILDING REAL 3D (camera + landscape + 360°, not a flat billboard): most agents ship "3D" games that are
+  actually one fixed view with no camera, no terrain, no depth. Don't. Build a REAL 3D scene (Three.js via
+  CDN, or raw WebGL) with: a proper CAMERA RIG (orbit / follow / first-person), a LANDSCAPE/terrain (e.g. a
+  displaced plane / heightmap, not a flat quad), and objects at varying DEPTHS so there's parallax and
+  occlusion. Two requirements so you can SEE it:
+  - Create the WebGL renderer with preserveDrawingBuffer:true (so the frame can be captured).
+  - Expose a deterministic camera contract: window.slivrView = { setCamera({yaw,pitch,dist,target}), render() }
+    — setCamera positions the camera (yaw/pitch in degrees, dist = distance to target), render() draws ONE
+    frame. Your animation loop should just call render() each tick.
+  Then VERIFY with orbit_scene {path}: it drives the camera around several angles, returns a CONTACT SHEET
+  you LOOK at, and reports whether the view actually changes as the camera orbits ("responds"). If
+  responds is false, your camera isn't wired or the scene is flat — fix it (real 3D geometry + a camera that
+  moves) and orbit again. Check the sheet for parallax (near things shift more than far), occlusion (things
+  pass behind each other), and a landscape with real depth — not a single billboard that always faces you.
+
+DISCOVER THE OUTER WORLD (turn one picture into a whole map): a reference shows ONE place; the game world
+  continues past every edge. Use your multimodal eye + reasoning to DISCOVER what's out there and build it:
+  - view_image the reference and read the "edge-exits" (what continues past each border: "forest extends
+    north", "road leaves east") and "implied features" ("haze over the ridge implies mountains beyond",
+    "a door implies an interior"). This is the inference no other agent does — actively imagine the world
+    the picture is a window into.
+  - world_map {action:"seed", name, description} to make the reference the ORIGIN tile, then world_map
+    {action:"add", name, fromId, direction:"n|s|e|w|…", description} for each neighbouring region you infer,
+    growing a traversable grid map. Build each region as a tile in the SAME style (style_check it), then
+    world_map {action:"tile", id, file, styleScore}. Keep world_map {action:"show"} as your spatial oversight
+    so the world is coherent and connected — a real explorable landscape grown from one seed picture.
+
 DRAFT-FIRST (important for HARD tasks): do NOT spend all your turns planning or reasoning. Commit a
   SIMPLE, COMPLETE, runnable solution EARLY — even a naive/brute-force one — then improve it. Always
   have working code written before you run out of steps; a correct-but-slow solution beats none.
@@ -297,6 +326,8 @@ export function makeAgent(workdir, opts = {}) {
     compare_regions: (a) => tools.compare_regions(a),
     style_profile: (a) => tools.style_profile(a),
     style_check: (a) => tools.style_check(a),
+    orbit_scene: (a) => tools.orbit_scene(a),
+    world_map: (a) => tools.world_map(a),
     delegate: (a) => delegateSubAgent(a, workdir, opts),
     parallel: (a) => parallelSubAgents(a, workdir, opts),
     pipeline: (a) => pipelineSubAgents(a, workdir, opts),
@@ -326,7 +357,7 @@ const SUBAGENT_BRIEF =
 // READ/INFORMATIONAL tools (not edits/commits), de-noised and length-capped.
 const FINDING_TOOLS = new Set([
   "read_file", "list_dir", "grep", "glob", "repo_map", "project_info", "house_style", "find_symbol", "find_refs", "run_command", "web_search",
-  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "compare_image", "compare_regions", "crop_image", "style_profile", "style_check", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
+  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "compare_image", "compare_regions", "crop_image", "style_profile", "style_check", "orbit_scene", "world_map", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
 ]);
 export function extractFindings(sub, maxTotal = 2000) {
   const out = [];
@@ -601,6 +632,8 @@ export class Session {
       compare_regions: (a) => t.compare_regions(a),
       style_profile: (a) => t.style_profile(a),
       style_check: (a) => t.style_check(a),
+      orbit_scene: (a) => t.orbit_scene(a),
+      world_map: (a) => t.world_map(a),
       delegate: (a) => delegateSubAgent(a, this.workdir, this.opts),
       parallel: (a) => parallelSubAgents(a, this.workdir, this.opts),
       pipeline: (a) => pipelineSubAgents(a, this.workdir, this.opts),

@@ -1537,6 +1537,56 @@ console.log("== 40. style_profile + style_check — extrapolate beyond the frame
   }
 }
 
+console.log("== 41. orbit_scene + world_map — real 3D camera + outer-world discovery (Block 21) ==");
+{
+  const { findBrowser } = await import("./src/eye.mjs");
+
+  // world_map: spatial discovery + oversight (no browser needed)
+  {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "world-"));
+    const t = new Tools(d);
+    ok("world_map: errors before seeding", t.world_map({ action: "add", name: "x" }).error === "NO_WORLD");
+    const seed = t.world_map({ action: "seed", name: "Town (reference)", description: "the starting town" });
+    ok("world_map: seeds the origin from the reference", seed.ok && fs.existsSync(path.join(d, ".slivr", "world-map.json")));
+    const n = t.world_map({ action: "add", name: "North Mountains", fromId: "r0", direction: "n", description: "snow peaks" });
+    ok("world_map: adds a neighbouring region by direction", n.ok && n.coverage.regions === 2 && n.at[0] === 0 && n.at[1] === -1);
+    ok("world_map: rejects an occupied cell", t.world_map({ action: "add", name: "dup", fromId: "r0", direction: "n" }).error === "CELL_OCCUPIED");
+    const tile = t.world_map({ action: "tile", id: n.added, file: "north.html", styleScore: 92 });
+    ok("world_map: attaches a style-checked tile and renders a compass map", tile.ok && tile.coverage.tiled === 1 && /World map/.test(tile.map) && /North Mountains/.test(tile.map));
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+
+  if (findBrowser()) {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "orbit-"));
+    const t = new Tools(d);
+    // a real WebGL scene whose triangle ROTATES with camera yaw (the view responds to the camera)
+    const glScene = (responsive) => `<!doctype html><html><body style="margin:0"><canvas id="c" width="200" height="160"></canvas><script>
+var gl=document.getElementById('c').getContext('webgl',{preserveDrawingBuffer:true});
+var vs=gl.createShader(gl.VERTEX_SHADER);gl.shaderSource(vs,'attribute vec2 p;uniform float a;void main(){float s=sin(a),co=cos(a);gl_Position=vec4(p.x*co-p.y*s,p.x*s+p.y*co,0.0,1.0);}');gl.compileShader(vs);
+var fsh=gl.createShader(gl.FRAGMENT_SHADER);gl.shaderSource(fsh,'precision mediump float;void main(){gl_FragColor=vec4(0.9,0.3,0.2,1.0);}');gl.compileShader(fsh);
+var pr=gl.createProgram();gl.attachShader(pr,vs);gl.attachShader(pr,fsh);gl.linkProgram(pr);gl.useProgram(pr);
+var b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0.7,-0.7,-0.5,0.7,-0.5]),gl.STATIC_DRAW);
+var loc=gl.getAttribLocation(pr,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+var aLoc=gl.getUniformLocation(pr,'a');
+window.slivrView={setCamera:function(s){this._a=${responsive ? "(s.yaw||0)*Math.PI/180" : "0"};},render:function(){gl.clearColor(0.1,0.5,0.7,1);gl.clear(gl.COLOR_BUFFER_BIT);gl.uniform1f(aLoc,this._a||0);gl.drawArrays(gl.TRIANGLES,0,3);}};
+</script></body></html>`;
+    fs.writeFileSync(path.join(d, "scene.html"), glScene(true));
+    fs.writeFileSync(path.join(d, "flat.html"), glScene(false));
+    fs.writeFileSync(path.join(d, "nocontract.html"), "<!doctype html><html><body><canvas width=100 height=100></canvas></body></html>");
+
+    ok("orbit_scene: requires a path that exists", t.orbit_scene({}).error === "NO_PATH" && t.orbit_scene({ path: "nope.html" }).error === "FILE_NOT_FOUND");
+    const r3 = t.orbit_scene({ path: "scene.html", angles: [{ yaw: 0 }, { yaw: 90 }, { yaw: 180 }, { yaw: 270 }], budget: 4000 });
+    ok("orbit_scene: captures multiple camera angles as a contact sheet (WebGL is seen)", r3.ok && r3.views === 4 && !!r3.multimodal);
+    ok("orbit_scene: detects a scene that RESPONDS to the camera (real 3D)", r3.ok && r3.responds === true);
+    const rf = t.orbit_scene({ path: "flat.html", angles: [{ yaw: 0 }, { yaw: 120 }, { yaw: 240 }], budget: 4000 });
+    ok("orbit_scene: flags a flat billboard that ignores the camera", rf.ok && rf.responds === false);
+    ok("orbit_scene: reports a scene missing the view contract", t.orbit_scene({ path: "nocontract.html", budget: 4000 }).error === "NO_VIEW_CONTRACT");
+    fs.rmSync(d, { recursive: true, force: true });
+  } else {
+    ok("orbit_scene: (no browser installed — live 3D skipped)", true);
+  }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

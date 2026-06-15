@@ -58,6 +58,8 @@ export function describeStep({ tool, args = {} }) {
     case "crop_image": return `crop_image ${args.src ?? "?"} → ${args.out ?? "?"}`;
     case "style_profile": return `style_profile ${args.target ?? "?"}`;
     case "style_check": return `style_check ${args.render || args.candidate || "?"}`;
+    case "orbit_scene": return `orbit_scene ${args.path ?? "?"}${Array.isArray(args.angles) ? ` (${args.angles.length} angles)` : ""}`;
+    case "world_map": return `world_map ${args.action ?? "show"}${args.name ? " " + args.name : ""}`;
     case "play_game": return `play_game ${args.path ?? "?"}${args.steps ? ` (${args.steps} steps)` : ""}`;
     case "run_command": return `run \`${clip(String(args.command ?? ""), 80)}\``;
     case "edit_file": return `edit ${args.path ?? "?"}`;

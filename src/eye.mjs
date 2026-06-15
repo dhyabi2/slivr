@@ -40,11 +40,28 @@ export const dumpDomArgs = (url) => [...COMMON, "--dump-dom", url];
 export const screenshotArgs = (url, outPng, { width = 1000, height = 750 } = {}) =>
   [...COMMON, "--hide-scrollbars", `--screenshot=${outPng}`, `--window-size=${width},${height}`, url];
 
+// WebGL capture variant: WebGL output is BLANK in headless screenshots with --disable-gpu, but renders
+// correctly with the SwiftShader ANGLE backend (GPU NOT disabled) when the page captures the canvas itself
+// via canvas.toDataURL() (preserveDrawingBuffer:true) and we read that dataURL back through --dump-dom.
+// Bigger maxBuffer because a 3D scene may dump several captured frames as data URLs.
+const GL_COMMON = ["--headless=new", "--use-angle=swiftshader", "--no-sandbox", "--no-first-run"];
+export const dumpDomGLArgs = (url, budget = 9000) => [...GL_COMMON, `--virtual-time-budget=${budget}`, "--dump-dom", url];
+
 // TIER 1 (cheap): the post-JS rendered DOM as text. { ok:true, dom } | { ok:false, error }.
 export function renderDom(htmlAbs) {
   const browser = findBrowser();
   if (!browser) return { ok: false, error: "no headless browser found — install Google Chrome, or set CHROME_PATH" };
   const r = spawnSync(browser, dumpDomArgs("file://" + htmlAbs), { timeout: 30000, encoding: "utf8", maxBuffer: 16 << 20 });
+  if (r.error || !r.stdout) return { ok: false, error: `render failed: ${r.error ? r.error.message : "no output"}` };
+  return { ok: true, dom: r.stdout };
+}
+
+// Like renderDom but with the WebGL-capable backend — use for pages that draw with WebGL/Three.js and
+// capture their own canvas via toDataURL. { ok:true, dom } | { ok:false, error }.
+export function renderDomGL(htmlAbs, budget = 9000) {
+  const browser = findBrowser();
+  if (!browser) return { ok: false, error: "no headless browser found — install Google Chrome, or set CHROME_PATH" };
+  const r = spawnSync(browser, dumpDomGLArgs("file://" + htmlAbs, budget), { timeout: budget + 30000, encoding: "utf8", maxBuffer: 64 << 20 });
   if (r.error || !r.stdout) return { ok: false, error: `render failed: ${r.error ? r.error.message : "no output"}` };
   return { ok: true, dom: r.stdout };
 }
