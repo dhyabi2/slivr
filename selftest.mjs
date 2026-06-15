@@ -2043,6 +2043,29 @@ console.log("== 57. done-gate — push back when done is called with incomplete 
   fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(d2, { recursive: true, force: true });
 }
 
+console.log("== 58. playability done-gate — a game must actually PLAY before done (Block 35) ==");
+{
+  const { findBrowser } = await import("./src/eye.mjs");
+  if (findBrowser()) {
+    const mkProv = (script) => { let i = 0; return { model: "m", chat: async () => ({ text: JSON.stringify(script[i++] || { tool: "done", args: {} }), usage: {}, raw: {} }), totals: () => ({ model: "m", calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) }; };
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "gg-")); const t = new Tools(d);
+    fs.writeFileSync(path.join(d, "index.html"), '<!doctype html><html><body><canvas id=c width=200 height=150></canvas><script>var x=document.getElementById("c").getContext("2d");function loop(){x.fillStyle="#234";x.fillRect(0,0,200,150);requestAnimationFrame(loop);}loop();</script></body></html>');
+    const r = await runLoop({ provider: mkProv([{ tool: "done", args: { summary: "playable" } }, { tool: "done", args: { summary: "done" } }]), tools: t, toolMap: {}, systemPrompt: "s", task: "make a game", maxSteps: 8 });
+    ok("playability gate: a FROZEN game is pushed back at done (autoplay caught it)", r.trace.some((x) => x.gameGate) && r.done && r.turns <= 3);
+    const d2 = fs.mkdtempSync(path.join(os.tmpdir(), "gg2-")); const t2 = new Tools(d2);
+    fs.writeFileSync(path.join(d2, "index.html"), '<!doctype html><html><body><canvas id=c width=240 height=160></canvas><script>var cv=document.getElementById("c"),x=cv.getContext("2d"),px=20,keys={};addEventListener("keydown",function(e){keys[e.key]=true;});function loop(){if(keys["ArrowRight"])px+=4;x.fillStyle="#123";x.fillRect(0,0,240,160);x.fillStyle="#fd0";x.fillRect(px,70,16,16);requestAnimationFrame(loop);}loop();</script></body></html>');
+    const r2 = await runLoop({ provider: mkProv([{ tool: "done", args: { summary: "done" } }]), tools: t2, toolMap: {}, systemPrompt: "s", task: "make a game", maxSteps: 8 });
+    ok("playability gate: a WORKING game passes (no false block)", !r2.trace.some((x) => x.gameGate) && r2.done && r2.turns === 1);
+    const d3 = fs.mkdtempSync(path.join(os.tmpdir(), "gg3-")); const t3 = new Tools(d3);
+    fs.writeFileSync(path.join(d3, "index.html"), "<html><body><h1>not a game</h1></body></html>");
+    const r3 = await runLoop({ provider: mkProv([{ tool: "done", args: { summary: "done" } }]), tools: t3, toolMap: {}, systemPrompt: "s", task: "make a page", maxSteps: 8 });
+    ok("playability gate: a non-game page is not gated", !r3.trace.some((x) => x.gameGate) && r3.done);
+    fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(d2, { recursive: true, force: true }); fs.rmSync(d3, { recursive: true, force: true });
+  } else {
+    ok("playability gate: (no browser — live skipped)", true);
+  }
+}
+
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");
 {
   const big = (n) => "x".repeat(n);

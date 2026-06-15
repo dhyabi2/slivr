@@ -7,9 +7,23 @@
 // or the step cap. agent.mjs and baseline.mjs supply DIFFERENT system prompts + tool maps —
 // that is the only difference between our harness and the Claude-Code-style baseline.
 
+import fs from "node:fs";
+import path from "node:path";
 import { buildMultimodalContent } from "./multimodal.mjs";
 import { applyControl, controlToMessage } from "./bridge.mjs";
 import { compressContext } from "./compress.mjs";
+
+// Detect a built WEB GAME in the workdir (a canvas + an animation loop / control contract), so the
+// done-gate can verify it actually PLAYS before accepting done. Returns the html path or null.
+function detectGameFile(workdir) {
+  for (const name of ["index.html", "game.html"]) {
+    try {
+      const html = fs.readFileSync(path.join(workdir, name), "utf8");
+      if (/<canvas/i.test(html) && /(requestAnimationFrame|slivrSim|getContext\s*\()/i.test(html)) return name;
+    } catch { /* not there */ }
+  }
+  return null;
+}
 
 // Find the balanced {...} block starting at index `s`, or -1. (string/escape aware)
 function balancedEnd(body, s) {
@@ -106,6 +120,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
   const failWindow = []; const FAIL_WIN = 14, FAIL_HINT = 3, FAIL_STOP = 7; const failHinted = new Set();
   let denials = 0; const DENIAL_STOP = 6;   // bail out of a denial storm (every edit refused → no progress)
   let doneTaskNudged = false;   // push back ONCE when done is called with incomplete checklist tasks
+  let gameGateDone = false;     // push back ONCE when done is called on a game that doesn't actually play
   let replanNudged = false;   // Block 5: nudge to re-plan once per failure streak (when a plan exists)
 
   let aborted = false;
@@ -180,6 +195,30 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
         messages.push({ role: "user", content: `You called done, but ${openTasks.length} task${openTasks.length === 1 ? " is" : "s are"} still NOT completed on your checklist:\n${openTasks.slice(0, 8).map((t) => "  ☐ " + t.subject).join("\n")}\nDo NOT declare done with unfinished tasks. FINISH each one for real and VERIFY it (a game: see_page/play_levels/autoplay), then mark it completed with task_write — only THEN call done. If a listed task is genuinely already done, mark it completed first.` });
         trace.push({ step, doneTaskNudge: openTasks.length });
         continue;
+      }
+      // PLAYABILITY GATE (games): if a web game was built, don't accept done until it actually PLAYS — the
+      // page must not be broken AND it must respond to REAL input (autoplay). The agent can't pass by just
+      // claiming "playable". Push back ONCE; if Chrome can't run the checks, don't block. Games only.
+      if (!gameGateDone && tools && typeof tools.autoplay === "function" && tools.workdir) {
+        const gameFile = detectGameFile(tools.workdir);
+        if (gameFile) {
+          gameGateDone = true;
+          let problem = null;
+          try {
+            const sp = tools.see_page ? tools.see_page({ path: gameFile }) : null;
+            if (sp && sp.broken) problem = `${gameFile} is BROKEN: ${(sp.errors || []).slice(0, 3).join("; ")}`;
+            else {
+              const ap = tools.autoplay({ path: gameFile, keys: ["ArrowRight", "ArrowUp", "Space"], holdMs: 400 });
+              if (ap && ap.ok && ap.responds === false) problem = `${gameFile} is FROZEN — it does NOT respond to real keyboard/click input (only ${ap.maxChange}% screen change). The game isn't actually playable.`;
+            }
+          } catch { /* checks couldn't run (no Chrome) → don't block */ }
+          if (problem) {
+            noProgress = 0;
+            messages.push({ role: "user", content: `You called done, but the GAME isn't actually working: ${problem}\nFix the REAL input handlers + update/render loop (not just a stub contract), verify again with autoplay/see_page, THEN call done. Do not declare a non-playable game done.` });
+            trace.push({ step, gameGate: clip(problem, 80) });
+            continue;
+          }
+        }
       }
       summary = call.args?.summary || "";
       // VERIFY-AND-REPAIR gate: before accepting `done`, run the verification (if any). If it fails,
