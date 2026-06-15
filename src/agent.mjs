@@ -43,6 +43,7 @@ wastes the turn). The JSON object looks like:
   {"tool":"see_asset","args":{"svg":"<svg ...>...</svg>"}}
   {"tool":"play_game","args":{"path":"index.html","inputs":[{"at":0,"key":"ArrowRight","down":true}],"steps":120}}
   {"tool":"play_levels","args":{"path":"index.html","steps":80}}
+  {"tool":"autoplay","args":{"path":"index.html","keys":["ArrowRight","ArrowUp","Space"]}}
   {"tool":"delegate","args":{"task":"a focused, self-contained sub-task to run in a fresh sub-agent"}}
   {"tool":"parallel","args":{"tasks":["independent subtask A","independent subtask B"]}}
   {"tool":"pipeline","args":{"tasks":[{"id":"a","task":"do A","deps":[]},{"id":"b","task":"do B using A","deps":["a"]}]}}
@@ -199,6 +200,13 @@ MULTI-LEVEL GAMES (don't ship a single playground — build a real progression):
     and completable (if state exposes won/cleared) — plus a contact sheet of every level's initial frame.
     Fix any level flagged a CLONE or BROKEN, then play_levels again. Only call done when every level loads,
     is distinct, plays, and the progression (win → next) works. Make each level a blueprint leaf for coverage.
+  PLAY IT FOR REAL before done: play_game/play_levels drive the window.slivrSim CONTRACT — which you could
+    accidentally leave as a stub (e.g. input:()=>{}), so they can pass while the ACTUAL game is frozen, or
+    fail while the real game is fine. So ALSO run autoplay {path, keys:["ArrowRight","ArrowUp","Space"]}: it
+    dispatches REAL keyboard/click events into the running page and reports whether the SCREEN actually
+    changes (responds) plus a contact sheet you LOOK at. If autoplay says FROZEN (responds:false), the game
+    is dead as the user would experience it — fix the real input handlers + update loop. NEVER declare a
+    game done until autoplay shows it responds AND you've looked at the contact sheet and it plays right.
 
 ASSET STUDIO (look at the art you make, then make it better): most agents emit "programmer art" because
   they never SEE what they drew. You can. When you generate visual art — a sprite, an icon, a logo, a
@@ -358,6 +366,7 @@ export function makeAgent(workdir, opts = {}) {
     see_page: (a) => tools.see_page(a),
     play_game: (a) => tools.play_game(a),
     play_levels: (a) => tools.play_levels(a),
+    autoplay: (a) => tools.autoplay(a),
     see_asset: (a) => tools.see_asset(a),
     blueprint_plan: (a) => tools.blueprint_plan(a),
     blueprint_status: (a) => tools.blueprint_status(a),
@@ -401,7 +410,7 @@ const SUBAGENT_BRIEF =
 // READ/INFORMATIONAL tools (not edits/commits), de-noised and length-capped.
 const FINDING_TOOLS = new Set([
   "read_file", "list_dir", "grep", "glob", "repo_map", "project_info", "house_style", "find_symbol", "find_refs", "run_command", "web_search",
-  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "play_levels", "compare_image", "compare_regions", "crop_image", "style_profile", "style_check", "orbit_scene", "world_map", "resume", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
+  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "play_levels", "autoplay", "compare_image", "compare_regions", "crop_image", "style_profile", "style_check", "orbit_scene", "world_map", "resume", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
 ]);
 export function extractFindings(sub, maxTotal = 2000) {
   const out = [];
@@ -666,6 +675,7 @@ export class Session {
       see_page: (a) => t.see_page(a),
       play_game: (a) => t.play_game(a),
       play_levels: (a) => t.play_levels(a),
+      autoplay: (a) => t.autoplay(a),
       see_asset: (a) => t.see_asset(a),
       blueprint_plan: (a) => t.blueprint_plan(a),
       blueprint_status: (a) => t.blueprint_status(a),

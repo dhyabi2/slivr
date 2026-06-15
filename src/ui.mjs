@@ -63,6 +63,7 @@ export function describeStep({ tool, args = {} }) {
     case "world_map": return `world_map ${args.action ?? "show"}${args.name ? " " + args.name : ""}`;
     case "play_game": return `play_game ${args.path ?? "?"}${args.steps ? ` (${args.steps} steps)` : ""}`;
     case "play_levels": return `play_levels ${args.path ?? "?"}`;
+    case "autoplay": return `autoplay ${args.path ?? "?"}${Array.isArray(args.keys) ? " (real input)" : ""}`;
     case "run_command": return `run \`${clip(String(args.command ?? ""), 80)}\``;
     case "edit_file": return `edit ${args.path ?? "?"}`;
     case "edit_symbol": return `edit_symbol ${args.name ?? "?"}`;
@@ -122,6 +123,7 @@ export function summarizeResult({ tool, args = {}, result, diff, diffs } = {}, d
     case "world_map": return r.coverage ? `${r.coverage.regions} regions` : (r.map ? "map" : "ok");
     case "play_game": return r.played ? `played${Array.isArray(r.snapshots) ? ` ${r.snapshots.length} snaps` : ""}` : "no contract";
     case "play_levels": return r.count != null ? `${r.count} levels · ${r.uniqueLevels} distinct${r.clones?.length ? ` · ${r.clones.length} CLONES` : ""}` : "drove levels";
+    case "autoplay": return r.responds != null ? `${r.responds ? "responds" : "FROZEN"} (${r.maxChange}%)` : "autoplayed";
     case "blueprint_plan": return r.coverage ? `${r.coverage.totalLeaves} leaves` : "planned";
     case "blueprint_status": case "blueprint_audit": return r.coverage ? `${r.coverage.done}/${r.coverage.totalLeaves} done (${r.coverage.pct}%)` : "";
     case "resume": return r.hasState ? (r.coverage ? `resumed · ${r.coverage.done}/${r.coverage.totalLeaves} done` : "resumed") : "fresh project";

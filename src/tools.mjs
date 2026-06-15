@@ -19,7 +19,7 @@ import { buildSymbolIndex, findSymbol, findReferences, repoOverview, langOf, sym
 import { renderDom, renderShot, visibleText } from "./eye.mjs";
 import { detectCommands, describeCommands } from "./project.mjs";
 import { detectStyle, styleBrief } from "./style.mjs";
-import { playGame, playLevels } from "./gameharness.mjs";
+import { playGame, playLevels, autoPlay } from "./gameharness.mjs";
 import { renderAsset } from "./asset.mjs";
 import * as bp from "./blueprint.mjs";
 import { resumeSummary, appendJournal } from "./journal.mjs";
@@ -454,6 +454,27 @@ export class Tools {
     if (res.error) return { ok: true, played: false, note: `could not drive the game: ${res.error}. Expose window.slivrSim={reset,step,input,state} to make it playtestable.${r.screenshot ? " (final frame attached)" : ""}`, ...img };
     const snaps = res.snapshots || [];
     return { ok: true, played: true, snapshots: snaps, note: `played ${res.steps} steps · ${snaps.length} state snapshots:\n${JSON.stringify(snaps).slice(0, 2200)}`, ...img };
+  }
+
+  // autoplay (Block 28 — play the REAL game): dispatch REAL KeyboardEvent/MouseEvent into the running page
+  // and watch whether the SCREEN actually changes. Unlike play_game/play_levels (which drive the
+  // window.slivrSim contract — and the agent can stub that with a no-op input), this drives the game's OWN
+  // keydown/click handlers, so a frozen/dead game is caught even when the contract lies. Returns whether it
+  // RESPONDS to input, the per-input screen-change %, console errors, and a contact sheet you SEE.
+  autoplay({ path: rel, keys, clicks, holdMs } = {}) {
+    if (!rel) return { ok: false, error: "NO_PATH", hint: 'pass {"path":"index.html"} — drives real arrow/space/click input' };
+    let abs; try { abs = this._resolve(rel); } catch (e) { return { ok: false, error: e.message }; }
+    if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
+    const r = autoPlay(abs, { keys, clicks, holdMs });
+    if (!r.ok) return { ok: false, error: r.error, hint: "couldn't autoplay — is Chrome installed?" };
+    const errs = r.errors && r.errors.length ? ` Console errors: ${r.errors.slice(0, 4).join("; ")}.` : "";
+    const verdict = r.responds
+      ? `the screen RESPONDS to real input (max ${r.maxChange}% change) — it plays.`
+      : `the screen does NOT change when real keys/clicks are sent (${r.maxChange}% change) — the game is FROZEN/DEAD as the user would experience it. Fix the real input + update loop (not just the slivrSim contract).`;
+    const out = { ok: true, responds: r.responds, maxChange: r.maxChange, perStep: r.perStep, errors: r.errors,
+      note: `Autoplayed with REAL keyboard/mouse input: ${verdict}${errs} Look at the contact sheet — the player/screen should visibly change between frames.` };
+    if (r.dataUrl) out.multimodal = { kind: "image", path: "autoplay", mime: "image/png", dataUrl: r.dataUrl };
+    return out;
   }
 
   // play_levels (Block 23 — multi-level): drive EVERY level of a multi-level game and verify each one

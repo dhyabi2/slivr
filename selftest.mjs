@@ -1860,6 +1860,43 @@ console.log("== 48. web verification — catch a JS-broken / blank page before d
   fs.rmSync(d, { recursive: true, force: true });
 }
 
+console.log("== 49. autoplay — play the REAL game with real input (Block 28) ==");
+{
+  const { findBrowser } = await import("./src/eye.mjs");
+  const t = new Tools(tmp);
+  ok("autoplay: requires a path", t.autoplay({}).error === "NO_PATH");
+  if (findBrowser()) {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "autoplay-"));
+    fs.writeFileSync(path.join(d, "good.html"),
+      '<!doctype html><html><body style="margin:0"><canvas id=c width=320 height=200></canvas><script>' +
+      "var ctx=document.getElementById('c').getContext('2d'),x=20,y=100,keys={};" +
+      "addEventListener('keydown',function(e){keys[e.key]=true;});addEventListener('keyup',function(e){keys[e.key]=false;});" +
+      "function loop(){if(keys['ArrowRight'])x+=4;if(keys['ArrowUp'])y-=4;ctx.fillStyle='#123';ctx.fillRect(0,0,320,200);ctx.fillStyle='#fd0';ctx.fillRect(x,y,18,18);requestAnimationFrame(loop);}loop();" +
+      "</script></body></html>");
+    fs.writeFileSync(path.join(d, "dead.html"),
+      "<!doctype html><html><body style=\"margin:0\"><canvas id=c width=320 height=200></canvas><script>var x=document.getElementById('c').getContext('2d');x.fillStyle='#234';x.fillRect(0,0,320,200);x.fillStyle='#fa0';x.fillRect(150,90,20,20);</script></body></html>");
+    const tt = new Tools(d);
+    const good = tt.autoplay({ path: "good.html", keys: ["ArrowRight", "ArrowUp"], holdMs: 400 });
+    ok("autoplay: a game that RESPONDS to real keys → responds:true + a contact sheet", good.ok && good.responds === true && good.maxChange > 3 && !!good.multimodal);
+    const dead = tt.autoplay({ path: "dead.html", keys: ["ArrowRight", "ArrowUp", "Space"], holdMs: 400 });
+    ok("autoplay: a FROZEN/dead game (no input handling) → responds:false (caught via REAL input)", dead.ok && dead.responds === false && dead.maxChange < 2);
+    ok("autoplay: responds strictly higher for the live game than the dead one", good.maxChange > dead.maxChange);
+    fs.rmSync(d, { recursive: true, force: true });
+  } else {
+    ok("autoplay: (no browser installed — live skipped)", true);
+  }
+}
+
+console.log("== 50. denial-storm stops cleanly (non-interactive fix, Block 28) ==");
+{
+  const t = new Tools(tmp);
+  let i = 0;
+  const prov = { chat: async () => { i++; return { text: JSON.stringify({ tool: "create_file", args: { path: "f" + i + ".txt", content: "x" } }), usage: {}, raw: {} }; }, totals: () => ({ model: "s", calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const denyAll = async () => ({ deny: true, reason: "approval required" });
+  const r = await runLoop({ provider: prov, tools: t, toolMap: { create_file: (a) => t.create_file(a) }, systemPrompt: "s", task: "x", maxSteps: 40, beforeTool: denyAll });
+  ok("denial storm: stops cleanly instead of looping to the budget", !r.done && /DENIED|can't make progress/.test(r.stopped || "") && r.turns < 12);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

@@ -15,7 +15,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { renderDom, renderShot } from "./eye.mjs";
+import { renderDom, renderDomGL, renderShot } from "./eye.mjs";
 
 function read(p) { try { return fs.readFileSync(p, "utf8"); } catch { return ""; } }
 function decodeEntities(s) {
@@ -147,5 +147,99 @@ export function playLevels(htmlAbs, plan = {}) {
       if (shot.ok) dataUrl = "data:image/png;base64," + fs.readFileSync(png).toString("base64");
     } catch { /* */ } finally { try { fs.unlinkSync(png); } catch { /* */ } try { fs.unlinkSync(sheet); } catch { /* */ } }
     return { ok: true, count: res.count, declared: res.declared, uniqueLevels: uniqueSigs, clones, levels, dataUrl };
+  } finally { try { fs.unlinkSync(tmp); } catch { /* */ } }
+}
+
+// --- Autoplay (Block 28): PLAY THE REAL GAME — dispatch real KeyboardEvent/MouseEvent into the running
+// page and watch whether the SCREEN actually changes. Unlike the Simulacrum contract (which the agent can
+// stub: input:()=>console.log(...)), this drives the game's OWN keydown/click handlers, so a frozen/dead
+// game is caught even when the contract lies. Captures frames over virtual time and frame-diffs them.
+
+const KEYCODES = { ArrowRight: 39, ArrowLeft: 37, ArrowUp: 38, ArrowDown: 40, Space: 32, Enter: 13, KeyW: 87, KeyA: 65, KeyS: 83, KeyD: 68, KeyZ: 90, KeyX: 88, " ": 32 };
+
+// Build the autoplay driver: a scripted timeline of REAL input events with frame captures between them.
+function buildAutoplayDriver(plan = {}) {
+  const keys = plan.keys && plan.keys.length ? plan.keys : ["ArrowRight", "Space", "ArrowUp", "ArrowLeft"];
+  const clicks = plan.clicks || [];
+  const holdMs = plan.holdMs ?? 500, settleMs = plan.settleMs ?? 80;
+  return `<script>(function(){
+  var KC=${JSON.stringify(KEYCODES)};
+  function out(o){var el=document.getElementById('__slivr_play');if(!el){el=document.createElement('pre');el.id='__slivr_play';el.style.display='none';document.body.appendChild(el);}el.textContent=JSON.stringify(o);}
+  var cv=document.querySelector('canvas');
+  function frame(){try{return cv?cv.toDataURL('image/png'):null;}catch(e){return null;}}
+  function small(){try{if(!cv)return null;var t=document.createElement('canvas');t.width=48;t.height=48;var x=t.getContext('2d');x.drawImage(cv,0,0,48,48);return x.getImageData(0,0,48,48).data;}catch(e){return null;}}
+  // grid-MAX diff: a small sprite barely moves the whole-frame average, but it changes ONE cell a lot.
+  // Split 48x48 into an 8x8 grid and return the MAX per-cell mean diff (0–100) — sensitive to motion.
+  function meanDiff(a,b){if(!a||!b)return 0;var G=8,cell=6,sums=[],cnts=[],i;for(i=0;i<G*G;i++){sums[i]=0;cnts[i]=0;}
+    for(var y=0;y<48;y++)for(var x=0;x<48;x++){var p=(y*48+x)*4;var d=(Math.abs(a[p]-b[p])+Math.abs(a[p+1]-b[p+1])+Math.abs(a[p+2]-b[p+2]))/3;var ci=Math.floor(y/cell)*G+Math.floor(x/cell);sums[ci]+=d;cnts[ci]++;}
+    var mx=0;for(i=0;i<G*G;i++){var m=cnts[i]?sums[i]/cnts[i]:0;if(m>mx)mx=m;}return mx;}
+  function fireKey(type,k){var code=KC[k]||0;var ev;try{ev=new KeyboardEvent(type,{key:k,code:k,keyCode:code,which:code,bubbles:true,cancelable:true});}catch(e){ev=document.createEvent('Event');ev.initEvent(type,true,true);ev.key=k;ev.keyCode=code;ev.which=code;}
+    window.dispatchEvent(ev);document.dispatchEvent(ev);if(document.body)document.body.dispatchEvent(ev);}
+  function fireClick(x,y){['mousedown','mouseup','click'].forEach(function(tp){var ev;try{ev=new MouseEvent(tp,{clientX:x,clientY:y,bubbles:true,cancelable:true});}catch(e){ev=document.createEvent('Event');ev.initEvent(tp,true,true);}(cv||document).dispatchEvent(ev);});}
+  var KEYS=${JSON.stringify(keys)},CLICKS=${JSON.stringify(clicks)},HOLD=${holdMs},SETTLE=${settleMs};
+  var frames=[],smalls=[],labels=[],errs=[];
+  window.addEventListener('error',function(e){try{errs.push((e.message||'error')+(e.lineno?(':'+e.lineno):''));}catch(_){}}, true);
+  function snap(label){frames.push(frame());smalls.push(small());labels.push(label);}
+  function run(){try{
+    snap('start');
+    var steps=[];
+    KEYS.forEach(function(k){steps.push({a:'down',k:k});steps.push({a:'wait'});steps.push({a:'snap',l:'hold '+k});steps.push({a:'up',k:k});});
+    CLICKS.forEach(function(c){steps.push({a:'click',x:c.x,y:c.y});steps.push({a:'wait'});steps.push({a:'snap',l:'click'});});
+    var i=0;
+    function next(){
+      if(i>=steps.length){finish();return;}
+      var s=steps[i++];
+      if(s.a==='down')fireKey('keydown',s.k);
+      else if(s.a==='up')fireKey('keyup',s.k);
+      else if(s.a==='click')fireClick(s.x,s.y);
+      else if(s.a==='snap')snap(s.l);
+      setTimeout(next, s.a==='wait'?HOLD:SETTLE);
+    }
+    next();
+  }catch(e){out({error:String(e&&e.message||e)});}}
+  function finish(){
+    // movement = max frame-diff vs the start frame (did the screen respond to ANY input?)
+    var base=smalls[0],maxd=0,perStep=[];
+    for(var i=1;i<smalls.length;i++){var d=Math.round(meanDiff(base,smalls[i])/255*100);maxd=Math.max(maxd,d);perStep.push({label:labels[i],change:d});}
+    out({ok:true,responds:maxd>=2,maxChange:maxd,perStep:perStep,frames:frames,errors:errs});
+  }
+  if(document.readyState==='complete')setTimeout(run,300);else window.addEventListener('load',function(){setTimeout(run,300);});
+})();</script>`;
+}
+
+// Drive a game with REAL input events and report whether it responds. Returns { ok, responds, maxChange,
+// perStep, errors, dataUrl(contact sheet) } | { ok:false, error }.
+export function autoPlay(htmlAbs, plan = {}) {
+  const gameHtml = read(htmlAbs);
+  if (!gameHtml) return { ok: false, error: "FILE_NOT_FOUND_OR_EMPTY" };
+  const dir = path.dirname(htmlAbs);
+  const tmp = path.join(dir, `.slivr-autoplay-${process.pid}-${Date.now()}.html`);
+  try {
+    const driver = buildAutoplayDriver(plan);
+    // requestAnimationFrame does NOT tick under headless --dump-dom (no compositor), so a game's RAF loop
+    // would never advance and every frame would look identical (false "frozen"). Shim RAF→setTimeout FIRST
+    // (before the game script) so the loop advances deterministically under --virtual-time-budget.
+    const RAF_SHIM = `<script>window.requestAnimationFrame=function(cb){return setTimeout(function(){cb(Date.now());},16);};window.cancelAnimationFrame=function(id){clearTimeout(id);};</script>`;
+    let withShim = /<head[^>]*>/i.test(gameHtml) ? gameHtml.replace(/<head[^>]*>/i, (h) => h + RAF_SHIM) : RAF_SHIM + gameHtml;
+    const merged = /<\/body>/i.test(withShim) ? withShim.replace(/<\/body>/i, driver + "</body>") : withShim + driver;
+    fs.writeFileSync(tmp, merged);
+    const dom = renderDomGL(tmp, plan.budget || 9000);
+    if (!dom.ok) return { ok: false, error: dom.error };
+    const m = dom.dom.match(/<pre id="__slivr_play"[^>]*>([\s\S]*?)<\/pre>/);
+    let res = null;
+    if (m) { try { res = JSON.parse(decodeEntities(m[1])); } catch { /* */ } }
+    if (!res) return { ok: false, error: "AUTOPLAY_PARSE_FAILED" };
+    if (res.error) return { ok: false, error: res.error };
+    // contact sheet: start + each held-input frame, so the agent SEES it play
+    let dataUrl = null;
+    const png = path.join(os.tmpdir(), `slivr-autoplay-${process.pid}-${Date.now()}.png`);
+    const sheet = path.join(os.tmpdir(), `slivr-autoplay-${process.pid}-${Date.now()}.html`);
+    try {
+      const cells = (res.frames || []).slice(0, 8).map((f, i) => `<div style="text-align:center">${f ? `<img src="${f}" style="width:200px;border:1px solid #333;background:#000">` : "no frame"}<div style="color:#bbb;font:11px monospace">${i === 0 ? "start" : "step " + i}</div></div>`).join("");
+      fs.writeFileSync(sheet, `<!doctype html><body style="margin:0;background:#0b0b0b;display:flex;flex-wrap:wrap;gap:8px;padding:8px">${cells}</body>`);
+      const shot = renderShot(sheet, png, { width: 1100, height: 600 });
+      if (shot.ok) dataUrl = "data:image/png;base64," + fs.readFileSync(png).toString("base64");
+    } catch { /* */ } finally { try { fs.unlinkSync(png); } catch { /* */ } try { fs.unlinkSync(sheet); } catch { /* */ } }
+    return { ok: true, responds: res.responds, maxChange: res.maxChange, perStep: res.perStep, errors: res.errors || [], dataUrl };
   } finally { try { fs.unlinkSync(tmp); } catch { /* */ } }
 }

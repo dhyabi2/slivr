@@ -227,13 +227,17 @@ async function runOneShot(task, dir, config, palette, { auto, plan, verify, repa
       const g = planGate({ tool, tools: session.tools });
       if (g.deny) { process.stderr.write(p.yellow(`  ∅ ${tool} blocked — ${g.reason}\n`)); return g; }
     }
+    // NON-INTERACTIVE run: there's no human to approve, so DENYING every edit just strands the agent
+    // (it burns turns producing nothing). Instead auto-approve WITHIN THE SANDBOX — workdir-scoped edits,
+    // with destructive shell commands still hard-blocked above. Warn once; --auto silences this.
     if (approval !== "auto" && needsApproval(tool, approval) && !process.stdin.isTTY) {
-      process.stderr.write(p.yellow(`  ∅ skipped ${tool} (needs approval; re-run with --auto to allow)\n`));
-      return { deny: true, reason: "approval required but session is non-interactive; user must pass --auto" };
+      if (!warnedNonInteractive) { process.stderr.write(p.yellow("  ⚠ non-interactive run in '" + approval + "' mode — auto-approving sandbox edits (destructive shell still blocked). Pass --auto to make this explicit.\n")); warnedNonInteractive = true; }
+      return { deny: false };
     }
     return { deny: false };
   };
 
+  let warnedNonInteractive = false;
   let lastTasksRender = "";
   const createdThisTurn = [];
   const w = (s) => process.stderr.write(s);

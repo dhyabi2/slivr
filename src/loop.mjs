@@ -98,6 +98,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
   // the SAME error across a recent window — even with DIFFERENT args or successes interleaved (which the
   // consecutive-identical spin check above misses, e.g. blueprint_mark on 5.2 then 6.1 both STUB_EVIDENCE).
   const failWindow = []; const FAIL_WIN = 14, FAIL_HINT = 3, FAIL_STOP = 7; const failHinted = new Set();
+  let denials = 0; const DENIAL_STOP = 6;   // bail out of a denial storm (every edit refused → no progress)
   let replanNudged = false;   // Block 5: nudge to re-plan once per failure streak (when a plan exists)
 
   let aborted = false;
@@ -204,6 +205,11 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
         const result = { ok: false, denied: true, reason: gate.reason || "denied by user/policy" };
         trace.push({ step, tool: call.tool, denied: true });
         if (onStep) onStep({ step, tool: call.tool, args: call.args, result, denied: true });
+        // A DENIAL STORM (every edit refused — e.g. approval can't be granted) strands the agent: it can
+        // make NO progress, so stop cleanly instead of burning turns. (Denials bypass the post-tool
+        // sentinels, so count them here.)
+        denials++;
+        if (denials >= DENIAL_STOP) { stopped = `stopped: ${denials} tool calls were DENIED — the agent can't make progress (approval can't be granted here). Re-run with --auto, or interactively to approve.`; trace.push({ step, denialStop: denials }); break; }
         messages.push({ role: "user", content: `RESULT (${call.tool}): DENIED — ${result.reason}. Do not retry this exact action; choose a different approach or call done.` });
         continue;
       }
