@@ -11,6 +11,8 @@ import { fileURLToPath } from "node:url";
 import { applyEdit } from "./src/seal.mjs";
 import { Tools } from "./src/tools.mjs";
 import { runLoop } from "./src/loop.mjs";
+import { findStub } from "./src/blueprint.mjs";
+import { appendJournal, readJournal, resumeSummary } from "./src/journal.mjs";
 import { resolveConfig, DEFAULTS, parseMaxSteps } from "./src/config.mjs";
 import { isDestructive, needsApproval } from "./src/safety.mjs";
 import { unifiedDiff, diffStat, diffLines } from "./src/diff.mjs";
@@ -1723,6 +1725,62 @@ console.log("== 44. live progress UX — reasoning, semantic summaries, in-place
   tlive.onToolStart({ tool: "run_command", args: { command: "ls" }, reasoning: "" });
   tlive.onStep({ tool: "run_command", args: { command: "ls" }, result: { ok: true }, elapsedMs: 10 });
   ok("live (TTY): prints a running line, then overwrites it in place on commit", /●/.test(tlines.join("")) && /\x1b\[1A\x1b\[2K/.test(tlines.join("")));
+}
+
+console.log("== 45. continuity + anti-stuck — resume between sessions, escape failing loops (Block 25) ==");
+{
+  // findStub LOCATES the offending marker (actionable, not just true/false)
+  const f = findStub("ok line\n  // TODO finish menu\nmore");
+  ok("findStub: returns file line + marker + snippet", f && f.line === 2 && f.marker === "TODO" && /TODO/.test(f.snippet));
+  ok("findStub: clean content → null; empty → empty finding", findStub("return 1;") === null && findStub("  \n ").marker === "empty");
+
+  // blueprint_mark STUB_EVIDENCE is now ACTIONABLE (file:line + snippet) — not a generic dead-end
+  {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "stuck-"));
+    const t = new Tools(d);
+    t.blueprint_plan({ goal: "g", tree: [{ title: "A" }, { title: "B" }] });
+    fs.writeFileSync(path.join(d, "index.html"), "<div>real</div>\n<!-- TODO: the menu -->\n");
+    const r = t.blueprint_mark({ id: "1", status: "done", evidence: "index.html" });
+    ok("blueprint_mark: STUB_EVIDENCE now points to the exact file:line + marker", r.error === "STUB_EVIDENCE" && /index\.html:2/.test(r.at) && r.marker === "TODO" && /file:line/.test(r.hint) === false && /:2 /.test(r.hint));
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+
+  // FAILURE-FINGERPRINT sentinel: the SAME tool failing the SAME way with DIFFERENT args + interleaved
+  // successes (the exact bug from the logs) is caught and STOPPED — the old consecutive-spin check missed it.
+  {
+    const t = new Tools(tmp);
+    fs.writeFileSync(path.join(tmp, "real.txt"), "done\n");
+    let i = 0;
+    // alternate failing mark(5.2)/mark(6.1) with an occasional successful read — never identical in a row.
+    const flaky = {
+      chat: async () => {
+        i++;
+        if (i % 3 === 0) return { text: JSON.stringify({ tool: "read_file", args: { path: "real.txt" } }), usage: {}, raw: {} };
+        const id = i % 2 ? "5.2" : "6.1";
+        return { text: JSON.stringify({ tool: "mark", args: { id } }), usage: {}, raw: {} };
+      },
+      totals: () => ({ model: "s", calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }),
+    };
+    const toolMap = { read_file: (a) => t.read_file(a), mark: () => ({ ok: false, error: "STUB_EVIDENCE", hint: "fix index.html:42" }) };
+    const r = await runLoop({ provider: flaky, tools: t, toolMap, systemPrompt: "s", task: "x", maxSteps: 40 });
+    ok("anti-stuck: a tool failing the SAME way with DIFFERENT args + successes between is caught + stopped", !r.done && /kept failing with STUB_EVIDENCE/.test(r.stopped || ""));
+    ok("anti-stuck: stops well before the step cap (didn't loop forever)", r.turns < 30);
+    ok("anti-stuck: a strong hint was issued before stopping", r.trace.some((x) => x.failHint));
+  }
+
+  // CONTINUITY: journal append/read + a "where you left off" resume briefing
+  {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "resume-"));
+    const t = new Tools(d);
+    ok("resume: a fresh project reports no prior state", t.resume().hasState === false);
+    t.blueprint_plan({ goal: "build a game", tree: [{ title: "Player", children: [{ title: "sprite" }, { title: "sound" }] }] });
+    appendJournal(d, { task: "start the player", summary: "added the sprite", files: ["player.js"], next: "do the jump sound" }, "2026-06-15 12:00");
+    ok("journal: append then read the latest handoff", readJournal(d, 1)[0].lines.some((l) => /added the sprite/.test(l)));
+    const rs = resumeSummary(d, { git: { changed: 2, last: "wip", files: ["a", "b"] } });
+    ok("resumeSummary: assembles last-session + blueprint coverage + next + git", rs.hasState && /Last session/.test(rs.text) && /Blueprint: 0\/2/.test(rs.text) && /next:/.test(rs.text) && /2 uncommitted/.test(rs.text));
+    ok("resume tool: surfaces the briefing for the agent", t.resume().hasState === true && /Blueprint/.test(t.resume().summary));
+    fs.rmSync(d, { recursive: true, force: true });
+  }
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

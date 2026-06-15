@@ -19,6 +19,7 @@ import { spawn } from "node:child_process";
 import { listJobs } from "./jobs.mjs";
 import { runHintLine, detectRunHint, findArtifact, osOpen, launchVerb, isDemonstrateRequest } from "./run_hint.mjs";
 import { detectCommands } from "./project.mjs";
+import { resumeSummary, appendJournal } from "./journal.mjs";
 
 // Persist an API key to ~/.slivr.json (merging into any existing config). Returns true on success.
 function saveKeyToConfig(key) {
@@ -81,6 +82,12 @@ export async function startRepl({ workdir, config, palette } = {}) {
     for (const e of errors) process.stdout.write(p.yellow(`mcp · ${e.server} failed to connect — see /mcp for details\n`));
   }
   process.stdout.write(banner({ model: session.provider.model, approval, cwd: workdir }, p) + "\n\n");
+  // Session continuity (Block 25): if prior work exists here, show "where you left off" so a NEW window
+  // immediately has context instead of starting blind.
+  try {
+    const r = resumeSummary(workdir);
+    if (r.hasState) process.stdout.write(p.bold("↩ resuming") + "\n" + r.text.split("\n").map((l) => p.dim("  " + l)).join("\n") + "\n\n");
+  } catch { /* never block startup on orientation */ }
 
   // the active mode is shown in the prompt; Shift-Tab / Tab (at the prompt) cycles it.
   const modeKey = () => session.tools.planMode ? "plan" : approval;   // edits | auto | all | plan
@@ -343,6 +350,11 @@ export async function startRepl({ workdir, config, palette } = {}) {
         continue;
       }
       currentAbort = null;
+
+      // Session continuity (Block 25): record a journal handoff so the NEXT session can resume.
+      if (res && !res.aborted && !res.error) {
+        try { appendJournal(workdir, { task: taskToRun, summary: res.summary || res.stopped || "(no summary)", files: createdThisTurn, next: res.stopped ? "resolve: " + res.stopped : "" }); } catch { /* */ }
+      }
 
       // Surface the turn's outcome clearly: interrupted / hard error / stopped (step-limit or stuck)
       // / normal summary — so a turn never ends as just a bare footer with no explanation.

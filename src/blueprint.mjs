@@ -26,6 +26,20 @@ export function looksStub(text) {
   return STUB_RE.test(t) || STUB_THROW_RE.test(t);
 }
 
+// LOCATE the stub so the failure is ACTIONABLE: returns { line, col, snippet, marker } of the first
+// stub marker, or null. Empty content → a synthetic "(empty file)" finding. This is what turns a
+// repeated "STUB_EVIDENCE" dead-end into "fix index.html:42 — remove the TODO" the agent can act on.
+export function findStub(text) {
+  const t = String(text == null ? "" : text);
+  if (!t.trim()) return { line: 1, col: 1, snippet: "(empty / whitespace-only file)", marker: "empty" };
+  const lines = t.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(STUB_RE) || lines[i].match(STUB_THROW_RE);
+    if (m) return { line: i + 1, col: (m.index || 0) + 1, snippet: lines[i].trim().slice(0, 120), marker: (m[1] || m[0] || "stub").trim() };
+  }
+  return null;
+}
+
 // Flatten a nested tree the agent supplies — [{title, kind?, leafType?, decision?, children?[]}] — into a
 // keyed model with stable path ids ("1", "1.2", "1.2.3"). A node with children is a "group"; a childless
 // node is a "leaf". Existing status/evidence are preserved when merging by id (see mergeNodes).

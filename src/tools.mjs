@@ -22,6 +22,7 @@ import { detectStyle, styleBrief } from "./style.mjs";
 import { playGame, playLevels } from "./gameharness.mjs";
 import { renderAsset } from "./asset.mjs";
 import * as bp from "./blueprint.mjs";
+import { resumeSummary, appendJournal } from "./journal.mjs";
 import { compareImages, cropImage, compareRegions, styleProfile, styleAdherence, hexColor } from "./match.mjs";
 import { orbitScene } from "./scene3d.mjs";
 import * as world from "./world.mjs";
@@ -510,10 +511,15 @@ export class Tools {
     if (status === "done" && node.kind === "leaf") {
       const ev = evidence || node.evidence;
       if (!ev) return { ok: false, error: "NO_EVIDENCE", hint: "to mark a leaf done, pass evidence: the real file/artifact that satisfies it (zero-abstraction — no stubs)" };
-      // read the evidence file (if it's a path in the workdir) and reject stubs/placeholders.
+      // read the evidence file (if it's a path in the workdir) and reject stubs/placeholders — but tell
+      // the agent EXACTLY where the stub is so it fixes the real content instead of re-marking blindly.
       let txt = null;
       try { txt = fs.readFileSync(this._resolve(ev), "utf8"); } catch { txt = null; }
-      if (txt !== null && bp.looksStub(txt)) return { ok: false, error: "STUB_EVIDENCE", hint: `${ev} still contains a stub/placeholder (TODO/placeholder/not-implemented/empty). Finish it for real, then mark done.` };
+      if (txt !== null) {
+        const f = bp.findStub(txt);
+        if (f) return { ok: false, error: "STUB_EVIDENCE", at: `${ev}:${f.line}`, marker: f.marker, snippet: f.snippet,
+          hint: `${ev}:${f.line} still contains a stub/placeholder ("${f.marker}"): ${f.snippet}\nEDIT that line to finish the real content (remove the ${f.marker}), THEN mark done. Do NOT re-call blueprint_mark until the file no longer contains it. (Many leaves can share ${ev} — ONE stray marker blocks them all, so fixing this line unblocks the rest.)` };
+      }
     }
     if (status) node.status = status;
     if (evidence != null) node.evidence = String(evidence);
@@ -564,6 +570,15 @@ export class Tools {
       try { return fs.readFileSync(this._resolve(rel), "utf8"); } catch { return null; }
     });
     return { ok: true, goal: model.goal, coverage: bp.coverage(model), structural: findings, tree: bp.renderTree(model), note: "Now do the SEMANTIC check: re-read the goal above and list anything implied but NOT present as a leaf (inner parts, small assets, edge states). Add them with blueprint_add so coverage is 100%." };
+  }
+
+  // resume (Block 25 — session continuity): orient yourself when picking up work in an existing project.
+  // Reconstructs "where you left off" from the persisted blueprint + world map + git state + the last
+  // session journal handoff, so you continue instead of re-reading everything and guessing.
+  resume() {
+    const r = resumeSummary(this.workdir);
+    if (!r.hasState) return { ok: true, hasState: false, note: "Fresh project — no prior slivr session, blueprint, or git changes found. Start from the task." };
+    return { ok: true, hasState: true, summary: r.text, coverage: r.data.coverage, next: r.data.next, note: `Resuming. ${r.text}\n\nContinue from the NEXT items above (don't redo done work). If a blueprint exists, blueprint_status for detail.` };
   }
 
   // compare_image (Block 18 — Match a reference picture): diff your built result against a TARGET image and

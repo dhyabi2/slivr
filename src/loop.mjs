@@ -94,6 +94,10 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
   // recovery hint, then a clean stop. (NO_PROGRESS_CAP above only covers non-JSON / unknown-tool calls.)
   let lastFp = null, repeatCount = 0, finalNudged = false;
   const SPIN_HINT = 3, SPIN_STOP = 5;
+  // FAILURE-FINGERPRINT sentinel (Block 25): catches a stuck loop where the SAME tool keeps FAILING with
+  // the SAME error across a recent window — even with DIFFERENT args or successes interleaved (which the
+  // consecutive-identical spin check above misses, e.g. blueprint_mark on 5.2 then 6.1 both STUB_EVIDENCE).
+  const failWindow = []; const FAIL_WIN = 14, FAIL_HINT = 3, FAIL_STOP = 7; const failHinted = new Set();
   let replanNudged = false;   // Block 5: nudge to re-plan once per failure streak (when a plan exists)
 
   let aborted = false;
@@ -259,6 +263,28 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     } else if (repeatCount === SPIN_HINT) {
       messages.push({ role: "user", content: `You have called ${call.tool} with identical arguments ${repeatCount}× in a row with no new result — you appear to be stuck. Try a DIFFERENT approach, or call done.` });
       trace.push({ step, spinHint: call.tool, count: repeatCount });
+    }
+
+    // FAILURE-FINGERPRINT sentinel: the same tool repeatedly FAILING with the same error code (normalized,
+    // ignoring args) ⇒ retrying won't help; the root cause is unfixed. Strong actionable hint, then a stop.
+    if (result && result.ok === false) {
+      const ferr = `${call.tool}|${(result.error || "FAIL")}`;
+      failWindow.push(ferr); if (failWindow.length > FAIL_WIN) failWindow.shift();
+      const n = failWindow.filter((x) => x === ferr).length;
+      if (n >= FAIL_STOP) {
+        stopped = `stopped: ${call.tool} kept failing with ${result.error || "an error"} (${n}× in the last ${failWindow.length} steps) — the underlying problem was never fixed`;
+        trace.push({ step, failStop: ferr, count: n });
+        break;
+      } else if (n === FAIL_HINT && !failHinted.has(ferr)) {
+        failHinted.add(ferr);
+        const detail = result.hint ? `\n${clip(result.hint, 500)}` : "";
+        messages.push({ role: "user", content: `STUCK PATTERN: ${call.tool} has failed with "${result.error || "the same error"}" ${n} times recently. Retrying it will NOT help — FIX THE ROOT CAUSE first.${detail}\nDo that exact fix, THEN continue. If you genuinely can't, mark the item "blocked" and move on — do not keep retrying.` });
+        trace.push({ step, failHint: ferr, count: n });
+      }
+    } else if (result && result.ok) {
+      // a success clears that fingerprint's hint latch so a LATER recurrence can warn again.
+      const okfp = `${call.tool}|`;
+      for (const k of [...failHinted]) if (k.startsWith(okfp)) failHinted.delete(k);
     }
   }
 
