@@ -114,6 +114,20 @@ export class Tools {
     return { ok: true, tasks: this.tasks.map(t => ({ ...t })) };
   }
 
+  // Visual richness of a game's CANVAS (not the surrounding page) — captures the canvas via toDataURL
+  // (works for 2D + WebGL), then rates it. Used by the done-gate to catch flat "boxes" art. null = couldn't.
+  _gameArtRichness(rel) {
+    try {
+      const abs = this._resolve(rel);
+      const cap = path.join(os.tmpdir(), `slivr-gameart-${process.pid}-${Date.now()}.png`);
+      const shot = screenshotWebGL(abs, cap);
+      if (!shot.ok) { try { fs.unlinkSync(cap); } catch { /* */ } return null; }
+      const a = artReview(cap);
+      try { fs.unlinkSync(cap); } catch { /* */ }
+      return a.ok ? a.richness : null;
+    } catch { return null; }
+  }
+
   _resolve(rel) {
     if (typeof rel !== "string" || !rel) throw new Error("a 'path' string argument is required (you passed none)");
     const abs = path.resolve(this.workdir, rel);
