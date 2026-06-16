@@ -2668,6 +2668,28 @@ console.log("== 74. check_behavior — opt-in behavioral proof: run the agent's 
   for (const x of [d, d2]) fs.rmSync(x, { recursive: true, force: true });
 }
 
+console.log("== 75. normalizeCall — accept tool calls in ANY shape (flattened / arguments / name) (Block 57) ==");
+{
+  const { normalizeCall } = await import("./src/loop.mjs");
+  const argOf = (o) => { const n = normalizeCall(o); return n && n.args; };
+  ok("normalizeCall: standard {tool,args} unchanged", (() => { const n = normalizeCall({ tool: "create_file", args: { path: "x" } }); return n.tool === "create_file" && n.args.path === "x"; })());
+  ok("normalizeCall: FLATTENED args (the real bug — path at top level)", (() => { const n = normalizeCall({ tool: "create_file", path: "server.js", content: "c" }); return n.tool === "create_file" && n.args.path === "server.js" && n.args.content === "c"; })());
+  ok("normalizeCall: OpenAI-style 'arguments' key", argOf({ tool: "create_file", arguments: { path: "x" } }).path === "x");
+  ok("normalizeCall: 'name' as the tool key", normalizeCall({ name: "create_file", arguments: { path: "x" } }).tool === "create_file");
+  ok("normalizeCall: args as a JSON STRING is parsed", argOf({ tool: "create_file", args: '{"path":"x"}' }).path === "x");
+  ok("normalizeCall: blueprint_plan / task_write flattened (goal / tasks at top level)", argOf({ tool: "blueprint_plan", goal: "g", tree: [] }).goal === "g" && Array.isArray(argOf({ tool: "task_write", tasks: [{ subject: "t" }] }).tasks));
+  ok("normalizeCall: 'functions.' prefix stripped + OpenAI tool_calls array", normalizeCall({ tool: "functions.create_file", arguments: { path: "x" } }).tool === "create_file" && normalizeCall({ tool_calls: [{ function: { name: "create_file", arguments: '{"path":"x"}' } }] }).args.path === "x");
+  ok("normalizeCall: a non-tool object stays non-tool (no false positive)", !normalizeCall({ foo: 1 }) || !normalizeCall({ foo: 1 }).tool);
+
+  // end-to-end via runLoop: a model that FLATTENS its create_file args now succeeds (was NO_PATH before).
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "nc-")); const t = new Tools(d);
+  let i = 0;
+  const flatProv = { model: "m", chat: async () => ({ text: JSON.stringify(i++ === 0 ? { tool: "create_file", path: "hello.txt", content: "hi there" } : { tool: "done", summary: "done" }), usage: {}, raw: {} }), totals: () => ({ model: "m", calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const r = await runLoop({ provider: flatProv, tools: t, toolMap: { create_file: (a) => t.create_file(a) }, systemPrompt: "s", task: "x", maxSteps: 6 });
+  ok("normalizeCall: a flattened-args create_file actually writes the file (no NO_PATH loop)", r.done === true && fs.existsSync(path.join(d, "hello.txt")) && fs.readFileSync(path.join(d, "hello.txt"), "utf8") === "hi there");
+  fs.rmSync(d, { recursive: true, force: true });
+}
+
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");
 {
   const big = (n) => "x".repeat(n);

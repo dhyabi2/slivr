@@ -84,6 +84,32 @@ function balancedEnd(body, s) {
 // scans EVERY balanced {...} and returns the first one that parses AND has a `tool` key (so think+act
 // in one message works); it falls back to the first valid object (so a missing-tool object is still
 // surfaced for the existing correction path).
+// Weak/older/varied models emit tool calls in DIFFERENT shapes. The tool name may be under `tool`, `name`,
+// or `function`; the arguments under `args`, `arguments` (OpenAI-style), `parameters`, `input`, as a JSON
+// STRING, or FLATTENED to the top level. The model thinks it "provided the path in the JSON" — it did, just
+// not under `args`. We coalesce all of these so the tool always receives its arguments.
+const TOOL_KEYS = ["tool", "name", "tool_name", "toolName", "function", "action"];
+const ARG_KEYS = ["args", "arguments", "parameters", "params", "input", "args_json", "argument"];
+const CALL_META = new Set([...TOOL_KEYS, ...ARG_KEYS, "type", "id", "reasoning", "thought", "thinking"]);
+function callToolName(obj) { for (const k of TOOL_KEYS) { if (typeof obj[k] === "string" && obj[k].trim()) return obj[k]; } return null; }
+export function normalizeCall(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  // OpenAI tool_calls array shape: {tool_calls:[{function:{name,arguments}}]} or [{name,arguments}]
+  if (Array.isArray(obj.tool_calls) && obj.tool_calls.length) { const c = obj.tool_calls[0]; obj = c.function ? { tool: c.function.name, args: c.function.arguments } : c; }
+  let tool = callToolName(obj);
+  if (!tool) return obj.tool ? obj : null;
+  tool = String(tool).replace(/^functions[.:]\s*/i, "").trim();   // some models prefix "functions.create_file"
+  let args;
+  for (const k of ARG_KEYS) { if (obj[k] != null) { args = obj[k]; break; } }
+  if (typeof args === "string") { try { args = JSON.parse(args); } catch { /* leave as a string arg below */ } }
+  if (args == null || typeof args !== "object" || Array.isArray(args)) {
+    // FLATTENED: the arguments are the non-meta top-level keys (e.g. {tool:"create_file", path:"x", content:"y"})
+    const rest = {}; for (const k of Object.keys(obj)) if (!CALL_META.has(k)) rest[k] = obj[k];
+    args = Object.keys(rest).length ? rest : (args && typeof args === "object" ? args : {});
+  }
+  return { tool, args };
+}
+
 function extractJSON(text) {
   const body = String(text || "");
   let firstObj = null;
@@ -94,7 +120,7 @@ function extractJSON(text) {
     let obj;
     try { obj = JSON.parse(body.slice(s, end + 1)); } catch { continue; }
     if (obj && typeof obj === "object") {
-      if (obj.tool) return obj;            // a real tool call — prefer it over any earlier stray object
+      if (callToolName(obj) || Array.isArray(obj.tool_calls)) return normalizeCall(obj);   // a tool call in ANY shape
       if (!firstObj) firstObj = obj;       // remember the first valid object as a fallback
     }
   }
