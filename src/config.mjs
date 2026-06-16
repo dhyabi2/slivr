@@ -23,6 +23,10 @@ export const DEFAULTS = {
   // Vision JUDGE model: critiques a built game's render against the request in the done-gate (Block 37).
   // Must be multimodal. "none"/"" disables. Default: a strong, cheap vision model.
   verifyModel: "google/gemini-3.5-flash",
+  // /finish (runUntilDone, Block 46): how many continuation rounds the supervisor may drive before stopping
+  // with a report, and an optional USD cost ceiling (0 = no cost cap, rely on the round cap).
+  untilDoneMaxRounds: 12,
+  untilDoneCostCap: 0,
   // No artificial step cap by default — the agent runs until the task is DONE (or a real safety stop:
   // repeated-identical-call spin detection, no-progress, abort, or a provider error). Set a finite
   // --max-steps / maxSteps only if you WANT a hard cap.

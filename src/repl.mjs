@@ -51,6 +51,7 @@ const HELP = `commands:
   /plan [on|off]   toggle plan-mode (agent must plan + get approval before editing)
   /skills          list available skills (.slivr/skills/*.md, ~/.slivr/skills/*.md)
   /run <name> [..] run a skill as a task (also: /<name> [..] if not a built-in command)
+  /finish [note]   keep going until ALL tasks are done & verified (auto-continue, budgeted)
   /mcp             list connected MCP servers + tools (and any that failed to connect)
   /jobs            list background jobs started with \`slivr bg\`
   /clear           clear the screen
@@ -316,11 +317,12 @@ export async function startRepl({ workdir, config, palette } = {}) {
 
       const command = parseCommand(input);
       let taskToRun = input;
+      let untilDone = false;
       if (command) {
         const stop = await handleCommand(command, { session, p, rl, workdir, prompting, get approval() { return approval; }, set approval(v) { approval = v; } });
         if (stop === "exit") { exited = true; break; }
         // A skill command (/run <name> or /<name>) resolves to a task string to run as a turn.
-        if (stop && typeof stop === "object" && stop.runTask) { taskToRun = stop.runTask; }
+        if (stop && typeof stop === "object" && stop.runTask) { taskToRun = stop.runTask; untilDone = !!stop.runUntilDone; }
         else { safePrompt(); continue; }
       }
 
@@ -354,7 +356,23 @@ export async function startRepl({ workdir, config, palette } = {}) {
       currentAbort = new AbortController();
       let res;
       try {
-        res = await session.runTurn(taskToRun, { onStep, onToolStart, onThinking, beforeTool, signal: currentAbort.signal });
+        if (untilDone) {
+          // /finish — the supervisor keeps continuing the SAME thread until done/verified, or a stop.
+          const maxRounds = config.untilDoneMaxRounds || 12;
+          const costCap = config.untilDoneCostCap > 0 ? config.untilDoneCostCap : Infinity;
+          process.stdout.write(p.dim(`▶ finishing — up to ${maxRounds} rounds${costCap !== Infinity ? `, $${costCap} cap` : ""} (Ctrl-C to stop)\n`));
+          const rep = await session.runUntilDone(taskToRun, {
+            maxRounds, costCap,
+            turnOpts: { onStep, onToolStart, onThinking, beforeTool, signal: currentAbort.signal },
+            onRound: ({ round, open, cost }) => process.stdout.write(p.dim(`  ↻ round ${round} · ${open} task(s) left · $${(cost || 0).toFixed(4)}\n`)),
+          });
+          res = rep.last || {};
+          process.stdout.write(rep.outcome === "success"
+            ? p.green(`✓ finished — all tasks done & verified in ${rep.rounds} round(s) · $${(rep.cost || 0).toFixed(4)}\n`)
+            : p.yellow(`∅ stopped after ${rep.rounds} round(s) — ${rep.outcome}${rep.detail ? `: ${rep.detail}` : ""}.${rep.openTasks.length ? ` ${rep.openTasks.length} left: ${rep.openTasks.slice(0, 5).join("; ")}` : ""}\n`));
+        } else {
+          res = await session.runTurn(taskToRun, { onStep, onToolStart, onThinking, beforeTool, signal: currentAbort.signal });
+        }
       } catch (e) {
         process.stdout.write(p.red(`error: ${e.message}\n`));
         currentAbort = null;
@@ -550,6 +568,11 @@ async function handleCommand(command, ctx) {
       process.stdout.write(p.dim(`running skill: ${name}\n`));
       return { runTask: r.prompt };
     }
+    case "finish": {
+      // /finish [extra instruction] — drive the session to GENUINE completion (runUntilDone): keep
+      // continuing until every checklist task is done AND verified, or a budget/no-progress stop.
+      return { runUntilDone: true, runTask: command.arg || "Finish the task completely: complete every remaining checklist item, verify each one for real, and only then call done." };
+    }
     case "model": {
       if (!command.arg) { process.stdout.write(p.dim(`model: ${session.provider.model}\n`)); return; }
       const id = command.arg.trim();
@@ -601,7 +624,7 @@ async function handleCommand(command, ctx) {
   }
 }
 
-const BUILTIN_COMMANDS = ["help", "key", "model", "cost", "plan", "skills", "run", "mcp", "jobs", "clear", "reset", "exit", "quit"];
+const BUILTIN_COMMANDS = ["help", "key", "model", "cost", "plan", "skills", "run", "mcp", "jobs", "finish", "clear", "reset", "exit", "quit"];
 
 // Cheap edit-distance "did you mean" for command typos. Returns the closest name within distance 2.
 function nearestCommand(input, names) {

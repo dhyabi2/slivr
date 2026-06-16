@@ -439,6 +439,9 @@ sessions), neutral-to-slightly-worse on trivial edits.*
 
 ## Layout
 - core: `src/provider.mjs` `src/tools.mjs` `src/loop.mjs` `src/agent.mjs` (`Session`) `src/baseline.mjs` `src/seal.mjs` (vendored)
+- persistence: `src/supervisor.mjs` (`runUntilDone` + `Session.runUntilDone`) — an outer loop that keeps
+  continuing the SAME thread with a targeted nudge each round until every checklist task is done AND
+  verified, or a budget / no-forward-progress stop; the `/finish` REPL command drives it
 - daily-use layer: `src/config.mjs` (layered config) · `src/repl.mjs` (interactive session) ·
   `src/diff.mjs` (unified-diff renderer) · `src/safety.mjs` (blocklist + approval) · `src/ui.mjs` (colors/footer)
 - MCP client: `src/mcp.mjs` (stdio JSON-RPC client + tool catalog) · `test/stub-mcp.mjs` (local test server)
