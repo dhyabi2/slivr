@@ -698,7 +698,7 @@ export class Tools {
     // CATCH BROKEN PAGES (Block 27): static JS syntax check + runtime console-error capture. A SyntaxError
     // leaves the DOM intact (so it "looks fine") but nothing runs → blank page. Surface these FIRST.
     const jsErrors = [];
-    try { const jc = checkPageJs(abs, (s) => this._resolve(path.join(path.dirname(rel), s))); for (const e of jc.errors) jsErrors.push(`${e.where}: ${e.message}`); } catch { /* */ }
+    try { const jc = checkPageJs(abs, (s) => this._resolve(path.join(path.dirname(rel), s))); for (const e of jc.errors) jsErrors.push(`${e.where}${e.line ? ` (around ${rel} line ${e.line})` : ""}: ${e.message}${e.frame ? `\n${e.frame}` : ""}`); } catch { /* */ }
     let consoleErrors = [], canvasBlank = null;
     // WebGL/Three.js pages must be checked on the GPU path (else WebGL fails to init in headless and
     // reports a BOGUS context error while hiding the REAL runtime error, e.g. an undefined-var TypeError).
