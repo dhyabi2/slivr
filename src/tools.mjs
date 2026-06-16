@@ -709,12 +709,14 @@ export class Tools {
     const allErrors = [...jsErrors.map((e) => "JS SYNTAX — " + e), ...consoleErrors.map((e) => "CONSOLE — " + e)];
 
     const d = renderDom(abs);
-    if (!d.ok) return { ok: false, error: d.error, hint: "couldn't render the page — install Chrome, or reason about the code directly" };
-    const text = visibleText(d.dom);
+    const text = d.ok ? visibleText(d.dom) : "";
+    // SURFACE SYNTAX ERRORS even when the browser render fails / no Chrome — node --check needs no browser,
+    // so a JS SyntaxError is reported regardless (this is what makes the check useful headless / in fast mode).
     if (allErrors.length) {
       return { ok: true, path: rel, errors: allErrors, broken: true, rendered: text.slice(0, 2000),
         note: `THIS PAGE IS BROKEN — ${allErrors.length} error(s) found; the script never ran (that's why it looks blank):\n- ${allErrors.slice(0, 8).join("\n- ")}\nFIX these (open the file:line and correct the syntax), then see_page again. Do NOT declare done while errors remain.` };
     }
+    if (!d.ok) return { ok: false, error: d.error, hint: "couldn't render the page — install Chrome, or reason about the code directly" };
     // A canvas/WebGL game with NO error but a blank canvas is still broken (drew nothing / wrong camera).
     if (canvasBlank === true) {
       return { ok: true, path: rel, broken: true, blank: true, rendered: text.slice(0, 500),

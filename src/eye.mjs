@@ -20,7 +20,10 @@ const CANDIDATES = [
 ].filter(Boolean);
 
 // First usable browser binary (absolute path or PATH name), or null.
+// PROOV_NO_BROWSER forces "no browser" — used by `npm run selftest:fast` to skip the (slow) headless-Chrome
+// tests, and as an escape hatch on machines/CI without Chrome.
 export function findBrowser() {
+  if (process.env.PROOV_NO_BROWSER) return null;
   for (const c of CANDIDATES) {
     if (c.includes("/") || c.includes("\\")) {
       try { if (fs.existsSync(c)) return c; } catch { /* keep looking */ }
