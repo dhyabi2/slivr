@@ -25,9 +25,22 @@ const NODE = process.execPath || "node";
 //   /tmp/x.js:532\n  } else {\n    ^^^^\nSyntaxError: Unexpected token 'else'
 function parseNodeError(stderr) {
   const s = String(stderr || "");
+  const lines = s.split("\n");
   const mLine = s.match(/:(\d+)\n/);
   const mMsg = s.match(/((?:Syntax|Reference|Type)Error:[^\n]*)/);
-  return { line: mLine ? Number(mLine[1]) : null, message: (mMsg ? mMsg[1] : s.split("\n").find((l) => /Error:/.test(l)) || "syntax error").trim() };
+  // CODE FRAME: node --check prints the offending source line + a caret under it, between the "file:line"
+  // header and the "SyntaxError:" line. That frame is exactly what a model needs to LOCATE + fix the bug,
+  // so capture it (trimmed) instead of discarding it.
+  let frame = null;
+  const hdr = lines.findIndex((l) => /:\d+\s*$/.test(l));
+  if (hdr >= 0) {
+    const fr = [];
+    for (let i = hdr + 1; i < lines.length && !/(?:Syntax|Reference|Type)Error:/.test(lines[i]) && !/^\s*at\s/.test(lines[i]); i++) {
+      if (lines[i].length) fr.push(lines[i].replace(/\s+$/, ""));
+    }
+    if (fr.length) frame = fr.join("\n").slice(0, 240);
+  }
+  return { line: mLine ? Number(mLine[1]) : null, frame, message: (mMsg ? mMsg[1] : lines.find((l) => /Error:/.test(l)) || "syntax error").trim() };
 }
 
 // Syntax-check one JS string. isModule → check as an ES module (allows import/export). { ok } | { ok:false, line, message }.
@@ -54,7 +67,12 @@ export function extractScripts(html) {
     const src = (attrs.match(/\bsrc\s*=\s*["']([^"']+)["']/i) || [])[1];
     const isModule = /\btype\s*=\s*["']module["']/i.test(attrs);
     if (src) { if (!/^https?:|^\/\//i.test(src)) srcs.push({ src, isModule }); }
-    else if (body.trim()) inline.push({ code: body, isModule: isModule || /^\s*(import|export)\b/m.test(body) });
+    else if (body.trim()) {
+      // file line where the script BODY starts, so a script-relative error line maps back to the HTML file.
+      const bodyStart = m.index + (m[0].length - body.length - "</script>".length);
+      const startLine = html.slice(0, bodyStart).split("\n").length;
+      inline.push({ code: body, isModule: isModule || /^\s*(import|export)\b/m.test(body), startLine });
+    }
   }
   return { inline, srcs };
 }
@@ -64,13 +82,19 @@ export function checkPageJs(htmlAbs, resolveLocal) {
   let html = ""; try { html = fs.readFileSync(htmlAbs, "utf8"); } catch { return { ok: true, errors: [] }; }
   const { inline, srcs } = extractScripts(html);
   const errors = [];
-  inline.forEach((s, i) => { const r = nodeCheckCode(s.code, s.isModule); if (!r.ok) errors.push({ where: `inline <script> #${i + 1}`, line: r.line, message: r.message }); });
+  inline.forEach((s, i) => {
+    const r = nodeCheckCode(s.code, s.isModule);
+    if (!r.ok) {
+      const fileLine = (r.line != null && s.startLine) ? s.startLine + r.line - 1 : r.line;   // map to the HTML file line
+      errors.push({ where: `inline <script> #${i + 1}`, line: fileLine, frame: r.frame, message: r.message });
+    }
+  });
   for (const s of srcs) {
     let abs; try { abs = resolveLocal ? resolveLocal(s.src) : path.join(path.dirname(htmlAbs), s.src); } catch { continue; }
     let code = null; try { code = fs.readFileSync(abs, "utf8"); } catch { continue; }
     const isModule = s.isModule || /^\s*(import|export)\b/m.test(code);
     const r = nodeCheckCode(code, isModule);
-    if (!r.ok) errors.push({ where: `${s.src}${r.line ? ":" + r.line : ""}`, line: r.line, message: r.message });
+    if (!r.ok) errors.push({ where: `${s.src}${r.line ? ":" + r.line : ""}`, line: r.line, frame: r.frame, message: r.message });
   }
   return { ok: errors.length === 0, errors };
 }

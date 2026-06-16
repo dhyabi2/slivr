@@ -2396,6 +2396,28 @@ console.log("== 66. no-op edit guard — an edit that changes nothing is rejecte
   fs.rmSync(d, { recursive: true, force: true });
 }
 
+console.log("== 67. syntax-error LOCATION — map to the file line + show node's code frame (Block 45) ==");
+{
+  const { nodeCheckCode, extractScripts, checkPageJs } = await import("./src/webcheck.mjs");
+  // nodeCheckCode (via parseNodeError) returns the line + node's code frame (offending line + caret).
+  const cc = nodeCheckCode("const a = 1;\nconst cfg = { width: 800,  ; };\n", false);
+  ok("syntax: nodeCheckCode returns the line + a code frame (with caret)", cc.ok === false && cc.line != null && /width: 800/.test(cc.frame || "") && /\^/.test(cc.frame || ""));
+  // extractScripts records each inline script's starting file line.
+  const html = "<!doctype html>\n<html><body>\n<script>\nconst a=1;\n</script>\n</body></html>";
+  const ex = extractScripts(html);
+  ok("syntax: extractScripts records the inline script's file line", ex.inline.length === 1 && ex.inline[0].startLine === 3);
+  // checkPageJs maps a script-relative error line back to the HTML FILE line + carries the frame.
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "syn-")); const t = new Tools(d);
+  const broken = ["<!doctype html>", "<html><head></head>", "<body>", "<canvas id=c></canvas>", "<script>", "const a = 1;", "const b = 2;", "function setup(){", "  const cfg = { width: 800,  ;", "  return cfg;", "}", "requestAnimationFrame(setup);", "</script>", "</body></html>"].join("\n");
+  fs.writeFileSync(path.join(d, "index.html"), broken);
+  const jc = checkPageJs(path.join(d, "index.html"));
+  ok("syntax: checkPageJs reports the FILE line (9) + a code frame", jc.ok === false && jc.errors[0].line === 9 && /width: 800/.test(jc.errors[0].frame || ""));
+  // see_page surfaces "around <file> line N" + the frame so the model can locate + fix it.
+  const sp = t.see_page({ path: "index.html" });
+  ok("see_page: a broken page surfaces the line number + the offending source frame", sp.broken === true && sp.errors.some((e) => /around index\.html line 9/.test(e) && /width: 800/.test(e) && /\^/.test(e)));
+  fs.rmSync(d, { recursive: true, force: true });
+}
+
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");
 {
   const big = (n) => "x".repeat(n);
