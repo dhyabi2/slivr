@@ -438,6 +438,14 @@ export class Tools {
     const content = fs.readFileSync(abs, "utf8");
     const res = applyEdit(content, { anchor, replacement, op, occurrence });
     if (!res.ok) return { ok: false, repair: res.repair };
+    // NO-OP GUARD: an edit whose result is byte-identical changed NOTHING (anchor === replacement, or the
+    // replacement is already present). Without this it returns ok + an EMPTY diff, the loop counts it as
+    // progress, and a weak model can emit no-op edits forever (the 50-turn spin ending in empty diffs).
+    // Reject it so the agent makes a real change or calls done, and the failure-fingerprint sentinel can
+    // stop a no-op spin (edit_file|NO_CHANGE → hint at 3, clean stop at 7).
+    if (res.content === content) {
+      return { ok: false, error: "NO_CHANGE", path: rel, hint: 'that edit produced NO change — the "replacement" is identical to the "anchor" (or already present in the file). If this part is already correct, do NOT re-edit it: move to the next task or call done. If you meant to change it, send a DIFFERENT replacement.' };
+    }
     fs.writeFileSync(abs, res.content);
     return { ok: true, tier: res.tier, path: rel };
   }
@@ -469,6 +477,7 @@ export class Tools {
   edit_files({ edits }) {
     if (!Array.isArray(edits) || edits.length === 0) return { ok: false, error: "NO_EDITS", hint: "Pass edits: [{path, anchor, replacement, op}]" };
     const buffers = new Map();          // rel -> working content
+    const originals = new Map();        // rel -> content as first read (to detect a no-op batch)
     const failures = [], applied = [];
     edits.forEach((e, i) => {
       const rel = e && e.path;
@@ -476,7 +485,7 @@ export class Tools {
       try { abs = this._resolve(rel); } catch (err) { failures.push({ index: i, path: rel, error: err.message }); return; }
       if (!buffers.has(rel)) {
         if (!fs.existsSync(abs)) { failures.push({ index: i, path: rel, error: "FILE_NOT_FOUND" }); return; }
-        buffers.set(rel, fs.readFileSync(abs, "utf8"));
+        const c = fs.readFileSync(abs, "utf8"); buffers.set(rel, c); originals.set(rel, c);
       }
       const res = applyEdit(buffers.get(rel), { anchor: e.anchor, replacement: e.replacement, op: e.op || "replace", occurrence: e.occurrence });
       if (!res.ok) { failures.push({ index: i, path: rel, repair: res.repair }); return; }
@@ -484,8 +493,12 @@ export class Tools {
       applied.push({ index: i, path: rel, tier: res.tier });
     });
     if (failures.length) return { ok: false, error: "ATOMIC_ABORT", failures, note: "No files were written — fix the failing edits and resend ALL edits in one edit_files call." };
-    for (const [rel, content] of buffers) fs.writeFileSync(this._resolve(rel), content);
-    return { ok: true, applied, files: [...buffers.keys()] };
+    // NO-OP GUARD (see edit_file): only write files that actually changed; if the WHOLE batch changed
+    // nothing, reject it so a no-op spin can't masquerade as progress.
+    const changed = [...buffers].filter(([rel, c]) => c !== originals.get(rel));
+    if (!changed.length) return { ok: false, error: "NO_CHANGE", hint: "none of these edits changed anything — the replacements already match the file(s). Make a real change or call done." };
+    for (const [rel, content] of changed) fs.writeFileSync(this._resolve(rel), content);
+    return { ok: true, applied, files: changed.map(([rel]) => rel) };
   }
 
   // --- git: read tools + a GUARDED commit. Never pushes (push/force is also hard-blocked upstream).

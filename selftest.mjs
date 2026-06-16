@@ -2370,6 +2370,32 @@ console.log("== 65. 3D asset source — vgsds-only enforcement + klokwork/vgsds 
   ok("skills: klokwork-threejs + vgsds-3d-assets skills are present and parse", haveSkill("klokwork-threejs") && haveSkill("vgsds-3d-assets"));
 }
 
+console.log("== 66. no-op edit guard — an edit that changes nothing is rejected, no-op spin stops (Block 44) ==");
+{
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "noop-")); const t = new Tools(d);
+  fs.writeFileSync(path.join(d, "f.txt"), "hello world\nfoo bar\n");
+  // edit_file: anchor === replacement → NO_CHANGE, file untouched; a real edit still applies.
+  const noop = t.edit_file({ path: "f.txt", anchor: "foo bar", replacement: "foo bar" });
+  ok("edit_file: a no-op edit (anchor==replacement) is rejected NO_CHANGE", noop.ok === false && noop.error === "NO_CHANGE" && !!noop.hint);
+  ok("edit_file: the no-op did not modify the file", fs.readFileSync(path.join(d, "f.txt"), "utf8") === "hello world\nfoo bar\n");
+  ok("edit_file: a real edit still applies", t.edit_file({ path: "f.txt", anchor: "foo bar", replacement: "foo BAZ" }).ok === true && /foo BAZ/.test(fs.readFileSync(path.join(d, "f.txt"), "utf8")));
+  // edit_files: a fully no-op batch is rejected; a batch with one real change writes only the changed file.
+  fs.writeFileSync(path.join(d, "a.txt"), "AAA"); fs.writeFileSync(path.join(d, "b.txt"), "BBB");
+  ok("edit_files: a fully no-op batch is rejected NO_CHANGE", t.edit_files({ edits: [{ path: "a.txt", anchor: "AAA", replacement: "AAA" }, { path: "b.txt", anchor: "BBB", replacement: "BBB" }] }).error === "NO_CHANGE");
+  const mixed = t.edit_files({ edits: [{ path: "a.txt", anchor: "AAA", replacement: "AAA" }, { path: "b.txt", anchor: "BBB", replacement: "CCC" }] });
+  ok("edit_files: a batch with one real change writes only the changed file", mixed.ok === true && mixed.files.length === 1 && mixed.files[0] === "b.txt" && fs.readFileSync(path.join(d, "a.txt"), "utf8") === "AAA");
+
+  // the loop STOPS a no-op-edit spin cleanly. The real bug is VARYING no-op edits (different anchor each
+  // turn) that slip past the identical-args spin check — now NO_CHANGE feeds the failure-fingerprint
+  // sentinel (edit_file|NO_CHANGE → failStop at 7) instead of running to maxSteps with empty diffs.
+  fs.writeFileSync(path.join(d, "g.txt"), "alpha\nbravo\n");
+  const tg = new Tools(d); const anchors = ["alpha", "bravo"]; let k = 0;
+  const spinProv = { model: "m", chat: async () => { const a = anchors[(k++) % 2]; return { text: JSON.stringify({ tool: "edit_file", args: { path: "g.txt", anchor: a, replacement: a } }), usage: {}, raw: {} }; }, totals: () => ({ model: "m", calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) };
+  const r = await runLoop({ provider: spinProv, tools: tg, toolMap: { edit_file: (a) => tg.edit_file(a) }, systemPrompt: "s", task: "x", maxSteps: 40 });
+  ok("loop: a VARYING no-op-edit spin stops via the failure sentinel (not 40 turns)", !r.done && /NO_CHANGE|kept failing/.test(r.stopped || "") && r.turns < 40 && r.trace.some((x) => x.failStop));
+  fs.rmSync(d, { recursive: true, force: true });
+}
+
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");
 {
   const big = (n) => "x".repeat(n);
