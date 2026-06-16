@@ -2488,6 +2488,11 @@ console.log("== 69. animation-driver gate — a static 3D character is rejected 
   const loopSrc = fs.readFileSync(path.join(process.cwd(), "src", "loop.mjs"), "utf8");
   const toolsSrc = fs.readFileSync(path.join(process.cwd(), "src", "tools.mjs"), "utf8");
   ok("anim gate: animationDriverViolation is wired into the static + served done-gates", /animationDriverViolation\(html, task\)/.test(loopSrc) && /animationDriverViolation\(html, task\)/.test(toolsSrc));
+
+  // Block 49: Node-on-a-URL is the DEFAULT web deliverable (not a lone static index.html).
+  const { Session } = await import("./src/agent.mjs");
+  const sysPrompt = new Session(os.tmpdir(), {}).systemPrompt;
+  ok("web default: the system prompt makes a Node server the default web deliverable", /WEB DEFAULT/.test(sysPrompt) && /process\.env\.PORT/.test(sysPrompt) && /lone static|single HTML file|static page/i.test(sysPrompt));
 }
 
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");

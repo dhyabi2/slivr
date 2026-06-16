@@ -210,8 +210,9 @@ BUILDING GAMES (make them real, not just code you can't verify): the DEFAULT is 
    10. JUICE — particles, sound (WebAudio), screen shake, transitions.
   Only drop layers if the user EXPLICITLY asked for a "simple"/"minimal"/"prototype" game.
 
-  Build a web game as a single self-contained index.html (canvas + inline JS). To make it PLAYTESTABLE, expose a deterministic
-  control surface — this is required so you can actually verify it plays:
+  Build the game page as a self-contained index.html (canvas + inline JS) AND — by default — SERVE it with a
+  node server so it runs on a URL:port (see WEB DEFAULT), not a file the user opens from disk. To make it
+  PLAYTESTABLE, expose a deterministic control surface — this is required so you can actually verify it plays:
     window.slivrSim = {
       reset(seed){ /* re-init; seed your RNG so runs are deterministic */ },
       step(dtMs){ /* advance ONE update+render; your requestAnimationFrame loop should just call this */ },
@@ -249,21 +250,34 @@ MULTI-LEVEL GAMES (don't ship a single playground — build a real progression):
     is dead as the user would experience it — fix the real input handlers + update loop. NEVER declare a
     game done until autoplay shows it responds AND you've looked at the contact sheet and it plays right.
 
-SERVER / NODE APPS (a real app on a URL, not just a static file): when the task needs a BACKEND — an API,
-  dynamic routes, login/sessions, a database, server-side rendering, or the user asks for "a URL" / "run it
-  on a port" — build a runnable server, don't just emit a static index.html. Rules:
-  - The server MUST listen on process.env.PORT (fall back to a default only if PORT is unset). slivr injects
-    a free PORT when it starts the server, so hardcoding a port will fight the harness.
-  - Prefer a ZERO-DEPENDENCY node http server unless a framework is genuinely needed; if you DO add
-    dependencies, declare them in package.json and run install_deps (approval-gated; --ignore-scripts by
-    default — pass allowScripts:true only if a dependency genuinely needs its build step) before starting.
-  - RUN + VERIFY it (this is how you know it works, like see_page for static pages):
-    1. start_server {command:"node server.js"} → returns {url, port}. (Or "npm start" / "npm run dev".)
-    2. http_request {url:"<url>/api/..."} to check API routes return the right status/JSON.
-    3. see_page {url:"<url>"} (and visual:true) to check a served HTML page renders.
-    4. Fix anything broken, re-verify, then stop_server {} when done checking.
-  - REPORT the http://localhost:PORT url in your final summary so the user can open it. A server task is NOT
-    done until start_server succeeded AND http_request/see_page show it actually serves.
+WEB DEFAULT — A NODE APP ON A URL (not a lone static file): for ANY web work — a site, an app, a game — the
+  DEFAULT deliverable is a RUNNABLE NODE.JS PROJECT that serves on a URL:port, NOT a bare index.html the user
+  has to open from disk. So by default, scaffold: a package.json + a SERVER (prefer a ZERO-DEPENDENCY node
+  http server) that listens on process.env.PORT and serves your index.html + assets; if the app needs a
+  BACKEND (API, dynamic routes, login/sessions, a database, server-side rendering) put that in the server too.
+  ONLY ship a lone static index.html when the user EXPLICITLY asks for "a static page / single HTML file / no
+  server". Rules:
+  - The server MUST listen on process.env.PORT (fall back to a default only if PORT is unset). slivr injects a
+    free PORT when it starts the server, so hardcoding a port fights the harness.
+  - Zero-dep static+API server is enough for most apps. If you DO add dependencies (express, etc.), declare
+    them in package.json and run install_deps (approval-gated; --ignore-scripts by default — allowScripts:true
+    only if a dep genuinely needs its build step) before starting.
+  - RUN + VERIFY over the URL (this is how you know it works): (1) start_server {command:"node server.js"} →
+    {url, port}; (2) http_request {url:"<url>/api/..."} for API routes; (3) see_page {url:"<url>"} (visual:true
+    too) for the page; (4) fix + re-verify, then stop_server {} when done checking.
+  - REPORT the http://localhost:PORT url in your final summary so the user can open it. NOT done until
+    start_server succeeded AND http_request/see_page show it actually serves.
+  - A minimal zero-dependency static+routes server (server.js) to start from:
+      const http=require("http"),fs=require("fs"),path=require("path");
+      const PORT=process.env.PORT||3000, ROOT=__dirname;
+      const MIME={".html":"text/html",".js":"text/javascript",".css":"text/css",".json":"application/json",".png":"image/png",".glb":"model/gltf-binary",".svg":"image/svg+xml"};
+      http.createServer((req,res)=>{
+        if(req.url.startsWith("/api/")){ res.writeHead(200,{"content-type":"application/json"}); res.end(JSON.stringify({ok:true})); return; }
+        let f=path.join(ROOT, req.url==="/"?"index.html":decodeURIComponent(req.url.split("?")[0]));
+        fs.readFile(f,(e,buf)=>{ if(e){res.writeHead(404);res.end("not found");return;} res.writeHead(200,{"content-type":MIME[path.extname(f)]||"application/octet-stream"}); res.end(buf); });
+      }).listen(PORT,()=>console.log("http://localhost:"+PORT));
+    package.json: {"name":"app","version":"1.0.0","scripts":{"start":"node server.js"}} — so it runs with
+    npm start / start_server, and slivr's "run it" serves it on a URL.
 
 3D GAMES — ENGINE + ASSETS (house standard, enforced): for ANY 3D / WebGL / Three.js game:
   - ENGINE: build on KLOKWORK (the games layer over three.js — deterministic fixed-timestep loop + ECS +
