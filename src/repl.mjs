@@ -317,14 +317,18 @@ export async function startRepl({ workdir, config, palette } = {}) {
 
       const command = parseCommand(input);
       let taskToRun = input;
-      let untilDone = false;
+      let explicitFinish = false;
       if (command) {
         const stop = await handleCommand(command, { session, p, rl, workdir, prompting, get approval() { return approval; }, set approval(v) { approval = v; } });
         if (stop === "exit") { exited = true; break; }
         // A skill command (/run <name> or /<name>) resolves to a task string to run as a turn.
-        if (stop && typeof stop === "object" && stop.runTask) { taskToRun = stop.runTask; untilDone = !!stop.runUntilDone; }
+        if (stop && typeof stop === "object" && stop.runTask) { taskToRun = stop.runTask; explicitFinish = !!stop.runUntilDone; }
         else { safePrompt(); continue; }
       }
+      // runUntilDone is ON BY DEFAULT (config.untilDone) — every task auto-continues to completion. `/finish`
+      // forces it even if the default is off. A 1-round turn (a question, or work that finishes first try)
+      // is transparent; only multi-round continuation prints status.
+      const untilDone = explicitFinish || config.untilDone !== false;
 
       // "run it" / "open it" / "run in browser" / "show me" → slivr LAUNCHES the artifact directly,
       // instead of sending it to the model (which just describes how to open it). This is what the
@@ -357,19 +361,20 @@ export async function startRepl({ workdir, config, palette } = {}) {
       let res;
       try {
         if (untilDone) {
-          // /finish — the supervisor keeps continuing the SAME thread until done/verified, or a stop.
+          // Keep continuing the SAME thread until done/verified, or a budget / no-progress stop. The banner
+          // shows only for an explicit /finish; otherwise continuation is quiet until it actually loops.
           const maxRounds = config.untilDoneMaxRounds || 12;
           const costCap = config.untilDoneCostCap > 0 ? config.untilDoneCostCap : Infinity;
-          process.stdout.write(p.dim(`▶ finishing — up to ${maxRounds} rounds${costCap !== Infinity ? `, $${costCap} cap` : ""} (Ctrl-C to stop)\n`));
+          if (explicitFinish) process.stdout.write(p.dim(`▶ finishing — up to ${maxRounds} rounds${costCap !== Infinity ? `, $${costCap} cap` : ""} (Ctrl-C to stop)\n`));
           const rep = await session.runUntilDone(taskToRun, {
             maxRounds, costCap,
             turnOpts: { onStep, onToolStart, onThinking, beforeTool, signal: currentAbort.signal },
-            onRound: ({ round, open, cost }) => process.stdout.write(p.dim(`  ↻ round ${round} · ${open} task(s) left · $${(cost || 0).toFixed(4)}\n`)),
+            onRound: ({ round, open, cost }) => { if (round > 1) process.stdout.write(p.dim(`  ↻ continuing (round ${round}) · ${open} task(s) left · $${(cost || 0).toFixed(4)}\n`)); },
           });
           res = rep.last || {};
-          process.stdout.write(rep.outcome === "success"
-            ? p.green(`✓ finished — all tasks done & verified in ${rep.rounds} round(s) · $${(rep.cost || 0).toFixed(4)}\n`)
-            : p.yellow(`∅ stopped after ${rep.rounds} round(s) — ${rep.outcome}${rep.detail ? `: ${rep.detail}` : ""}.${rep.openTasks.length ? ` ${rep.openTasks.length} left: ${rep.openTasks.slice(0, 5).join("; ")}` : ""}\n`));
+          // quiet on a clean single-round finish (a plain question / first-try success); speak up otherwise.
+          if (rep.outcome === "success") { if (explicitFinish || rep.rounds > 1) process.stdout.write(p.green(`✓ finished — all tasks done & verified in ${rep.rounds} round(s) · $${(rep.cost || 0).toFixed(4)}\n`)); }
+          else process.stdout.write(p.yellow(`∅ stopped after ${rep.rounds} round(s) — ${rep.outcome}${rep.detail ? `: ${rep.detail}` : ""}.${rep.openTasks.length ? ` ${rep.openTasks.length} left: ${rep.openTasks.slice(0, 5).join("; ")}` : ""}\n`));
         } else {
           res = await session.runTurn(taskToRun, { onStep, onToolStart, onThinking, beforeTool, signal: currentAbort.signal });
         }
@@ -396,7 +401,9 @@ export async function startRepl({ workdir, config, palette } = {}) {
       }
       else {
         if (res.summary) process.stdout.write("\n" + res.summary + "\n");
-        if (res.stopped) { process.stdout.write(p.yellow(`\n∅ ${res.stopped}\n`)); footerStatus = "incomplete"; }
+        // when untilDone ran, the supervisor already printed the run-level verdict — don't double-print the
+        // last inner turn's stop reason; just carry the footer status.
+        if (res.stopped) { if (!untilDone) process.stdout.write(p.yellow(`\n∅ ${res.stopped}\n`)); footerStatus = "incomplete"; }
         else if (!res.summary) process.stdout.write(p.dim("\n(done — no summary)\n"));
         // Anticipate intent (Blocks 9 & 10): if the turn built a runnable artifact, show how to run it
         // AND offer to actually demonstrate it (open the browser / run it), so "show me" really shows.

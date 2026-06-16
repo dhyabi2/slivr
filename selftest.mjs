@@ -2463,6 +2463,9 @@ console.log("== 68. runUntilDone supervisor — drive a session to completion, n
   // Session exposes runUntilDone.
   const { Session } = await import("./src/agent.mjs");
   ok("supervisor: Session.runUntilDone is wired", typeof new Session(os.tmpdir(), {}).runUntilDone === "function");
+  // continuous mode is ON BY DEFAULT in config.
+  const { DEFAULTS } = await import("./src/config.mjs");
+  ok("supervisor: untilDone is ON by default (continuous mode)", DEFAULTS.untilDone === true && DEFAULTS.untilDoneMaxRounds === 12);
 }
 
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");
