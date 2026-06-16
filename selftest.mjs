@@ -2418,6 +2418,53 @@ console.log("== 67. syntax-error LOCATION — map to the file line + show node's
   fs.rmSync(d, { recursive: true, force: true });
 }
 
+console.log("== 68. runUntilDone supervisor — drive a session to completion, never spin forever (Block 46) ==");
+{
+  const { runUntilDone, continuationFor, stopFingerprint } = await import("./src/supervisor.mjs");
+
+  // stopFingerprint distinguishes how a turn ended (stuck-fail / stuck-spin / stopped / done).
+  ok("supervisor: stopFingerprint distinguishes stop reasons", stopFingerprint({ trace: [{ failStop: "edit_file|X" }] }) === "fail:edit_file|X" && stopFingerprint({ trace: [{ spinStop: "read_file" }] }) === "spin:read_file" && /^stopped:/.test(stopFingerprint({ stopped: "ran out" })) && stopFingerprint({ done: true }) === "done");
+
+  // continuationFor is targeted: stuck → re-read+rewrite; done-with-open-tasks → don't declare done.
+  ok("supervisor: a stuck turn → 're-read + rewrite' continuation (the key escalation)", /read the target file/i.test(continuationFor({ trace: [{ failStop: "edit_file|NO_ANCHOR" }] }, [], false)) && /REWRITE/i.test(continuationFor({ trace: [{ failStop: "edit_file|NO_ANCHOR" }] }, [], false)));
+  ok("supervisor: done-with-open-tasks → 'do not declare done' continuation", /not declare done|NOT complete/i.test(continuationFor({ done: true }, [{ subject: "build enemies" }], false)));
+
+  // fake session: tasks live on tools.tasks, totals() gives a rising cost, prompts captured.
+  const mk = (turns) => { let i = 0; const tasks = []; const prompts = []; return { tools: { tasks }, totals: () => ({ cost: i * 0.01 }), prompts, runTurn: async (task) => { prompts.push(task); const r = turns[Math.min(i, turns.length - 1)](tasks, i); i++; return r; } }; };
+
+  // SUCCESS: completes on round 2 (oracle = done && no open tasks && verified !== false).
+  const s1 = mk([(t) => { t.length = 0; t.push({ status: "in_progress", subject: "A" }); return { done: false, stopped: "ran out", trace: [] }; }, (t) => { t[0].status = "completed"; return { done: true, verified: null, trace: [] }; }]);
+  const r1 = await runUntilDone(s1, "build", { maxRounds: 10 });
+  ok("supervisor: drives to SUCCESS when tasks complete + not pushed back", r1.outcome === "success" && r1.rounds === 2 && r1.openTasks.length === 0);
+
+  // a premature done WITH open tasks is NOT accepted — it keeps going.
+  const s1b = mk([(t) => { t.length = 0; t.push({ status: "in_progress", subject: "A" }); return { done: true, verified: null, trace: [] }; }, (t) => { t[0].status = "completed"; return { done: true, trace: [] }; }]);
+  const r1b = await runUntilDone(s1b, "build", { maxRounds: 10 });
+  ok("supervisor: a premature done with open tasks is overridden (continues)", r1b.outcome === "success" && r1b.rounds === 2 && /not declare done|NOT complete/i.test(s1b.prompts[1] || ""));
+
+  // BUDGET: never completes, distinct stops → stops at the round cap with the open list.
+  const s2 = mk([(t, i) => { t.length = 0; t.push({ status: "in_progress", subject: "X" }); return { done: false, stopped: "err" + i, trace: [] }; }]);
+  const r2 = await runUntilDone(s2, "build", { maxRounds: 4, noProgressStop: 99 });
+  ok("supervisor: stops at the round-cap BUDGET with work remaining", r2.outcome === "budget" && r2.rounds === 4 && r2.openTasks.length === 1);
+
+  // COST CAP: stops when cumulative cost crosses the cap.
+  const s2c = mk([(t) => { t.length = 0; t.push({ status: "in_progress", subject: "X" }); return { done: false, stopped: "e" + Math.random(), trace: [] }; }]);
+  const r2c = await runUntilDone(s2c, "build", { maxRounds: 100, costCap: 0.05, noProgressStop: 99 });
+  ok("supervisor: stops at the COST cap", r2c.outcome === "budget" && /cost cap/.test(r2c.detail || "") && r2c.cost >= 0.05);
+
+  // DEAD-END: no forward progress + identical stop fingerprint → stops (never spins forever).
+  const s3 = mk([() => ({ done: false, stopped: "x", trace: [{ failStop: "edit_file|NO_ANCHOR" }] })]);
+  const r3 = await runUntilDone(s3, "build", { maxRounds: 50, noProgressStop: 3 });
+  ok("supervisor: a no-forward-progress spin stops DEAD_END (not maxRounds=50)", r3.outcome === "dead_end" && r3.rounds < 10 && /no forward progress/.test(r3.detail || ""));
+
+  // ABORTED / ERROR are surfaced, not swallowed.
+  ok("supervisor: aborted + error turns are reported", (await runUntilDone(mk([() => ({ aborted: true })]), "x", {})).outcome === "aborted" && (await runUntilDone(mk([() => ({ error: "boom" })]), "x", {})).outcome === "error");
+
+  // Session exposes runUntilDone.
+  const { Session } = await import("./src/agent.mjs");
+  ok("supervisor: Session.runUntilDone is wired", typeof new Session(os.tmpdir(), {}).runUntilDone === "function");
+}
+
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");
 {
   const big = (n) => "x".repeat(n);

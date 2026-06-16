@@ -9,6 +9,7 @@ import path from "node:path";
 import { Provider } from "./provider.mjs";
 import { Tools } from "./tools.mjs";
 import { runLoop } from "./loop.mjs";
+import { runUntilDone } from "./supervisor.mjs";
 import { connectAll, closeAll, mcpPromptSection } from "./mcp.mjs";
 import { detectStyle, styleBrief } from "./style.mjs";
 
@@ -836,6 +837,11 @@ export class Session {
   }
 
   totals() { return this.provider.totals(); }
+
+  // Drive this session to GENUINE completion (Block 46): keep continuing the SAME thread — with a targeted
+  // continuation each round, not a bare "continue" — until every checklist task is done and the turn wasn't
+  // pushed back, or a budget/no-progress stop. Returns a structured final report. See supervisor.mjs.
+  async runUntilDone(task, opts = {}) { return runUntilDone(this, task, opts); }
 
   // Run ONE user turn against the persistent thread. opts: { onStep, beforeStep, signal, verify }.
   async runTurn(task, { onStep, onToolStart, onThinking, beforeTool, signal, verify, maxRepairs, bridge } = {}) {
