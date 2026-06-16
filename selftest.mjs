@@ -2517,6 +2517,48 @@ console.log("== 70. strong-model escalation — cheap default, strong only when 
   ok("escalation: strongModel is a config key (default off)", "strongModel" in DEFAULTS && DEFAULTS.strongModel === "");
 }
 
+console.log("== 71. token-cost levers — cache accounting + TTL, truncate logs, downscale captures (Block 51) ==");
+{
+  const { costUSD, applyPromptCache } = await import("./src/provider.mjs");
+  const { compressContext } = await import("./src/compress.mjs");
+
+  // 1) CACHE-AWARE COST: cached prompt tokens bill at ~10%; cached=0 unchanged; cap at promptTokens.
+  const fresh = costUSD("anthropic/claude-sonnet-4", 10000, 1000, 0);
+  const cached = costUSD("anthropic/claude-sonnet-4", 10000, 1000, 8000);
+  ok("cost: cached prompt tokens are billed cheaper (~10%)", cached < fresh && Math.abs(cached - costUSD("anthropic/claude-sonnet-4", 2000, 1000, 0) - (8000 / 1e6) * 3 * 0.1) < 1e-9);
+  ok("cost: cachedTokens=0 is unchanged; cap at promptTokens", costUSD("m", 5000, 100, 0) === costUSD("m", 5000, 100) && costUSD("m", 5000, 100, 99999) === costUSD("m", 5000, 100, 5000));
+
+  // 2) CACHE TTL: "1h" marks the system block with ttl:1h; default is plain ephemeral; rolling last stays 5m.
+  const msgs = [{ role: "system", content: "SYS" }, { role: "user", content: "a" }, { role: "user", content: "b" }];
+  const c1h = applyPromptCache(msgs, "anthropic/claude-sonnet-4", "1h");
+  ok("cache: ttl '1h' applies to the system prefix, rolling last stays 5m", c1h[0].content[0].cache_control.ttl === "1h" && c1h[2].content[0].cache_control.ttl === undefined);
+  ok("cache: default ttl is plain ephemeral (5m)", applyPromptCache(msgs, "claude")[0].content[0].cache_control.ttl === undefined && applyPromptCache(msgs, "google/gemini")[0].content === "SYS");
+
+  // 3) TRUNCATE non-reconstructable logs: old run_command output → head + stub, recent kept full, idempotent.
+  const big = "L".repeat(3000);
+  const mk = () => [{ role: "system", content: "S" }, { role: "user", content: "RESULT (run_command):\nBUILD START\n" + big }, { role: "user", content: "RESULT (run_command):\nNEWEST\n" + big }];
+  const m = mk();
+  const r = compressContext(m, { keepResults: 1 });
+  ok("compress: an OLD run_command result is truncated to a head + stub", r.elided === 1 && /BUILD START/.test(m[1].content) && /older run_command output/.test(m[1].content) && m[1].content.length < 700);
+  ok("compress: the most recent log is kept FULL", m[2].content.length > 3000);
+  const m2 = mk(); compressContext(m2, { keepResults: 1 }); const len1 = m2[1].content.length; compressContext(m2, { keepResults: 1 });
+  ok("compress: truncation is idempotent (a re-run doesn't shrink it again)", m2[1].content.length === len1);
+
+  // config keys for the cache levers.
+  ok("cost levers: cacheTtl is a config key", "cacheTtl" in DEFAULTS);
+
+  // 4) CANVAS DOWNSCALE: a big canvas is captured downscaled to ≤768 long edge (smaller base64 sent to model).
+  const { screenshotWebGL, findBrowser } = await import("./src/eye.mjs");
+  if (findBrowser()) {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "ds-"));
+    fs.writeFileSync(path.join(d, "g.html"), '<canvas id=c width=1200 height=800></canvas><script>var x=document.getElementById("c").getContext("2d");x.fillStyle="#3a6";x.fillRect(0,0,1200,800);for(var i=0;i<1200;i+=20){x.fillStyle="hsl("+i+",70%,50%)";x.fillRect(i,100,15,600);}</script>');
+    const out = path.join(d, "shot.png"); const sh = screenshotWebGL(path.join(d, "g.html"), out);
+    let dim = null; if (sh.ok) { const b = fs.readFileSync(out); dim = Math.max(b.readUInt32BE(16), b.readUInt32BE(20)); }
+    ok("capture: a 1200px canvas is downscaled to ≤768 long edge", sh.ok && dim <= 768);
+    fs.rmSync(d, { recursive: true, force: true });
+  } else { ok("capture: (no browser — live skipped)", true); }
+}
+
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");
 {
   const big = (n) => "x".repeat(n);

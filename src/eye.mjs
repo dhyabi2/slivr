@@ -92,7 +92,10 @@ export function renderDomGL(htmlAbs, budget = 9000) {
 
 // WebGL screenshot: --screenshot renders WebGL BLANK (--disable-gpu). Instead capture the page's own
 // canvas via toDataURL on the GPU path (renderDomGL). Writes the PNG to outPng. { ok } | { ok:false, error }.
-const glCaptureInject = (budget) => `<script>window.addEventListener('load',function(){var n=0;(function poll(){var cv=document.querySelector('canvas');var u=cv?cv.toDataURL('image/png'):'';n+=200;if((u.length>800)||(n>=${budget - 1500})){var p=document.createElement('pre');p.id='__slivr_shot';p.style.display='none';p.textContent=u;document.body.appendChild(p);return;}setTimeout(poll,200);})();});</script>`;
+// Capture the canvas, DOWNSCALED to MAXDIM (long edge) before toDataURL — a big game canvas (800-1200px)
+// shrinks to ~768px so the base64 sent to the vision model is far smaller (≈ pixel-count ratio), with no
+// fidelity loss that matters for richness/vision. PNG kept (no MIME change for any caller). 0 = no downscale.
+const glCaptureInject = (budget, maxDim = 768) => `<script>window.addEventListener('load',function(){var n=0;function grab(){var cv=document.querySelector('canvas');if(!cv)return '';try{var w=cv.width||cv.clientWidth||0,h=cv.height||cv.clientHeight||0,MX=${maxDim};var s=(MX>0&&Math.max(w,h)>MX)?MX/Math.max(w,h):1;if(s<1){var t=document.createElement('canvas');t.width=Math.max(1,Math.round(w*s));t.height=Math.max(1,Math.round(h*s));t.getContext('2d').drawImage(cv,0,0,t.width,t.height);return t.toDataURL('image/png');}return cv.toDataURL('image/png');}catch(e){return '';}}(function poll(){var u=grab();n+=200;if((u.length>800)||(n>=${budget - 1500})){var p=document.createElement('pre');p.id='__slivr_shot';p.style.display='none';p.textContent=u;document.body.appendChild(p);return;}setTimeout(poll,200);})();});</script>`;
 const glCapInject = (html, budget) => (/<\/body>/i.test(html) ? html.replace(/<\/body>/i, glCaptureInject(budget) + "</body>") : html + glCaptureInject(budget));
 function writeGlShot(dom, outPng) {
   if (!dom.ok) return { ok: false, error: dom.error };
