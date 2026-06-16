@@ -2633,6 +2633,38 @@ console.log("== 73. project-checks done-gate — gate ALL code on its own tests/
   for (const x of [d, dgF, dgP, dgN]) fs.rmSync(x, { recursive: true, force: true });
 }
 
+console.log("== 74. check_behavior — opt-in behavioral proof: run the agent's targeted asserts (Block 55) ==");
+{
+  // ESM node project + module: passing + failing asserts reported per-name.
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "cb-"));
+  fs.writeFileSync(path.join(d, "package.json"), JSON.stringify({ name: "x", type: "module" }));
+  fs.writeFileSync(path.join(d, "math.mjs"), "export const add=(a,b)=>a+b; export const buggy=(a,b)=>a-b;");
+  const t = new Tools(d);
+  const r = t.check_behavior({ setup: "import {add,buggy} from './math.mjs'", asserts: [{ name: "add ok", expr: "add(2,3)===5" }, { name: "buggy wrong", expr: "buggy(2,3)===5" }] });
+  ok("check_behavior: runs asserts, reports per-name pass/fail (1 pass, 1 fail)", r.ran === true && r.ok === false && r.passed === 1 && r.failed.length === 1 && r.failed[0].name === "buggy wrong");
+  const rp = t.check_behavior({ setup: "import {add} from './math.mjs'", asserts: ["add(10,5)===15"] });
+  ok("check_behavior: all-pass → ok:true", rp.ok === true && rp.passed === 1);
+  // a bad import / throwing setup → CHECK_ERRORED (not a silent pass)
+  ok("check_behavior: a bad import/setup is surfaced (CHECK_ERRORED), not passed", t.check_behavior({ setup: "import {nope} from './nothere.mjs'", asserts: ["nope()===1"] }).error === "CHECK_ERRORED");
+  // CJS project
+  const d2 = fs.mkdtempSync(path.join(os.tmpdir(), "cb2-"));
+  fs.writeFileSync(path.join(d2, "package.json"), JSON.stringify({ name: "y" }));
+  fs.writeFileSync(path.join(d2, "m.js"), "module.exports={mul:(a,b)=>a*b};");
+  ok("check_behavior: works for a CommonJS project (require)", new Tools(d2).check_behavior({ setup: "const {mul}=require('./m.js')", asserts: ["mul(3,4)===12"] }).ok === true);
+  // validation + cap
+  ok("check_behavior: NO_ASSERTS / EMPTY_EXPR validation", t.check_behavior({}).error === "NO_ASSERTS" && t.check_behavior({ asserts: [{ name: "x", expr: "  " }] }).error === "EMPTY_EXPR");
+  ok("check_behavior: caps to a few high-value asserts (≤12)", t.check_behavior({ asserts: Array.from({ length: 30 }, (_, i) => `${i}>=0`) }).results.length === 12);
+  // graceful skip when the runtime is missing (python on a node-only box may not exist → skipped, not failed)
+  const py = t.check_behavior({ lang: "python", setup: "x=1", asserts: ["x==1"] });
+  ok("check_behavior: a missing runtime is SKIPPED, not failed", py.ran === true ? py.ok === true : py.skipped === true);
+  // registered in the LIVE (Session) toolMap — regression guard: every tool the agent can call must be in
+  // the Session toolMap, not just makeAgent's. (These 6 were previously missing from _buildToolMap.)
+  const { Session } = await import("./src/agent.mjs");
+  const tm = new Session(os.tmpdir(), {}).toolMap;
+  ok("check_behavior + server/cert/install tools are wired into the LIVE toolMap", ["check_behavior", "certify_level", "start_server", "stop_server", "http_request", "install_deps"].every((k) => typeof tm[k] === "function"));
+  for (const x of [d, d2]) fs.rmSync(x, { recursive: true, force: true });
+}
+
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");
 {
   const big = (n) => "x".repeat(n);

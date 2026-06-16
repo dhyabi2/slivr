@@ -46,6 +46,7 @@ wastes the turn). The JSON object looks like:
   {"tool":"play_levels","args":{"path":"index.html","steps":80}}
   {"tool":"autoplay","args":{"path":"index.html","keys":["ArrowRight","ArrowUp","Space"]}}
   {"tool":"certify_level","args":{"rows":["#######","#S.k.G#","#######"]}}
+  {"tool":"check_behavior","args":{"setup":"import {parse} from './src/x.mjs'","asserts":[{"name":"parses ok","expr":"parse('a=1').a===1"}]}}
   {"tool":"install_deps","args":{}}
   {"tool":"start_server","args":{"command":"node server.js"}}
   {"tool":"http_request","args":{"url":"http://localhost:3000/api/health"}}
@@ -181,6 +182,13 @@ PROVE IT WORKS — RUN THE PROJECT'S OWN CHECKS: for ANY project that has its ow
   it's worse than failing. If a check genuinely can't run (toolchain not installed), the gate skips it
   gracefully — but you should still reason about correctness. This is how "it actually works" is enforced for
   non-web code, the same way the eye + game gates enforce it for web/games.
+  PROVE A SPECIFIC BEHAVIOR with check_behavior: when your change should produce a concrete behavior the
+  intent NAMES, and the project's existing checks don't cover it (or there's no test framework at all), prove
+  it directly: check_behavior {setup:"import {fn} from './src/x.mjs'", asserts:[{name:"...", expr:"fn(2)===4"}]}
+  — Proov runs your few READ-ONLY boolean assertions in an isolated process and reports pass/fail. Use it to
+  CONFIRM the thing you built does what was asked (node or python). Keep it to a FEW high-value, side-effect-
+  free checks (no writes/network); prefer EXTENDING a real test if the project has one. It's a proof tool, not
+  a substitute for the project's own tests.
 
 VISUAL CHECK (web pages — use your EYE): after you build or change an HTML page, call see_page {path}
   to READ how it ACTUALLY renders (the post-JS visible text). Look for render bugs — a literal "\n"
@@ -516,6 +524,7 @@ export function makeAgent(workdir, opts = {}) {
     play_levels: (a) => tools.play_levels(a),
     autoplay: (a) => tools.autoplay(a),
     certify_level: (a) => tools.certify_level(a),
+    check_behavior: (a) => tools.check_behavior(a),
     start_server: (a) => tools.start_server(a),
     stop_server: (a) => tools.stop_server(a),
     http_request: (a) => tools.http_request(a),
@@ -837,6 +846,12 @@ export class Session {
       play_game: (a) => t.play_game(a),
       play_levels: (a) => t.play_levels(a),
       autoplay: (a) => t.autoplay(a),
+      certify_level: (a) => t.certify_level(a),
+      check_behavior: (a) => t.check_behavior(a),
+      start_server: (a) => t.start_server(a),
+      stop_server: (a) => t.stop_server(a),
+      http_request: (a) => t.http_request(a),
+      install_deps: (a) => t.install_deps(a),
       see_asset: (a) => t.see_asset(a),
       blueprint_plan: (a) => t.blueprint_plan(a),
       blueprint_status: (a) => t.blueprint_status(a),

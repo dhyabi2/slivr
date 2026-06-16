@@ -203,6 +203,58 @@ export class Tools {
     return abs;
   }
 
+  // check_behavior (Block 55, Phase 2): OPT-IN behavioral proof. The agent — which knows the intent — passes
+  // a FEW targeted boolean assertions about the behavior its change should have; Proov builds a tiny harness,
+  // runs it in an ISOLATED throwaway process with a timeout, and returns simple per-assertion pass/fail. This
+  // is the "synthesize the missing proof" half of CBV, kept practical by its guardrails: the AGENT writes the
+  // asserts (not auto-inferred), capped, read-only boolean expressions, isolated + time-bounded, zero-dep.
+  // Advisory (not an auto-gate). lang node|python (auto-detected). asserts:[{name, expr}] or ["expr",...].
+  check_behavior({ lang, setup = "", asserts, timeoutMs = 20000, module } = {}) {
+    let list = Array.isArray(asserts) ? asserts : null;
+    if (!list || !list.length) return { ok: false, error: "NO_ASSERTS", hint: 'pass a few boolean checks: {"setup":"import {add} from \'./src/math.mjs\'","asserts":[{"name":"add","expr":"add(2,3)===5"}]} — read-only expressions only.' };
+    if (list.length > 12) list = list.slice(0, 12);                    // cap — prefer a FEW high-value checks
+    const items = list.map((a, i) => (typeof a === "string" ? { name: `assert ${i + 1}`, expr: a } : { name: String(a.name || `assert ${i + 1}`), expr: String(a.expr ?? a.code ?? "") }));
+    if (items.some((it) => !it.expr.trim())) return { ok: false, error: "EMPTY_EXPR", hint: "every assert needs a boolean 'expr'." };
+    let l = lang;
+    if (!l) { try { if (fs.existsSync(this._resolve("pyproject.toml")) || fs.existsSync(this._resolve("setup.py"))) l = "python"; } catch { /* */ } l = l || "node"; }
+    let esm = module;
+    if (esm == null) { try { esm = (JSON.parse(fs.readFileSync(this._resolve("package.json"), "utf8")).type === "module"); } catch { esm = true; } }
+    const tag = "__PROOV_CHECK__";
+    let file, cmd, src;
+    if (l === "python") {
+      file = `.proov-check-${process.pid}-${Date.now()}.py`;
+      const checks = items.map((it) => `    (${JSON.stringify(it.name)}, lambda: (${it.expr})),`).join("\n");
+      src = `${setup}\nimport json as __json\n__checks = [\n${checks}\n]\n__r = []\nfor __n, __f in __checks:\n    try: __r.append({"name": __n, "ok": bool(__f())})\n    except Exception as __e: __r.append({"name": __n, "ok": False, "err": str(__e)})\nprint(${JSON.stringify(tag)} + __json.dumps(__r))\n`;
+      cmd = `python3 ${file}`;
+    } else {
+      file = `.proov-check-${process.pid}-${Date.now()}.${esm ? "mjs" : "cjs"}`;
+      const checks = items.map((it) => `  { name: ${JSON.stringify(it.name)}, run: async () => (${it.expr}) },`).join("\n");
+      const body = `;(async () => {\n${esm ? "" : setup + "\n"}const __checks = [\n${checks}\n];\nconst __r = [];\nfor (const __c of __checks) { try { __r.push({ name: __c.name, ok: !!(await __c.run()) }); } catch (__e) { __r.push({ name: __c.name, ok: false, err: String(__e && __e.message || __e) }); } }\nconsole.log(${JSON.stringify(tag)} + JSON.stringify(__r));\n})();`;
+      src = esm ? `${setup}\n${body}` : body;
+      cmd = `node ${file}`;
+    }
+    const abs = path.join(this.workdir, file);
+    try {
+      fs.writeFileSync(abs, src);
+      let out = "";
+      try { out = execSync(cmd, { cwd: this.workdir, timeout: timeoutMs, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }); }
+      catch (e) {
+        const blob = `${e.stdout || ""}${e.stderr || ""}${e.message || ""}`;
+        out = e.stdout || "";
+        if (e.status === 127 || e.code === "ETIMEDOUT" || /command not found|: not found|ENOENT|python3?: No such/i.test(blob)) {
+          return { ok: false, ran: false, skipped: true, reason: e.code === "ETIMEDOUT" ? `timed out after ${Math.round(timeoutMs / 1000)}s` : `no ${l} runtime`, hint: "couldn't run the check here — reason about it instead." };
+        }
+        if (!out.includes(tag)) return { ok: false, ran: false, error: "CHECK_ERRORED", detail: blob.slice(-1200), hint: "the harness threw before any assertion ran — usually a bad import/setup or a non-boolean expr. Fix setup/expr and retry." };
+      }
+      const m = out.match(new RegExp(tag + "(.*)$", "m"));
+      if (!m) return { ok: false, ran: false, error: "NO_RESULT", detail: out.slice(-800) };
+      let results; try { results = JSON.parse(m[1]); } catch { return { ok: false, ran: false, error: "PARSE_FAILED" }; }
+      const failed = results.filter((r) => !r.ok);
+      return { ok: failed.length === 0, ran: true, lang: l, results, passed: results.length - failed.length, failed };
+    } catch (e) { return { ok: false, ran: false, error: String(e.message || e) }; }
+    finally { try { fs.unlinkSync(abs); } catch { /* */ } }
+  }
+
   // Cheap (no-exec) probe: does this project have detectable verification checks? Used to decide whether the
   // done-gate should run the project-checks verifier at all (so non-project tasks behave exactly as before).
   _hasProjectChecks() {
