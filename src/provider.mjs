@@ -35,9 +35,14 @@ export function priceFor(model) {
   return PRICES[model] || PRICES._default;
 }
 
-export function costUSD(model, promptTokens, completionTokens) {
+// CACHE-AWARE cost: prompt tokens served from the prompt cache bill at ~10% of the input rate (Anthropic
+// cache-read; providers with implicit caching pass the same discount). Without this, reported cost
+// OVERSTATES spend whenever caching works — and gives no signal when caching silently breaks.
+export function costUSD(model, promptTokens, completionTokens, cachedTokens = 0) {
   const p = priceFor(model);
-  return (promptTokens / 1e6) * p.in + (completionTokens / 1e6) * p.out;
+  const cached = Math.max(0, Math.min(cachedTokens || 0, promptTokens));
+  const fresh = promptTokens - cached;
+  return (fresh / 1e6) * p.in + (cached / 1e6) * p.in * 0.1 + (completionTokens / 1e6) * p.out;
 }
 
 export class Provider {
@@ -48,6 +53,7 @@ export class Provider {
     this.timeoutMs = opts.timeoutMs ?? 30000;
     this.maxRetries = opts.maxRetries ?? 2;
     this.maxTokens = opts.maxTokens ?? opts.maxTokensPerTurn ?? 4000;
+    this.cacheTtl = opts.cacheTtl || "";   // "1h" → keep the system-prompt cache warm across idle REPL gaps
     // optional UI hook: called with a short string on transient events (retry/timeout) so the
     // user isn't staring at a silent hang. No-op by default.
     this.notify = typeof opts.notify === "function" ? opts.notify : () => {};
@@ -87,7 +93,7 @@ export class Provider {
           headers: { Authorization: "Bearer " + this.key, "Content-Type": "application/json" },
           body: JSON.stringify({
             model: useModel, temperature, max_tokens: this.maxTokens,
-            messages: applyPromptCache(messages, useModel),   // cache the stable prefix — no text change
+            messages: applyPromptCache(messages, useModel, this.cacheTtl),   // cache the stable prefix — no text change
             ...(pluginList.length ? { plugins: pluginList } : {}),
           }),
           signal: ctrl.signal,
@@ -108,7 +114,7 @@ export class Provider {
         const pt = u.prompt_tokens ?? 0;
         const ct = u.completion_tokens ?? 0;
         const cached = cachedTokensOf(u);   // prompt tokens served from cache (billed ~10%, not full)
-        const c = costUSD(useModel, pt, ct);
+        const c = costUSD(useModel, pt, ct, cached);
         // accumulate session totals
         this.calls++;
         this.promptTokens += pt;
@@ -171,22 +177,26 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // Claude use explicit cache_control breakpoints (we set them); other providers (Gemini, DeepSeek) cache
 // automatically server-side, so we leave their messages untouched. Pure + testable.
 const CACHE_MODELS = /claude|anthropic/i;
-export function applyPromptCache(messages, model) {
+// ttl: undefined/"5m" → ephemeral 5-min cache (default; cheapest write); "1h" → 1-hour cache (2× write but
+// survives idle REPL gaps). The 1h ttl is applied ONLY to the stable system prefix (it's session-stable);
+// the rolling-history breakpoint always stays 5-min (it churns every turn anyway).
+export function applyPromptCache(messages, model, ttl) {
   if (!CACHE_MODELS.test(String(model || "")) || !Array.isArray(messages) || !messages.length) return messages;
-  const mark = (msg) => {
+  const cc = (t) => (t === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" });
+  const mark = (msg, t) => {
     if (!msg) return msg;
-    if (typeof msg.content === "string") return { ...msg, content: [{ type: "text", text: msg.content, cache_control: { type: "ephemeral" } }] };
+    if (typeof msg.content === "string") return { ...msg, content: [{ type: "text", text: msg.content, cache_control: cc(t) }] };
     if (Array.isArray(msg.content) && msg.content.length) {
       const blocks = msg.content.map((b) => ({ ...b }));
-      for (let i = blocks.length - 1; i >= 0; i--) { if (blocks[i].type === "text") { blocks[i] = { ...blocks[i], cache_control: { type: "ephemeral" } }; break; } }
+      for (let i = blocks.length - 1; i >= 0; i--) { if (blocks[i].type === "text") { blocks[i] = { ...blocks[i], cache_control: cc(t) }; break; } }
       return { ...msg, content: blocks };
     }
     return msg;
   };
   const out = messages.slice();
   const sysIdx = out.findIndex((m) => m.role === "system");      // the largest stable block (tool docs + rules)
-  if (sysIdx >= 0) out[sysIdx] = mark(out[sysIdx]);
-  const lastIdx = out.length - 1;                                // cache the running history prefix for the NEXT turn
+  if (sysIdx >= 0) out[sysIdx] = mark(out[sysIdx], ttl);
+  const lastIdx = out.length - 1;                                // cache the running history prefix for the NEXT turn (always 5-min)
   if (lastIdx >= 0 && lastIdx !== sysIdx) out[lastIdx] = mark(out[lastIdx]);
   return out;
 }

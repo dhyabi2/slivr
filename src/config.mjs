@@ -18,6 +18,9 @@ export const DEFAULTS = {
   approval: "edits",
   // Rolling context compression (Block 34): elide old reconstructable tool results. true = on (saves tokens).
   compress: true,
+  // Prompt-cache TTL for the stable system prefix (Anthropic/Claude models). "" / "5m" = ephemeral 5-min
+  // (cheapest write); "1h" = 1-hour cache so the big system prompt survives idle gaps between REPL turns.
+  cacheTtl: "",
   // Optional 2nd model for EDITING / bug-fixing (the main `model` creates files). "" = use one model for all.
   editModel: "",
   // STRONG model used ONLY for critical/escalation turns — when the cheap default `model` gets STUCK
