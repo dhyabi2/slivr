@@ -369,7 +369,10 @@ export async function startRepl({ workdir, config, palette } = {}) {
           const rep = await session.runUntilDone(taskToRun, {
             maxRounds, costCap,
             turnOpts: { onStep, onToolStart, onThinking, beforeTool, signal: currentAbort.signal },
-            onRound: ({ round, open, cost }) => { if (round > 1) process.stdout.write(p.dim(`  ↻ continuing (round ${round}) · ${open} task(s) left · $${(cost || 0).toFixed(4)}\n`)); },
+            onRound: ({ round, open, cost, escalateTo }) => {
+              if (escalateTo) process.stdout.write(p.yellow(`  ⤴ stuck — escalating round ${round} to ${escalateTo}\n`));
+              else if (round > 1) process.stdout.write(p.dim(`  ↻ continuing (round ${round}) · ${open} task(s) left · $${(cost || 0).toFixed(4)}\n`));
+            },
           });
           res = rep.last || {};
           // quiet on a clean single-round finish (a plain question / first-try success); speak up otherwise.

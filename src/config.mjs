@@ -20,6 +20,10 @@ export const DEFAULTS = {
   compress: true,
   // Optional 2nd model for EDITING / bug-fixing (the main `model` creates files). "" = use one model for all.
   editModel: "",
+  // STRONG model used ONLY for critical/escalation turns — when the cheap default `model` gets STUCK
+  // (no forward progress) the supervisor switches to this for one round to break through, then reverts.
+  // Keeps the expensive model to ~1% of turns. "" = never escalate (stay on `model`).
+  strongModel: "",
   // Vision JUDGE model: critiques a built game's render against the request in the done-gate (Block 37).
   // Must be multimodal. "none"/"" disables. Default: a strong, cheap vision model.
   verifyModel: "google/gemini-3.5-flash",

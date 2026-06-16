@@ -720,6 +720,7 @@ export class Session {
     this.messages = null; // seeded on first run; persists across turns
     this.maxSteps = opts.maxSteps ?? Infinity;
     this.editModel = opts.editModel || "";   // optional 2nd model for editing/bug-fixing (creator = model)
+    this.strongModel = opts.strongModel || "";   // strong model for critical/escalation turns (~1% usage)
     this.compress = opts.compress !== false;   // rolling context compression (Block 34); default ON
     // VISION JUDGE (Block 37): a strong multimodal model that critiques a built game's render against the
     // request in the done-gate (fidelity, not just structure). Default on; "" / "none" disables it.
@@ -867,7 +868,7 @@ export class Session {
   // Drive this session to GENUINE completion (Block 46): keep continuing the SAME thread — with a targeted
   // continuation each round, not a bare "continue" — until every checklist task is done and the turn wasn't
   // pushed back, or a budget/no-progress stop. Returns a structured final report. See supervisor.mjs.
-  async runUntilDone(task, opts = {}) { return runUntilDone(this, task, opts); }
+  async runUntilDone(task, opts = {}) { return runUntilDone(this, task, { strongModel: this.strongModel, ...opts }); }
 
   // Run ONE user turn against the persistent thread. opts: { onStep, beforeStep, signal, verify }.
   async runTurn(task, { onStep, onToolStart, onThinking, beforeTool, signal, verify, maxRepairs, bridge } = {}) {

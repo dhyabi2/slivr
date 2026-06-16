@@ -70,6 +70,7 @@ export async function runUntilDone(session, task, opts = {}) {
   const noProgressStop = opts.noProgressStop ?? 3;
   const turnOpts = opts.turnOpts || {};
   const onRound = typeof opts.onRound === "function" ? opts.onRound : () => {};
+  const strongModel = opts.strongModel || "";   // used ONLY on a stuck round (the ~1% critical case)
 
   const openOf = () => (session.tools && Array.isArray(session.tools.tasks)) ? session.tools.tasks.filter((t) => t.status !== "completed") : [];
   const doneCountOf = () => (session.tools && Array.isArray(session.tools.tasks)) ? session.tools.tasks.filter((t) => t.status === "completed").length : 0;
@@ -97,7 +98,17 @@ export async function runUntilDone(session, task, opts = {}) {
     bestDone = Math.max(bestDone, doneCountOf());
     lastFp = fp;
 
-    res = await session.runTurn(continuationFor(res, open, noProgress > 0), turnOpts);
+    // CRITICAL-ONLY ESCALATION: when the cheap default model is STUCK (no-progress ticking, or it just hit
+    // a fail/spin), run ONE round on the strong model to break through, then revert. This is the ~1% of
+    // turns where the expensive model earns its cost; the rest stay on the cheap default.
+    const stuck = noProgress > 0 || !!stuckMarker(res);
+    let prevModel = null;
+    if (stuck && strongModel && session.provider && session.provider.model && session.provider.model !== strongModel) {
+      prevModel = session.provider.model; session.provider.model = strongModel;
+      onRound({ round: rounds, escalateTo: strongModel });
+    }
+    try { res = await session.runTurn(continuationFor(res, open, noProgress > 0), turnOpts); }
+    finally { if (prevModel) session.provider.model = prevModel; }
     rounds++;
   }
 }

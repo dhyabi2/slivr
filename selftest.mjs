@@ -2495,6 +2495,28 @@ console.log("== 69. animation-driver gate — a static 3D character is rejected 
   ok("web default: the system prompt makes a Node server the default web deliverable", /WEB DEFAULT/.test(sysPrompt) && /process\.env\.PORT/.test(sysPrompt) && /lone static|single HTML file|static page/i.test(sysPrompt));
 }
 
+console.log("== 70. strong-model escalation — cheap default, strong only when STUCK (~1%) (Block 50) ==");
+{
+  const { runUntilDone } = await import("./src/supervisor.mjs");
+  // fake session whose provider.model is mutable; capture which model each turn ran on.
+  const used = [];
+  const tasks = [{ status: "in_progress", subject: "Y" }]; let i = 0;
+  const session = {
+    tools: { tasks }, provider: { model: "cheap" }, totals: () => ({ cost: i * 0.01 }),
+    runTurn: async () => { used.push(session.provider.model); i++; return { done: false, stopped: "x", trace: [{ failStop: "edit_file|NO_ANCHOR" }] }; },
+  };
+  const r = await runUntilDone(session, "build", { maxRounds: 20, noProgressStop: 3, strongModel: "STRONG" });
+  ok("escalation: a stuck round runs on the STRONG model, the rest on cheap", used[0] === "cheap" && used.includes("STRONG") && r.outcome === "dead_end");
+  ok("escalation: provider.model is reverted to the cheap default after the run", session.provider.model === "cheap");
+  // no strongModel → never escalates (stays cheap).
+  const used2 = []; const s2 = { tools: { tasks: [{ status: "in_progress", subject: "Z" }] }, provider: { model: "cheap" }, totals: () => ({ cost: 0 }), runTurn: async () => { used2.push(s2.provider.model); return { done: false, stopped: "x", trace: [{ failStop: "e" }] }; } };
+  await runUntilDone(s2, "build", { maxRounds: 4, noProgressStop: 3 });
+  ok("escalation: with no strongModel, every turn stays on the cheap model", used2.every((m) => m === "cheap"));
+  // config defaults expose strongModel.
+  const { DEFAULTS } = await import("./src/config.mjs");
+  ok("escalation: strongModel is a config key (default off)", "strongModel" in DEFAULTS && DEFAULTS.strongModel === "");
+}
+
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");
 {
   const big = (n) => "x".repeat(n);
