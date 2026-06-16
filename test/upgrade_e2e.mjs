@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// upgrade_e2e.mjs — hermetic end-to-end test of `slivr upgrade`.
-// Builds throwaway git repos (a bare "remote" + an "install" checkout of a minimal slivr) so we can
+// upgrade_e2e.mjs — hermetic end-to-end test of `proov upgrade`.
+// Builds throwaway git repos (a bare "remote" + an "install" checkout of a minimal proov) so we can
 // drive the REAL upgrade code through every path without touching the dev tree or the network:
 //   1) already up to date            2) a real version-bumping fast-forward
 //   3) refuses a dirty install        4) refuses an install that's ahead/diverged
@@ -15,14 +15,14 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 let pass = 0, fail = 0;
 const ok = (b, m) => { console.log(`  ${b ? "PASS" : "FAIL"}  ${m}`); b ? pass++ : fail++; };
-const tmp = (s) => fs.mkdtempSync(path.join(os.tmpdir(), "slivr-upg-" + s + "-"));
+const tmp = (s) => fs.mkdtempSync(path.join(os.tmpdir(), "proov-upg-" + s + "-"));
 const git = (cwd, ...a) => execFileSync("git", ["-C", cwd, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const ver = (dir) => JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")).version;
 const setVer = (dir, v) => { const f = path.join(dir, "package.json"); const j = JSON.parse(fs.readFileSync(f, "utf8")); j.version = v; fs.writeFileSync(f, JSON.stringify(j, null, 2)); };
 // run the install's OWN bin (so runUpgrade's ROOT resolves to that install, not the dev tree)
-const upgrade = (install, ...args) => spawnSync("node", [path.join(install, "bin", "slivr.mjs"), "upgrade", ...args], { encoding: "utf8" });
+const upgrade = (install, ...args) => spawnSync("node", [path.join(install, "bin", "proov.mjs"), "upgrade", ...args], { encoding: "utf8" });
 
-// minimal but RUNNABLE slivr: bin + src + package.json (bin imports ../package.json and ../src/*)
+// minimal but RUNNABLE proov: bin + src + package.json (bin imports ../package.json and ../src/*)
 function seedInstall(dir) {
   fs.cpSync(path.join(ROOT, "package.json"), path.join(dir, "package.json"));
   fs.cpSync(path.join(ROOT, "bin"), path.join(dir, "bin"), { recursive: true });

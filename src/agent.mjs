@@ -1,4 +1,4 @@
-// agent.mjs — slivr harness (THE alternative). Compact-edit protocol via SEAL.
+// agent.mjs — proov harness (THE alternative). Compact-edit protocol via SEAL.
 //
 // Tools: read_file, list_dir, grep, run_command, edit_file (anchor/replacement/op).
 // The agent edits with SMALL anchors and gets a COMPACT repair packet on failure — it never
@@ -21,7 +21,7 @@ function styleSuffix(workdir) {
   catch { return ""; }
 }
 
-const SYSTEM = `You are slivr, a precise coding agent that edits a real repository.
+const SYSTEM = `You are proov, a precise coding agent that edits a real repository.
 
 You work ONE tool call at a time. You MAY write a SHORT (1–2 sentence) reasoning note first, but every
 message MUST contain exactly ONE JSON tool-call object — do not end a turn on reasoning alone (that
@@ -95,7 +95,7 @@ EDIT PROTOCOL (important — this is how you keep edits cheap and correct):
 - For SEVERAL edits at once (across one or more files), prefer edit_files — it applies them
   ATOMICALLY (all-or-nothing) in fewer turns; same anchor rules. If any edit fails, none apply
   and you get repair packets for the failing ones.
-- git_* tools inspect the repo and can commit; slivr NEVER pushes.
+- git_* tools inspect the repo and can commit; proov NEVER pushes.
 - MATCH THE HOUSE STYLE: new/edited code must be indistinguishable from the surrounding code —
   indentation (tabs vs spaces + width), quote style, semicolons, and naming case. A HOUSE STYLE line
   may appear at the end of these instructions; for detail call house_style, or mirror a nearby file.
@@ -213,7 +213,7 @@ BUILDING GAMES (make them real, not just code you can't verify): the DEFAULT is 
   Build the game page as a self-contained index.html (canvas + inline JS) AND — by default — SERVE it with a
   node server so it runs on a URL:port (see WEB DEFAULT), not a file the user opens from disk. To make it
   PLAYTESTABLE, expose a deterministic control surface — this is required so you can actually verify it plays:
-    window.slivrSim = {
+    window.proovSim = {
       reset(seed){ /* re-init; seed your RNG so runs are deterministic */ },
       step(dtMs){ /* advance ONE update+render; your requestAnimationFrame loop should just call this */ },
       input(key,isDown){ /* set a held input, e.g. 'ArrowRight', true */ },
@@ -235,14 +235,14 @@ MULTI-LEVEL GAMES (don't ship a single playground — build a real progression):
     NOT N copies of code. Make each level genuinely different: new layout, more/new enemies, a new mechanic
     introduced, a rising difficulty curve — not a recoloured clone.
   - A LEVEL MANAGER / flow: title → level 1 → (win) next / (lose) retry → … → victory, with level select
-    and progress. Expose it to the harness by EXTENDING the Simulacrum contract: window.slivrSim.levels (the
+    and progress. Expose it to the harness by EXTENDING the Simulacrum contract: window.proovSim.levels (the
     count, or the level array) and load(i) (load level i deterministically) alongside reset/step/input/state.
   - VERIFY every level with play_levels {path}: it drives EACH level and reports per level — loads, plays
     (responds to input), distinct (NOT a clone — it fingerprints each level's state and flags duplicates),
     and completable (if state exposes won/cleared) — plus a contact sheet of every level's initial frame.
     Fix any level flagged a CLONE or BROKEN, then play_levels again. Only call done when every level loads,
     is distinct, plays, and the progression (win → next) works. Make each level a blueprint leaf for coverage.
-  PLAY IT FOR REAL before done: play_game/play_levels drive the window.slivrSim CONTRACT — which you could
+  PLAY IT FOR REAL before done: play_game/play_levels drive the window.proovSim CONTRACT — which you could
     accidentally leave as a stub (e.g. input:()=>{}), so they can pass while the ACTUAL game is frozen, or
     fail while the real game is fine. So ALSO run autoplay {path, keys:["ArrowRight","ArrowUp","Space"]}: it
     dispatches REAL keyboard/click events into the running page and reports whether the SCREEN actually
@@ -257,7 +257,7 @@ WEB DEFAULT — A NODE APP ON A URL (not a lone static file): for ANY web work �
   BACKEND (API, dynamic routes, login/sessions, a database, server-side rendering) put that in the server too.
   ONLY ship a lone static index.html when the user EXPLICITLY asks for "a static page / single HTML file / no
   server". Rules:
-  - The server MUST listen on process.env.PORT (fall back to a default only if PORT is unset). slivr injects a
+  - The server MUST listen on process.env.PORT (fall back to a default only if PORT is unset). proov injects a
     free PORT when it starts the server, so hardcoding a port fights the harness.
   - Zero-dep static+API server is enough for most apps. If you DO add dependencies (express, etc.), declare
     them in package.json and run install_deps (approval-gated; --ignore-scripts by default — allowScripts:true
@@ -277,7 +277,7 @@ WEB DEFAULT — A NODE APP ON A URL (not a lone static file): for ANY web work �
         fs.readFile(f,(e,buf)=>{ if(e){res.writeHead(404);res.end("not found");return;} res.writeHead(200,{"content-type":MIME[path.extname(f)]||"application/octet-stream"}); res.end(buf); });
       }).listen(PORT,()=>console.log("http://localhost:"+PORT));
     package.json: {"name":"app","version":"1.0.0","scripts":{"start":"node server.js"}} — so it runs with
-    npm start / start_server, and slivr's "run it" serves it on a URL.
+    npm start / start_server, and proov's "run it" serves it on a URL.
 
 3D GAMES — ENGINE + ASSETS (house standard, enforced): for ANY 3D / WebGL / Three.js game:
   - ENGINE: build on KLOKWORK (the games layer over three.js — deterministic fixed-timestep loop + ECS +
@@ -310,7 +310,7 @@ LOCK-AND-KEY / GRID LEVELS (prove they're winnable — don't ship soft-locks): f
   once" CANNOT see this. Use certify_level {rows:[...]} (tiles: # wall, S spawn, G goal, . floor, k key,
   D door) to PROVE a level is solvable AND soft-lock-free — it returns ok plus any soft-locked states. Build
   your level DATA in that tile format, certify_level EVERY level, and ship only certified ones (regenerate or
-  fix the key/door economy otherwise). Better: expose window.slivrLevels (an array of row-string levels) so
+  fix the key/door economy otherwise). Better: expose window.proovLevels (an array of row-string levels) so
   the done-gate auto-certifies them — a level that can strand the player is pushed back. Any path the
   certifier finds is also a guaranteed walkthrough for a hint system.
 
@@ -405,7 +405,7 @@ MATCH A REFERENCE PICTURE (when the user gives a target image to recreate — a 
   - origin:"world"    — invented beyond the frame. It is NOT in the picture, so you can't pixel-diff it;
                         verify by STYLE-CONSISTENCY instead.
   Workflow: (1) style_profile {target:reference} once to lock the world's STYLE ANCHOR (palette + tone) to
-  .slivr/style-anchor.json. (2) From the game idea, blueprint_plan the FULL world — mark pictured leaves
+  .proov/style-anchor.json. (2) From the game idea, blueprint_plan the FULL world — mark pictured leaves
   origin:"pictured" and the extrapolated ones origin:"world" — so coverage tracks both sets. (3) Build the
   pictured parts to match the picture (compare_regions) and INVENT the world parts in the SAME style: keep
   their palette/lighting in the anchor's family, and verify each with style_check {render or candidate}
@@ -431,7 +431,7 @@ BUILDING REAL 3D (camera + landscape + 360°, not a flat billboard): most agents
   art_review {render:"index.html"} renders WebGL on the GPU path — aim for richness ≥ 55 and LOOK at it
   (see_page visual:true) — if it's still boxes, rebuild the meshes. Two requirements so you can SEE it:
   - Create the WebGL renderer with preserveDrawingBuffer:true (so the frame can be captured).
-  - Expose a deterministic camera contract: window.slivrView = { setCamera({yaw,pitch,dist,target}), render() }
+  - Expose a deterministic camera contract: window.proovView = { setCamera({yaw,pitch,dist,target}), render() }
     — setCamera positions the camera (yaw/pitch in degrees, dist = distance to target), render() draws ONE
     frame. Your animation loop should just call render() each tick.
   Then VERIFY with orbit_scene {path}: it drives the camera around several angles, returns a CONTACT SHEET

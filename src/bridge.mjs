@@ -1,7 +1,7 @@
 // bridge.mjs — the agent-to-agent bridge (Block 22 "Sentinel"): lets ANOTHER agent (e.g. "Hermes") drive
-// slivr NON-STOP without a human. Zero new deps — the transport is just stdout + the filesystem:
-//   • OUT: a machine-readable NDJSON event stream (one JSON object per line) of everything slivr does.
-//   • IN:  an append-only control file the controller writes; slivr polls it between turns (tracking a byte
+// proov NON-STOP without a human. Zero new deps — the transport is just stdout + the filesystem:
+//   • OUT: a machine-readable NDJSON event stream (one JSON object per line) of everything proov does.
+//   • IN:  an append-only control file the controller writes; proov polls it between turns (tracking a byte
 //          offset so it only reads NEW lines) and appends an "ack" for each command it applies.
 // Steering is applied ONLY in the inter-turn window (never mid tool-call), so a half-done edit is never
 // mangled. This sits alongside the interactive REPL — it adds a mode, it does not replace anything.

@@ -5,7 +5,7 @@
     {
       "task": "validate-3-funcs",
       "kind": "small-multi",
-      "harness": "slivr",
+      "harness": "proov",
       "success": true,
       "turns": 7,
       "editFailures": 0,
@@ -33,7 +33,7 @@
     {
       "task": "add-endpoint",
       "kind": "small-multi",
-      "harness": "slivr",
+      "harness": "proov",
       "success": true,
       "turns": 8,
       "editFailures": 0,
@@ -61,7 +61,7 @@
     {
       "task": "fix-offbyone",
       "kind": "small-single",
-      "harness": "slivr",
+      "harness": "proov",
       "success": true,
       "turns": 7,
       "editFailures": 0,
@@ -89,8 +89,8 @@
   ],
   "summary": {
     "model": "anthropic/claude-sonnet-4",
-    "slivr": {
-      "harness": "slivr",
+    "proov": {
+      "harness": "proov",
       "n": 3,
       "successRate": 1,
       "successes": 3,

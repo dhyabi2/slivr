@@ -1,11 +1,11 @@
-// run-scaled.mjs — SCALED, statistically-honest head-to-head: slivr (compact-edit) vs a
+// run-scaled.mjs — SCALED, statistically-honest head-to-head: proov (compact-edit) vs a
 // Claude-Code-style full-rewrite baseline, SAME model on both sides, oracle-judged, with
 // REPS per (task,harness) to quantify LLM nondeterminism.
 //
 // env:
 //   MODEL       (default google/gemini-2.5-flash)
 //   REPS        (default 3) repetitions per (task,harness)
-//   SLIVR_TASKS (csv subset of task ids; else all)
+//   PROOV_TASKS (csv subset of task ids; else all)
 //   MAX_STEPS   (default 16) — the baseline's runaway-context cap; hitting it on large files is
 //               the failure mode we are measuring.
 //   COST_CAP    (USD) — if cumulative spend across this run exceeds it, STOP launching new runs
@@ -33,7 +33,7 @@ const modelSlug = MODEL.replace(/[\/:]/g, "-");
 const OUT = process.env.OUT || `results-scaled-${modelSlug}.json`;
 
 function seedWorkdir(task) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `slivr-${task.id}-`));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `proov-${task.id}-`));
   const files = genSeed(task.seed);
   for (const [rel, content] of Object.entries(files)) {
     const abs = path.join(dir, rel);
@@ -111,7 +111,7 @@ function summarize(rows) {
 }
 
 async function main() {
-  const subset = process.env.SLIVR_TASKS ? process.env.SLIVR_TASKS.split(",") : null;
+  const subset = process.env.PROOV_TASKS ? process.env.PROOV_TASKS.split(",") : null;
   const tasks = subset ? TASKS.filter(t => subset.includes(t.id)) : TASKS;
   const rows = [];
   let cumCost = 0, stopped = false, stoppedReason = null;
@@ -121,7 +121,7 @@ async function main() {
   outer:
   for (const task of tasks) {
     for (let rep = 0; rep < REPS; rep++) {
-      for (const [harness, runner] of [["slivr", runAgent], ["baseline", runBaseline]]) {
+      for (const [harness, runner] of [["proov", runAgent], ["baseline", runBaseline]]) {
         if (cumCost > COST_CAP) {
           stopped = true;
           stoppedReason = `cumulative cost $${cumCost.toFixed(4)} exceeded cap $${COST_CAP} before [${task.id}/${harness}/rep${rep}]`;
@@ -137,7 +137,7 @@ async function main() {
     }
   }
 
-  const ccaltRows = rows.filter(r => r.harness === "slivr");
+  const ccaltRows = rows.filter(r => r.harness === "proov");
   const baseRows = rows.filter(r => r.harness === "baseline");
 
   // per-regime breakdown
@@ -148,7 +148,7 @@ async function main() {
     const cas = summarize(ca), bls = summarize(bl);
     const costSavedPct = bls.cost.mean > 0 ? +((1 - cas.cost.mean / bls.cost.mean) * 100).toFixed(1) : null;
     const tokSavedPct = bls.tokens.mean > 0 ? +((1 - cas.tokens.mean / bls.tokens.mean) * 100).toFixed(1) : null;
-    return { regime: k, slivr: cas, baseline: bls, costSavedPct, tokenSavedPct: tokSavedPct };
+    return { regime: k, proov: cas, baseline: bls, costSavedPct, tokenSavedPct: tokSavedPct };
   });
 
   // per-task breakdown (useful for the report appendix)
@@ -158,14 +158,14 @@ async function main() {
     const sl = seedLines(t.seed);
     return {
       task: t.id, kind: t.kind, maxFileLines: sl.maxFileLines, files: sl.files,
-      slivr: ca.length ? summarize(ca) : null,
+      proov: ca.length ? summarize(ca) : null,
       baseline: bl.length ? summarize(bl) : null,
     };
   });
 
-  const overall = { slivr: summarize(ccaltRows), baseline: summarize(baseRows) };
+  const overall = { proov: summarize(ccaltRows), baseline: summarize(baseRows) };
   const aggCostSavedPct = overall.baseline.cost.total > 0
-    ? +((1 - overall.slivr.cost.total / overall.baseline.cost.total) * 100).toFixed(1) : null;
+    ? +((1 - overall.proov.cost.total / overall.baseline.cost.total) * 100).toFixed(1) : null;
 
   const out = {
     startedAt, finishedAt: new Date().toISOString(), model: MODEL, reps: REPS, maxSteps: MAX_STEPS,
@@ -181,14 +181,14 @@ async function main() {
   // print summary
   console.log(`\n================ SCALED HEAD-TO-HEAD (${MODEL}, reps=${REPS}) ================`);
   console.log(`harness    succ      cost/run(mean±sd)        tokens/run(mean±sd)     runaway`);
-  for (const h of ["slivr", "baseline"]) {
+  for (const h of ["proov", "baseline"]) {
     const s = overall[h];
-    console.log(`${(h === "slivr" ? "slivr" : "baseline").padEnd(10)} ${(s.successes + "/" + s.n).padEnd(9)} $${s.cost.mean.toFixed(5)}±${s.cost.stddev.toFixed(5)}   ${String(Math.round(s.tokens.mean)).padStart(7)}±${String(Math.round(s.tokens.stddev)).padStart(7)}   ${s.runawayCount}/${s.n}`);
+    console.log(`${(h === "proov" ? "proov" : "baseline").padEnd(10)} ${(s.successes + "/" + s.n).padEnd(9)} $${s.cost.mean.toFixed(5)}±${s.cost.stddev.toFixed(5)}   ${String(Math.round(s.tokens.mean)).padStart(7)}±${String(Math.round(s.tokens.stddev)).padStart(7)}   ${s.runawayCount}/${s.n}`);
   }
-  if (aggCostSavedPct != null) console.log(`\nAGGREGATE: slivr ${aggCostSavedPct}% cheaper; success slivr ${(overall.slivr.successRate*100).toFixed(0)}% vs baseline ${(overall.baseline.successRate*100).toFixed(0)}%`);
-  console.log(`\nPER-REGIME (mean cost/run, % saved by slivr):`);
+  if (aggCostSavedPct != null) console.log(`\nAGGREGATE: proov ${aggCostSavedPct}% cheaper; success proov ${(overall.proov.successRate*100).toFixed(0)}% vs baseline ${(overall.baseline.successRate*100).toFixed(0)}%`);
+  console.log(`\nPER-REGIME (mean cost/run, % saved by proov):`);
   for (const r of byRegime) {
-    console.log(`  ${r.regime.padEnd(14)} slivr=$${r.slivr.cost.mean.toFixed(5)} base=$${r.baseline.cost.mean.toFixed(5)} saved=${r.costSavedPct}%  | succ slivr ${r.slivr.successes}/${r.slivr.n} base ${r.baseline.successes}/${r.baseline.n}  | base runaway ${r.baseline.runawayCount}/${r.baseline.n}`);
+    console.log(`  ${r.regime.padEnd(14)} proov=$${r.proov.cost.mean.toFixed(5)} base=$${r.baseline.cost.mean.toFixed(5)} saved=${r.costSavedPct}%  | succ proov ${r.proov.successes}/${r.proov.n} base ${r.baseline.successes}/${r.baseline.n}  | base runaway ${r.baseline.runawayCount}/${r.baseline.n}`);
   }
   if (stopped) console.log(`\n!! RUN STOPPED EARLY: ${stoppedReason}`);
   console.log(`\nwrote ${outPath} (cumulative spend this run: $${cumCost.toFixed(4)})`);

@@ -49,7 +49,7 @@ console.log("== 1. SEAL compact edit protocol ==");
 }
 
 console.log("== 2. tool sandbox ==");
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "slivr-"));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "proov-"));
 {
   fs.writeFileSync(path.join(tmp, "f.js"), "export const N = 1;\nexport const M = 2;\n");
   const t = new Tools(tmp);
@@ -120,7 +120,7 @@ console.log("== 4. config resolution / merge precedence ==");
     flags: { model: "flag/model" },
     local: { model: "local/model", approval: "all" },
     home: { model: "home/model", maxSteps: 5 },
-    env: { MODEL: "env/model", SLIVR_MAX_TOKENS: "999" },
+    env: { MODEL: "env/model", PROOV_MAX_TOKENS: "999" },
   });
   ok("flags beat all", r.config.model === "flag/model", r.config.model);
   ok("local beats home (approval)", r.config.approval === "all");
@@ -135,9 +135,9 @@ console.log("== 4. config resolution / merge precedence ==");
   ok("empty model ignored -> default", s.config.model === DEFAULTS.model);
   ok("unknown key dropped", s.config.junk === undefined);
 
-  // env key precedence: SLIVR_MODEL over MODEL
-  const e = resolveConfig({ env: { MODEL: "a", SLIVR_MODEL: "b" } });
-  ok("SLIVR_MODEL overrides MODEL", e.config.model === "b");
+  // env key precedence: PROOV_MODEL over MODEL
+  const e = resolveConfig({ env: { MODEL: "a", PROOV_MODEL: "b" } });
+  ok("PROOV_MODEL overrides MODEL", e.config.model === "b");
 }
 
 console.log("== 5. destructive-command blocklist ==");
@@ -491,13 +491,13 @@ console.log("== 15. skills: discovery + arg substitution (no LLM) ==");
 
   // discovery from a temp project dir (project shadows user is exercised by 'project wins' ordering)
   const proj = fs.mkdtempSync(path.join(os.tmpdir(), "ccskills-"));
-  fs.mkdirSync(path.join(proj, ".slivr", "skills"), { recursive: true });
-  fs.writeFileSync(path.join(proj, ".slivr", "skills", "echo.md"), "# Echo\n<!-- description: echoes -->\nSay: $ARGS");
-  fs.writeFileSync(path.join(proj, ".slivr", "skills", "noop.md"), "do nothing");
+  fs.mkdirSync(path.join(proj, ".proov", "skills"), { recursive: true });
+  fs.writeFileSync(path.join(proj, ".proov", "skills", "echo.md"), "# Echo\n<!-- description: echoes -->\nSay: $ARGS");
+  fs.writeFileSync(path.join(proj, ".proov", "skills", "noop.md"), "do nothing");
   const map = discoverSkills(proj);
   ok("discoverSkills finds project skills", map.has("echo") && map.has("noop"));
   ok("discovered skill has name+description+body", map.get("echo").description === "echoes" && map.get("echo").body === "Say: $ARGS");
-  // listSkills merges project + user (~/.slivr/skills) skills; assert it's globally name-sorted and the
+  // listSkills merges project + user (~/.proov/skills) skills; assert it's globally name-sorted and the
   // project skills appear in order (robust to any real user skills present — don't assume an empty dir).
   const lsNames = listSkills(proj).map(s => s.name);
   ok("listSkills sorted by name", lsNames.includes("echo") && lsNames.includes("noop") && lsNames.indexOf("echo") < lsNames.indexOf("noop") && lsNames.join(",") === [...lsNames].sort().join(","));
@@ -549,7 +549,7 @@ console.log("== 16. jobs + schedule store + duration parsing (no LLM) ==");
   ok("dueJobs returns only past+non-running", due.length === 1 && due[0].id === "a");
 
   // tickScheduler with an injected spawner (no real child process): fires due, reschedules cron,
-  // marks once done. Uses the REAL schedule file under a temp HOME so we don't touch ~/.slivr.
+  // marks once done. Uses the REAL schedule file under a temp HOME so we don't touch ~/.proov.
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "cchome-"));
   const realHome = process.env.HOME;
   process.env.HOME = fakeHome;
@@ -618,7 +618,7 @@ console.log("== 18. scheduler service: pidfile + group/prune (no real daemon) ==
   const sched = await import("./src/scheduler.mjs");
   const jobs = await import("./src/jobs.mjs");
 
-  // run pidfile + prune tests under a temp HOME so we don't touch the user's ~/.slivr
+  // run pidfile + prune tests under a temp HOME so we don't touch the user's ~/.proov
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "ccsched-"));
   const realHome = process.env.HOME;
   process.env.HOME = fakeHome;
@@ -742,20 +742,20 @@ console.log("== 19. robustness: malformed model output + oversized clipping (no 
 
 console.log("== 20. robustness: malformed config/skill/job never crash + web_search usage shape ==");
 {
-  // malformed .slivr.json -> loadConfig falls back to defaults, no throw
+  // malformed .proov.json -> loadConfig falls back to defaults, no throw
   const { loadConfig } = await import("./src/config.mjs");
   const badProj = fs.mkdtempSync(path.join(os.tmpdir(), "ccbad-"));
-  fs.writeFileSync(path.join(badProj, ".slivr.json"), "{ this is : not valid json ,,, }");
+  fs.writeFileSync(path.join(badProj, ".proov.json"), "{ this is : not valid json ,,, }");
   let cfgThrew = false, cfg;
   try { cfg = loadConfig({ cwd: badProj, env: {} }); } catch { cfgThrew = true; }
-  ok("malformed .slivr.json does not crash loadConfig", !cfgThrew && cfg && cfg.config.model);
+  ok("malformed .proov.json does not crash loadConfig", !cfgThrew && cfg && cfg.config.model);
 
   // malformed skill file -> discoverSkills skips it, keeps the good ones
   const { discoverSkills } = await import("./src/skills.mjs");
-  fs.mkdirSync(path.join(badProj, ".slivr", "skills"), { recursive: true });
-  fs.writeFileSync(path.join(badProj, ".slivr", "skills", "good.md"), "# Good\n<!-- description: fine -->\nDo $ARGS");
+  fs.mkdirSync(path.join(badProj, ".proov", "skills"), { recursive: true });
+  fs.writeFileSync(path.join(badProj, ".proov", "skills", "good.md"), "# Good\n<!-- description: fine -->\nDo $ARGS");
   // a directory named like a skill file would make readFileSync throw EISDIR -> must be skipped
-  fs.mkdirSync(path.join(badProj, ".slivr", "skills", "broken.md"));
+  fs.mkdirSync(path.join(badProj, ".proov", "skills", "broken.md"));
   let skillThrew = false, skills;
   try { skills = discoverSkills(badProj); } catch { skillThrew = true; }
   ok("malformed skill entry skipped, good skill kept", !skillThrew && skills.has("good") && !skills.has("broken"));
@@ -966,7 +966,7 @@ console.log("== 24. repo symbol index — find_symbol / repo_map (Block 3) ==");
   ok("extract: ignores JS keywords as methods", !extractSymbols("  if (x) {\n", "js").length);
   ok("extract: skips indented local consts", !extractSymbols("function f(){\n  const local = 1;\n}", "js").some(s => s.name === "local"));
 
-  // index slivr's OWN source, then jump to known definitions
+  // index proov's OWN source, then jump to known definitions
   const idx = buildSymbolIndex("src");
   ok("index: found a meaningful number of symbols", idx.symbols.length > 100, "n=" + idx.symbols.length);
   const probes = { runLoop: "loop.mjs", needsApproval: "safety.mjs", renderDiff: "diff.mjs", buildSymbolIndex: "repomap.mjs", Session: "agent.mjs" };
@@ -1304,9 +1304,9 @@ console.log("== 33. project_info — auto-detect test/run/build (gap #1) ==");
   const empty = mk({ "README.md": "# x" });
   ok("project: no manifest → nothing detected (graceful)", !detectCommands(empty).test && !detectCommands(empty).run);
 
-  // tool wiring + slivr's OWN repo detects npm test
+  // tool wiring + proov's OWN repo detects npm test
   const tt = new Tools(path.resolve("."));
-  ok("tool: project_info wired + detects slivr's npm test", tt.project_info().test === "npm test");
+  ok("tool: project_info wired + detects proov's npm test", tt.project_info().test === "npm test");
 
   for (const d of [node, go, rust, py, make, empty]) fs.rmSync(d, { recursive: true, force: true });
 }
@@ -1352,9 +1352,9 @@ console.log("== 35. play_game — drive + observe a running game (Block 15, keys
   const { buildHarness } = await import("./src/gameharness.mjs");
   const { findBrowser } = await import("./src/eye.mjs");
 
-  // buildHarness injects a driver that calls window.slivrSim and writes a result marker
+  // buildHarness injects a driver that calls window.proovSim and writes a result marker
   const h = buildHarness("<html><body><h1>g</h1></body></html>", { steps: 50, inputs: [{ at: 0, key: "ArrowRight", down: true }] });
-  ok("harness: injects the slivrSim driver", /window\.slivrSim/.test(h) && /__slivr_out/.test(h) && /<\/body>/.test(h));
+  ok("harness: injects the proovSim driver", /window\.proovSim/.test(h) && /__proov_out/.test(h) && /<\/body>/.test(h));
   ok("harness: embeds the input timeline + step count", /ArrowRight/.test(h) && /STEPS=50/.test(h));
 
   // REAL drive — only if a headless browser is installed (skipped cleanly otherwise).
@@ -1363,7 +1363,7 @@ console.log("== 35. play_game — drive + observe a running game (Block 15, keys
     fs.writeFileSync(path.join(d, "g.html"),
       "<!doctype html><html><body><canvas id=c width=320 height=80></canvas><script>" +
       "let x=10,score=0,over=false,right=false;" +
-      "window.slivrSim={reset(s){x=10;score=0;over=false;right=false;},step(dt){if(over)return;if(right){x+=2;score++;}if(x>200)over=true;},input(k,dn){if(k==='ArrowRight')right=dn;},state(){return{x:Math.round(x),score,over};}};" +
+      "window.proovSim={reset(s){x=10;score=0;over=false;right=false;},step(dt){if(over)return;if(right){x+=2;score++;}if(x>200)over=true;},input(k,dn){if(k==='ArrowRight')right=dn;},state(){return{x:Math.round(x),score,over};}};" +
       "</script></body></html>");
     const t = new Tools(d);
     const r = t.play_game({ path: "g.html", inputs: [{ at: 0, key: "ArrowRight", down: true }], steps: 150 });
@@ -1373,7 +1373,7 @@ console.log("== 35. play_game — drive + observe a running game (Block 15, keys
     ok("play_game: attaches a final-frame screenshot", !!r.multimodal && r.multimodal.kind === "image");
     // a game WITHOUT the contract reports it (still tries a screenshot)
     fs.writeFileSync(path.join(d, "nostate.html"), "<html><body><h1>no sim</h1></body></html>");
-    ok("play_game: flags a game with no slivrSim contract", t.play_game({ path: "nostate.html", steps: 10 }).played === false);
+    ok("play_game: flags a game with no proovSim contract", t.play_game({ path: "nostate.html", steps: 10 }).played === false);
     fs.rmSync(d, { recursive: true, force: true });
   } else {
     ok("play_game: (no browser installed — live drive skipped)", true);
@@ -1419,7 +1419,7 @@ console.log("== 37. blueprint — plan-the-whole-build, zero-abstraction, 100% c
     { title: "Level 1", children: [{ title: "tilemap", leafType: "data" }] },
   ];
   const plan = t.blueprint_plan({ goal: "a 2D platformer", tree });
-  ok("blueprint_plan: locks the tree and persists it", plan.ok && plan.coverage.totalLeaves === 3 && fs.existsSync(path.join(d, ".slivr", "blueprint.json")));
+  ok("blueprint_plan: locks the tree and persists it", plan.ok && plan.coverage.totalLeaves === 3 && fs.existsSync(path.join(d, ".proov", "blueprint.json")));
   ok("blueprint_plan: requires goal + tree", t.blueprint_plan({}).ok === false && t.blueprint_plan({ goal: "x" }).ok === false);
 
   const st = t.blueprint_status();
@@ -1550,7 +1550,7 @@ console.log("== 40. style_profile + style_check — extrapolate beyond the frame
     w("offstyle.png", 'ctx.fillStyle="#120024";ctx.fillRect(0,0,W,H);ctx.fillStyle="#ff2fd0";ctx.fillRect(40,40,120,120);ctx.fillStyle="#00f0ff";ctx.fillRect(70,70,60,60);', "#120024");
 
     const prof = tt.style_profile({ target: "reference.png" });
-    ok("style_profile: extracts a palette + tone and persists the anchor", prof.ok && Array.isArray(prof.palette) && prof.palette.length > 0 && fs.existsSync(path.join(d, ".slivr", "style-anchor.json")));
+    ok("style_profile: extracts a palette + tone and persists the anchor", prof.ok && Array.isArray(prof.palette) && prof.palette.length > 0 && fs.existsSync(path.join(d, ".proov", "style-anchor.json")));
 
     const inS = tt.style_check({ candidate: "instyle.png" });
     const offS = tt.style_check({ candidate: "offstyle.png" });
@@ -1575,7 +1575,7 @@ console.log("== 41. orbit_scene + world_map — real 3D camera + outer-world dis
     const t = new Tools(d);
     ok("world_map: errors before seeding", t.world_map({ action: "add", name: "x" }).error === "NO_WORLD");
     const seed = t.world_map({ action: "seed", name: "Town (reference)", description: "the starting town" });
-    ok("world_map: seeds the origin from the reference", seed.ok && fs.existsSync(path.join(d, ".slivr", "world-map.json")));
+    ok("world_map: seeds the origin from the reference", seed.ok && fs.existsSync(path.join(d, ".proov", "world-map.json")));
     const n = t.world_map({ action: "add", name: "North Mountains", fromId: "r0", direction: "n", description: "snow peaks" });
     ok("world_map: adds a neighbouring region by direction", n.ok && n.coverage.regions === 2 && n.at[0] === 0 && n.at[1] === -1);
     ok("world_map: rejects an occupied cell", t.world_map({ action: "add", name: "dup", fromId: "r0", direction: "n" }).error === "CELL_OCCUPIED");
@@ -1596,7 +1596,7 @@ var pr=gl.createProgram();gl.attachShader(pr,vs);gl.attachShader(pr,fsh);gl.link
 var b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0.7,-0.7,-0.5,0.7,-0.5]),gl.STATIC_DRAW);
 var loc=gl.getAttribLocation(pr,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
 var aLoc=gl.getUniformLocation(pr,'a');
-window.slivrView={setCamera:function(s){this._a=${responsive ? "(s.yaw||0)*Math.PI/180" : "0"};},render:function(){gl.clearColor(0.1,0.5,0.7,1);gl.clear(gl.COLOR_BUFFER_BIT);gl.uniform1f(aLoc,this._a||0);gl.drawArrays(gl.TRIANGLES,0,3);}};
+window.proovView={setCamera:function(s){this._a=${responsive ? "(s.yaw||0)*Math.PI/180" : "0"};},render:function(){gl.clearColor(0.1,0.5,0.7,1);gl.clear(gl.COLOR_BUFFER_BIT);gl.uniform1f(aLoc,this._a||0);gl.drawArrays(gl.TRIANGLES,0,3);}};
 </script></body></html>`;
     fs.writeFileSync(path.join(d, "scene.html"), glScene(true));
     fs.writeFileSync(path.join(d, "flat.html"), glScene(false));
@@ -1667,7 +1667,7 @@ console.log("== 43. play_levels — multi-level: load, distinct (anti-clone), pl
 
   // harness injects the level-iterating driver + the extended contract marker
   const h = buildLevelsHarness("<html><body><canvas></canvas></body></html>", { steps: 30 });
-  ok("levels harness: injects the level driver reading slivrSim.levels + load(i)", /slivrSim/.test(h) && /__slivr_levels/.test(h) && /STEPS=30/.test(h));
+  ok("levels harness: injects the level driver reading proovSim.levels + load(i)", /proovSim/.test(h) && /__proov_levels/.test(h) && /STEPS=30/.test(h));
 
   ok("play_levels: requires a path", new Tools(tmp).play_levels({}).error === "NO_PATH");
 
@@ -1679,14 +1679,14 @@ console.log("== 43. play_levels — multi-level: load, distinct (anti-clone), pl
       "<!doctype html><html><body><canvas id=c width=240 height=80></canvas><script>" +
       "var LV=[{x:10,goal:100},{x:30,goal:180},{x:5,goal:60}];var x=10,goal=100,won=false,right=false,cur=0;" +
       "function draw(){var ctx=document.getElementById('c').getContext('2d');ctx.fillStyle=['#123','#231','#312'][cur%3];ctx.fillRect(0,0,240,80);ctx.fillStyle='#fd0';ctx.fillRect(x,30,12,12);}" +
-      "window.slivrSim={levels:LV.length,load:function(i){cur=i;x=LV[i].x;goal=LV[i].goal;won=false;right=false;draw();},step:function(dt){if(won)return;if(right)x+=3;if(x>=goal)won=true;draw();},input:function(k,dn){if(k==='ArrowRight')right=dn;},state:function(){return{x:Math.round(x),won:won,level:cur};}};" +
-      "window.slivrSim.load(0);</script></body></html>");
+      "window.proovSim={levels:LV.length,load:function(i){cur=i;x=LV[i].x;goal=LV[i].goal;won=false;right=false;draw();},step:function(dt){if(won)return;if(right)x+=3;if(x>=goal)won=true;draw();},input:function(k,dn){if(k==='ArrowRight')right=dn;},state:function(){return{x:Math.round(x),won:won,level:cur};}};" +
+      "window.proovSim.load(0);</script></body></html>");
     // 3 CLONED levels (load ignores i — all identical except the level index)
     fs.writeFileSync(path.join(d, "clone.html"),
       "<!doctype html><html><body><canvas id=c width=240 height=80></canvas><script>" +
       "var x=10,goal=100,won=false,right=false,cur=0;function draw(){var ctx=document.getElementById('c').getContext('2d');ctx.fillStyle='#123';ctx.fillRect(0,0,240,80);ctx.fillStyle='#fd0';ctx.fillRect(x,30,12,12);}" +
-      "window.slivrSim={levels:3,load:function(i){cur=i;x=10;goal=100;won=false;right=false;draw();},step:function(dt){if(right)x+=3;if(x>=goal)won=true;draw();},input:function(k,dn){if(k==='ArrowRight')right=dn;},state:function(){return{x:Math.round(x),won:won,level:cur};}};" +
-      "window.slivrSim.load(0);</script></body></html>");
+      "window.proovSim={levels:3,load:function(i){cur=i;x=10;goal=100;won=false;right=false;draw();},step:function(dt){if(right)x+=3;if(x>=goal)won=true;draw();},input:function(k,dn){if(k==='ArrowRight')right=dn;},state:function(){return{x:Math.round(x),won:won,level:cur};}};" +
+      "window.proovSim.load(0);</script></body></html>");
 
     const good = t.play_levels({ path: "good.html", steps: 80 });
     ok("play_levels: drives all levels + attaches a contact sheet", good.ok && good.count === 3 && !!good.multimodal);
@@ -1695,7 +1695,7 @@ console.log("== 43. play_levels — multi-level: load, distinct (anti-clone), pl
     // THE KEY PROPERTY: cloned levels (identical but for the index) are caught as non-distinct.
     ok("play_levels: catches CLONED levels (the usual multi-level failure)", clone.ok && clone.count === 3 && clone.uniqueLevels === 1 && clone.clones.length === 3 && clone.allDistinct === false);
 
-    fs.writeFileSync(path.join(d, "nolevels.html"), "<!doctype html><html><body><canvas></canvas><script>window.slivrSim={step:function(){},state:function(){return{};}};</script></body></html>");
+    fs.writeFileSync(path.join(d, "nolevels.html"), "<!doctype html><html><body><canvas></canvas><script>window.proovSim={step:function(){},state:function(){return{};}};</script></body></html>");
     ok("play_levels: reports a game with no levels contract", t.play_levels({ path: "nolevels.html" }).error === "NO_LEVELS_CONTRACT");
     fs.rmSync(d, { recursive: true, force: true });
   } else {
@@ -2175,11 +2175,11 @@ console.log("== 61. level-solvability certifier — prove lock-and-key levels ar
   ok("certify_level: many levels via {levels:[...]}", (() => { const r = t.certify_level({ levels: [GOOD, TRAP] }); return r.ok === false && r.certified === 1 && r.failures.length === 1; })());
   ok("certify_level: no level → NO_LEVEL; missing S/G → NO_SPAWN_OR_GOAL", t.certify_level({}).error === "NO_LEVEL" && t.certify_level({ rows: ["#####", "#...#", "#####"] }).results[0].error === "NO_SPAWN_OR_GOAL");
 
-  // DONE-GATE integration: a game that exposes window.slivrLevels gets each level certified (browser).
+  // DONE-GATE integration: a game that exposes window.proovLevels gets each level certified (browser).
   const { findBrowser } = await import("./src/eye.mjs");
   if (findBrowser()) {
     const mkProv = (script) => { let i = 0; return { model: "m", chat: async () => ({ text: JSON.stringify(script[i++] || { tool: "done", args: {} }), usage: {}, raw: {} }), totals: () => ({ model: "m", calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 }) }; };
-    const withLevels = (lvls) => COMPLETE_GAME.replace("loop();</script>", "loop();window.slivrLevels=" + JSON.stringify(lvls) + ";</script>");
+    const withLevels = (lvls) => COMPLETE_GAME.replace("loop();</script>", "loop();window.proovLevels=" + JSON.stringify(lvls) + ";</script>");
     // structurally-complete game that ALSO exposes a SOFT-LOCKED level → pushed back once, then accepted.
     const db = fs.mkdtempSync(path.join(os.tmpdir(), "lcg-")); const tb = new Tools(db);
     fs.writeFileSync(path.join(db, "index.html"), withLevels([TRAP]));
@@ -2190,11 +2190,11 @@ console.log("== 61. level-solvability certifier — prove lock-and-key levels ar
     fs.writeFileSync(path.join(dgd, "index.html"), withLevels([GOOD]));
     const rgd = await runLoop({ provider: mkProv([{ tool: "done", args: {} }]), tools: tgd, toolMap: {}, systemPrompt: "s", task: "make a lock and key dungeon", maxSteps: 8 });
     ok("levelcert gate: a game exposing only clean levels passes (no false block)", !rgd.trace.some((x) => x.levelCert) && rgd.done && rgd.turns === 1);
-    // a game WITHOUT the slivrLevels contract is never level-gated (opt-in).
+    // a game WITHOUT the proovLevels contract is never level-gated (opt-in).
     const dn = fs.mkdtempSync(path.join(os.tmpdir(), "lcg3-")); const tn = new Tools(dn);
     fs.writeFileSync(path.join(dn, "index.html"), COMPLETE_GAME);
     const rn = await runLoop({ provider: mkProv([{ tool: "done", args: {} }]), tools: tn, toolMap: {}, systemPrompt: "s", task: "make a platformer", maxSteps: 8 });
-    ok("levelcert gate: a game without window.slivrLevels is not level-gated", !rn.trace.some((x) => x.levelCert) && rn.done);
+    ok("levelcert gate: a game without window.proovLevels is not level-gated", !rn.trace.some((x) => x.levelCert) && rn.done);
     fs.rmSync(db, { recursive: true, force: true }); fs.rmSync(dgd, { recursive: true, force: true }); fs.rmSync(dn, { recursive: true, force: true });
   } else {
     ok("levelcert gate: (no browser — live skipped)", true);
@@ -2228,7 +2228,18 @@ console.log("== 62. node servers — run a generated app on a URL:port, verify o
       ok("see_page {url}: renders a served page (post-JS visible text)", page.ok === true && /Hello from Node/.test(page.rendered || ""));
     } else { ok("see_page {url}: (no browser — live skipped)", true); }
     const stopped = t.stop_server({});
-    ok("stop_server: kills the server and frees the port", stopped.ok === true && (await t.http_request({ url: s.url + "/api/health", timeoutMs: 1200 })).ok === false);
+    const netMod = await import("node:net");
+    // verify the port is freed by POLLING a raw socket connect until it's refused (the kill is async, and a
+    // fetch to a just-killed server trips a flaky Node-26 undici setTypeOfService bug unrelated to proov).
+    const portFree = await new Promise((res) => {
+      const deadline = Date.now() + 2500;
+      (function tryc() {
+        const sock = netMod.connect(s.port, "127.0.0.1");
+        sock.once("connect", () => { sock.destroy(); if (Date.now() > deadline) res(false); else setTimeout(tryc, 150); });
+        sock.once("error", () => { sock.destroy(); res(true); });
+      })();
+    });
+    ok("stop_server: kills the server and frees the port", stopped.ok === true && portFree === true);
   } else {
     ok("http_request: (server didn't start — skipped)", true);
     ok("see_page {url}: (server didn't start — skipped)", true);
@@ -2313,7 +2324,7 @@ console.log("== 64. harness-over-HTTP — verify a SERVED game over http like a 
   await proxy.close(); await target.close();
 
   if (findBrowser()) {
-    const respondGame = '<canvas id=c width=240 height=160></canvas><script>var x=document.getElementById("c").getContext("2d"),px=20,keys={};addEventListener("keydown",function(e){keys[e.key]=true;});function loop(){if(keys["ArrowRight"])px+=4;x.fillStyle="#7ec8f0";x.fillRect(0,0,240,160);x.fillStyle="#b33";x.beginPath();x.arc(px,80,12,0,7);x.fill();requestAnimationFrame(loop);}loop();window.slivrLevels=[["#######","#S.D.G#","#.k...#","###D###","#..G..#","#######"]];</script>';
+    const respondGame = '<canvas id=c width=240 height=160></canvas><script>var x=document.getElementById("c").getContext("2d"),px=20,keys={};addEventListener("keydown",function(e){keys[e.key]=true;});function loop(){if(keys["ArrowRight"])px+=4;x.fillStyle="#7ec8f0";x.fillRect(0,0,240,160);x.fillStyle="#b33";x.beginPath();x.arc(px,80,12,0,7);x.fill();requestAnimationFrame(loop);}loop();window.proovLevels=[["#######","#S.D.G#","#.k...#","###D###","#..G..#","#######"]];</script>';
     const frozenGame = '<canvas id=c width=240 height=160></canvas><script>var x=document.getElementById("c").getContext("2d");function loop(){x.fillStyle="#234";x.fillRect(0,0,240,160);requestAnimationFrame(loop);}loop();</script>';
     const page = (body) => (q, r) => { r.writeHead(200, { "content-type": "text/html" }); r.end("<html><body>" + body + "</body></html>"); };
 
@@ -2321,7 +2332,7 @@ console.log("== 64. harness-over-HTTP — verify a SERVED game over http like a 
     const ap = await autoPlayUrl(s1.url, { keys: ["ArrowRight"], holdMs: 400 });
     ok("autoPlayUrl: a SERVED game that responds → responds:true over HTTP", ap.ok === true && ap.responds === true && ap.maxChange > 3);
     const lv = await extractLevelsUrl(s1.url);
-    ok("extractLevelsUrl: reads window.slivrLevels from a SERVED page", Array.isArray(lv) && lv.length === 1);
+    ok("extractLevelsUrl: reads window.proovLevels from a SERVED page", Array.isArray(lv) && lv.length === 1);
     const cap = path.join(os.tmpdir(), `served-${process.pid}.png`);
     const sh = await screenshotWebGLUrl(s1.url, cap);
     ok("screenshotWebGLUrl: captures a SERVED canvas over HTTP", sh.ok === true && fs.existsSync(cap) && fs.statSync(cap).size > 200);
@@ -2365,7 +2376,7 @@ console.log("== 65. 3D asset source — vgsds-only enforcement + klokwork/vgsds 
 
   // the two new local skills are discoverable + parse.
   const { parseSkill } = await import("./src/skills.mjs");
-  const skDir = path.join(os.homedir(), ".slivr", "skills");
+  const skDir = path.join(os.homedir(), ".proov", "skills");
   const haveSkill = (n) => { try { const p = parseSkill(fs.readFileSync(path.join(skDir, n + ".md"), "utf8")); return p.description.length > 20; } catch { return false; } };
   ok("skills: klokwork-threejs + vgsds-3d-assets skills are present and parse", haveSkill("klokwork-threejs") && haveSkill("vgsds-3d-assets"));
 }
@@ -2557,6 +2568,32 @@ console.log("== 71. token-cost levers — cache accounting + TTL, truncate logs,
     ok("capture: a 1200px canvas is downscaled to ≤768 long edge", sh.ok && dim <= 768);
     fs.rmSync(d, { recursive: true, force: true });
   } else { ok("capture: (no browser — live skipped)", true); }
+}
+
+console.log("== 72. rebrand slivr → proov — back-compat shim still reads the old names (Block 52) ==");
+{
+  const { loadConfig, resolveConfig } = await import("./src/config.mjs");
+  const { skillDirs } = await import("./src/skills.mjs");
+  // env shim: old SLIVR_* vars are honored when the new PROOV_* aren't set (isolated from real config files).
+  const viaOld = resolveConfig({ env: { SLIVR_MODEL: "old/model", SLIVR_APPROVAL: "auto" } });
+  const viaNew = resolveConfig({ env: { PROOV_MODEL: "new/model", SLIVR_MODEL: "old/model" } });
+  ok("rebrand: old SLIVR_* env vars still work; PROOV_* wins when both set", viaOld.config.model === "old/model" && viaOld.config.approval === "auto" && viaNew.config.model === "new/model");
+  // config-file shim: a dir with only the OLD .slivr.json is still read (loadConfig reads the home config too,
+  // so just assert the local .slivr.json is picked up by checking a key the home config doesn't override).
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "rb-"));
+  fs.writeFileSync(path.join(d, ".slivr.json"), JSON.stringify({ model: "from-old-file", approval: "all" }));
+  const oldFile = loadConfig({ env: {}, cwd: d });
+  ok("rebrand: an existing .slivr.json is still read when no .proov.json exists", oldFile.config.model === "from-old-file" && oldFile.config.approval === "all");
+  // the new .proov.json takes precedence when present.
+  fs.writeFileSync(path.join(d, ".proov.json"), JSON.stringify({ model: "from-new-file" }));
+  ok("rebrand: .proov.json takes precedence over .slivr.json", loadConfig({ env: {}, cwd: d }).config.model === "from-new-file");
+  fs.rmSync(d, { recursive: true, force: true });
+  // skills shim: both .proov and the old .slivr skill dirs are searched.
+  const dirs = skillDirs("/x");
+  ok("rebrand: skillDirs searches BOTH .proov and the old .slivr dirs", dirs.some((p) => /\.proov[\\/]skills$/.test(p)) && dirs.some((p) => /\.slivr[\\/]skills$/.test(p)));
+  // runtime-contract shim: a game exposing the OLD window.slivrSim is still detected as a game.
+  const { isGameHtml } = await import("./src/loop.mjs");
+  ok("rebrand: a game on the OLD window.slivrSim contract is still recognized", isGameHtml('<canvas></canvas><script>window.slivrSim={step(){}};requestAnimationFrame(x)</script>') === true && isGameHtml('<canvas></canvas><script>window.proovSim={step(){}};requestAnimationFrame(x)</script>') === true);
 }
 
 console.log("== 56. rolling context compression — elide old reconstructable results (Block 34) ==");

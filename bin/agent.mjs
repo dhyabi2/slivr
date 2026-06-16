@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // CLI: node bin/agent.mjs "<task>" <repoDir> [--baseline]
-// Runs the slivr harness (or the Claude-Code-style baseline with --baseline) on a real repo.
+// Runs the proov harness (or the Claude-Code-style baseline with --baseline) on a real repo.
 
 import { runAgent } from "../src/agent.mjs";
 import { runBaseline } from "../src/baseline.mjs";
@@ -18,7 +18,7 @@ if (!task || !repoDir) {
 }
 
 const run = useBaseline ? runBaseline : runAgent;
-const label = useBaseline ? "baseline (Claude-Code-style)" : "slivr (compact-edit)";
+const label = useBaseline ? "baseline (Claude-Code-style)" : "proov (compact-edit)";
 console.error(`[${label}] model=${process.env.MODEL || "google/gemini-2.5-flash"} repo=${repoDir}`);
 
 const res = await run(task, repoDir, {

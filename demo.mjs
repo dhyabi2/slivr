@@ -1,5 +1,5 @@
 // demo.mjs — live end-to-end on ONE fixture repo. Seeds a fresh copy of the large-file task
-// (where the compact-edit win is biggest), runs slivr and the baseline, runs the oracle, prints
+// (where the compact-edit win is biggest), runs proov and the baseline, runs the oracle, prints
 // the side-by-side. Real LLM via OpenRouter (MODEL env, default google/gemini-2.5-flash).
 //
 //   node demo.mjs            # default task = fix-bug-largefile
@@ -25,7 +25,7 @@ function genLargeFile() {
   return s;
 }
 function seed() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "slivr-demo-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-demo-"));
   if (task.seed.__generate === "largefile") {
     fs.mkdirSync(path.join(dir, "src"), { recursive: true });
     fs.writeFileSync(path.join(dir, "src", "math.js"), genLargeFile());
@@ -38,7 +38,7 @@ function seed() {
 function oracle(dir) { try { execSync(task.oracle, { cwd: dir, timeout: 15000, stdio: "ignore", shell: "/bin/bash" }); return true; } catch { return false; } }
 
 console.log(`DEMO  task=${task.id}  model=${MODEL}\n`);
-for (const [name, run] of [["slivr (compact-edit)", runAgent], ["baseline (Claude-Code-style)", runBaseline]]) {
+for (const [name, run] of [["proov (compact-edit)", runAgent], ["baseline (Claude-Code-style)", runBaseline]]) {
   const dir = seed();
   console.log(`--- ${name} ---`);
   const res = await run(task.task, dir, { maxSteps: 16, onStep: ({ step, tool, result }) =>

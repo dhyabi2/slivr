@@ -1,6 +1,6 @@
 // config.mjs — layered configuration with explicit precedence.
 //
-//   flags  >  ./.slivr.json (local)  >  ~/.slivr.json (home)  >  env  >  defaults
+//   flags  >  ./.proov.json (local)  >  ~/.proov.json (home)  >  env  >  defaults
 //
 // Keys: model, apiKey, baseUrl, approval ('auto'|'edits'|'all'), maxSteps, maxTokensPerTurn.
 // resolveConfig() is PURE given its inputs (you inject the file loaders + env), so it's testable
@@ -61,16 +61,18 @@ const KNOWN_KEYS = Object.keys(DEFAULTS);
 // a higher-priority undefined with an empty string). MODEL kept for back-compat with the old CLI.
 function fromEnv(env) {
   const out = {};
+  // BACK-COMPAT: read PROOV_* but fall back to the old SLIVR_* names so existing setups keep working.
+  const v = (k) => env["PROOV_" + k] ?? env["SLIVR_" + k];
   if (env.MODEL) out.model = env.MODEL;
-  if (env.SLIVR_MODEL) out.model = env.SLIVR_MODEL;
-  if (env.SLIVR_EDIT_MODEL) out.editModel = env.SLIVR_EDIT_MODEL;
-  if (env.SLIVR_VERIFY_MODEL) out.verifyModel = env.SLIVR_VERIFY_MODEL;
+  if (v("MODEL")) out.model = v("MODEL");
+  if (v("EDIT_MODEL")) out.editModel = v("EDIT_MODEL");
+  if (v("VERIFY_MODEL")) out.verifyModel = v("VERIFY_MODEL");
   if (env.OPENROUTER_API_KEY) out.apiKey = env.OPENROUTER_API_KEY;
-  if (env.SLIVR_API_KEY) out.apiKey = env.SLIVR_API_KEY;
-  if (env.SLIVR_BASE_URL) out.baseUrl = env.SLIVR_BASE_URL;
-  if (env.SLIVR_APPROVAL) out.approval = env.SLIVR_APPROVAL;
-  if (env.SLIVR_MAX_STEPS) { const ms = parseMaxSteps(env.SLIVR_MAX_STEPS); if (ms !== null) out.maxSteps = ms; }
-  if (env.SLIVR_MAX_TOKENS) out.maxTokensPerTurn = Number(env.SLIVR_MAX_TOKENS);
+  if (v("API_KEY")) out.apiKey = v("API_KEY");
+  if (v("BASE_URL")) out.baseUrl = v("BASE_URL");
+  if (v("APPROVAL")) out.approval = v("APPROVAL");
+  if (v("MAX_STEPS")) { const ms = parseMaxSteps(v("MAX_STEPS")); if (ms !== null) out.maxSteps = ms; }
+  if (v("MAX_TOKENS")) out.maxTokensPerTurn = Number(v("MAX_TOKENS"));
   return out;
 }
 
@@ -111,8 +113,8 @@ export function resolveConfig({ flags = {}, local = {}, home = {}, env = {} } = 
   const layers = [
     { name: "default", data: DEFAULTS },
     { name: "env", data: sanitize(fromEnv(env), "env", warn) },
-    { name: "home", data: sanitize(home, "~/.slivr.json", warn) },
-    { name: "local", data: sanitize(local, "./.slivr.json", warn) },
+    { name: "home", data: sanitize(home, "~/.proov.json", warn) },
+    { name: "local", data: sanitize(local, "./.proov.json", warn) },
     { name: "flags", data: sanitize(flags, "flags", warn) },
   ];
   const config = {};
@@ -140,14 +142,17 @@ function readJSONSafe(file, warn) {
 // Wire resolveConfig to the real environment. cwd defaults to process.cwd().
 export function loadConfig({ flags = {}, cwd = process.cwd(), env = process.env } = {}) {
   const fileWarnings = [];
-  const localPath = path.join(cwd, ".slivr.json");
-  const homePath = path.join(os.homedir(), ".slivr.json");
-  const local = readJSONSafe(localPath, (m) => fileWarnings.push(m));
-  const home = readJSONSafe(homePath, (m) => fileWarnings.push(m));
+  const localPath = path.join(cwd, ".proov.json");
+  const homePath = path.join(os.homedir(), ".proov.json");
+  // BACK-COMPAT: prefer the new .proov.json, but fall back to the old .slivr.json when the new one is absent,
+  // so an existing config keeps working after the rebrand.
+  const oldLocal = path.join(cwd, ".slivr.json"), oldHome = path.join(os.homedir(), ".slivr.json");
+  const local = readJSONSafe(fs.existsSync(localPath) ? localPath : oldLocal, (m) => fileWarnings.push(m));
+  const home = readJSONSafe(fs.existsSync(homePath) ? homePath : oldHome, (m) => fileWarnings.push(m));
   // Portable key fallback: if no key in env, read OPENROUTER_API_KEY from a cwd .env/.env.local
-  // so `slivr config` reflects the SAME key the provider will actually use (no silent mismatch).
+  // so `proov config` reflects the SAME key the provider will actually use (no silent mismatch).
   let env2 = env;
-  if (!env.OPENROUTER_API_KEY && !env.SLIVR_API_KEY) {
+  if (!env.OPENROUTER_API_KEY && !env.PROOV_API_KEY && !env.SLIVR_API_KEY) {
     const k = readDotenvKey(cwd);
     if (k) env2 = { ...env, OPENROUTER_API_KEY: k };
   }
@@ -185,7 +190,7 @@ export const STARTER_CONFIG = {
 };
 
 export function writeStarterConfig(cwd = process.cwd()) {
-  const target = path.join(cwd, ".slivr.json");
+  const target = path.join(cwd, ".proov.json");
   if (fs.existsSync(target)) return { ok: false, error: "EXISTS", path: target };
   fs.writeFileSync(target, JSON.stringify(STARTER_CONFIG, null, 2) + "\n");
   return { ok: true, path: target };

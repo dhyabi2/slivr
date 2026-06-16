@@ -1,5 +1,5 @@
 // run_hint.mjs — anticipate intent (Blocks 9 & 10): when a turn CREATES a runnable/user-facing
-// artifact, slivr both TELLS the user how to run it AND can actually DEMONSTRATE it (open a web app in
+// artifact, proov both TELLS the user how to run it AND can actually DEMONSTRATE it (open a web app in
 // the browser, run a program in the terminal). A prompt can ask the model to do this; this guarantees
 // it — so "make a game / app" never ends with the user holding code they can't see. Zero dependencies.
 
@@ -62,7 +62,7 @@ export function runHintLine(dir, createdPaths = []) {
 }
 
 // Scan the workdir (and common subfolders) for an EXISTING launchable artifact — used when the user
-// says "run it" / "open in browser" so slivr can launch what was built in a previous turn. Prefers a
+// says "run it" / "open in browser" so proov can launch what was built in a previous turn. Prefers a
 // web page (most "showable"). Returns a launch descriptor or null.
 export function findArtifact(dir, { preferWeb = false } = {}) {
   const found = [];
@@ -78,7 +78,7 @@ export function findArtifact(dir, { preferWeb = false } = {}) {
   return detectRunHint(dir, found);
 }
 
-// Recognize a short "show me the result" request (run / open / play / "run in browser") so slivr can
+// Recognize a short "show me the result" request (run / open / play / "run in browser") so proov can
 // LAUNCH the artifact itself rather than handing it to the model. Strict so it never hijacks a real
 // task: only bare imperatives about a generic result, optionally "in (the) browser". Returns
 // { browser } | null. "run the tests", "open src/x.js", etc. do NOT match.

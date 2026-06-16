@@ -2,7 +2,7 @@
 
 Eighteenth feature — the answer to "agents can't build a game/scene that actually LOOKS LIKE a target
 picture." They produce something loosely related, never a faithful match, because they never *measure*
-the rendered result against the reference. slivr now closes that loop: read the picture into a plan, build
+the rendered result against the reference. proov now closes that loop: read the picture into a plan, build
 it, then **diff the render against the target** and refine the worst regions until it matches.
 
 ## The challenge, decomposed
@@ -22,7 +22,7 @@ it, then **diff the render against the target** and refine the worst regions unt
 - Facet 6 (image → spec): the *light* form — the existing vision model reads the picture into elements +
   palette + style → feeds `blueprint_plan` (Block 17).
 - **Exclusion round** removed the two killers — *heavy 3D reconstruction/material inference* and *training
-  custom vision/diffusion models* — leaving a lightweight design that reuses what slivr already has.
+  custom vision/diffusion models* — leaving a lightweight design that reuses what proov already has.
 
 ## What was built — `compare_image` (`src/match.mjs`)
 A diff that runs **inside the system's headless Chrome** (reuses `eye.mjs`); both images are embedded as
@@ -50,7 +50,7 @@ visual match done on a low score, changing approach if it stops converging. `src
   faithful, *measured* match, not an approximation.
 
 ## Why it disrupts
-Other agents eyeball a reference and approximate it. slivr turns the picture into a covered plan and then
+Other agents eyeball a reference and approximate it. proov turns the picture into a covered plan and then
 holds its own output up against the target — a deterministic score plus a heatmap the model reads — and
 refines the exact regions that are off. Composes with the Blueprint (plan a leaf per element) and the Asset
 Studio (build each sprite, look at it): plan it, build it, prove it matches.

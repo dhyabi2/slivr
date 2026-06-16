@@ -3,7 +3,7 @@
 Sixteenth feature — the answer to "you fixed movement, but not the visuals." Block 15 let the agent
 *drive* a game; it still drew **programmer art**. The reason is the same blind spot, one layer over:
 agents emit visual code (sprites, icons, logos, textures) they have **never looked at**. A human artist
-draws, *steps back to look*, judges silhouette/proportion/color, and fixes it. slivr now does the same.
+draws, *steps back to look*, judges silhouette/proportion/color, and fixes it. proov now does the same.
 
 ## The challenge (researched) and the brainstorm
 Professional 2D/3D asset creation is hard for agents on several axes — smooth **organic shapes** (not

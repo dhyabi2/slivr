@@ -39,7 +39,7 @@ receives exactly the same text — only a cache boundary is added.
 - Gemini (the default model) is left untouched and continues to cache automatically server-side.
 
 ## Why it disrupts
-Most agents pay full price to re-send the same big system prompt every single turn. slivr marks the stable
+Most agents pay full price to re-send the same big system prompt every single turn. proov marks the stable
 prefix so it's billed at a fraction — a compression-like win that's lossless and invisible to the model
 (byte-identical text), surfaced honestly in the footer (`N cached`). It composes with everything; it's purely
 a transport optimization in the provider layer.

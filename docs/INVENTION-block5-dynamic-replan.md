@@ -3,12 +3,12 @@
 Fifth feature from the **brainstorm→rank→build→measure** loop.
 
 ## Seed — the gap
-slivr's `plan` was a static list, approved once. When a step failed, the agent had no first-class way
+proov's `plan` was a static list, approved once. When a step failed, the agent had no first-class way
 to **adapt** — it either forced the now-wrong plan or abandoned it. Top agents (Claude Dynamic
 Workflows) treat the plan as a living artifact that re-plans when reality diverges.
 
-## Brainstorm + rank (fresh, slivr-grounded)
-Re-brainstormed against slivr's *existing* `plan` tool (not a rebuild). Winner:
+## Brainstorm + rank (fresh, proov-grounded)
+Re-brainstormed against proov's *existing* `plan` tool (not a rebuild). Winner:
 - **#8 (rating 85)** — upgrade the plan to a living artifact with per-step status; on failure, trigger
   a **localized** re-plan of the remaining steps instead of re-prompting for a whole new plan.
 

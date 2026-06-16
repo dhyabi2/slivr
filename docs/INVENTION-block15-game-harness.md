@@ -11,9 +11,9 @@ a "Simulacrum" deterministic step; the playtest/see ideas (r85/r75) were CDP dri
 zero-dependency harness over the system's headless Chrome — **no CDP/WebSocket**.
 
 ## The Simulacrum contract + play_game
-A slivr-built game exposes a deterministic control surface:
+A proov-built game exposes a deterministic control surface:
 ```js
-window.slivrSim = {
+window.proovSim = {
   reset(seed),         // deterministic re-init (seed the RNG)
   step(dtMs),          // advance ONE update+render (RAF loop just calls this)
   input(key, isDown),  // set a held input, e.g. input('ArrowRight', true)

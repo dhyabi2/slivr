@@ -27,7 +27,7 @@ infer the true goal + unstated success criteria up front, deliver against them, 
    optimize → measure before/after; add feature → wire it in + a way to exercise it. Before `done`,
    self-check, and **never claim success on a command that failed**.
 2. **Guaranteed run-hint (`src/run_hint.mjs`):** a prompt can ASK; this GUARANTEES. After any turn that
-   CREATED a runnable artifact, slivr deterministically prints `▶ run it with: <cmd>` — detected from
+   CREATED a runnable artifact, proov deterministically prints `▶ run it with: <cmd>` — detected from
    what was created (Node start script, `.html` → open, Python `__main__`, Go/Rust/Make/shell). Based
    only on files created this turn, so unrelated edits never produce a misleading hint.
 
@@ -36,7 +36,7 @@ to stop being asked) — announced clearly, and ignored only while an approval p
 
 ## Implementation + tests
 - `src/agent.mjs`: the UNDERSTAND-INTENT system-prompt section. `src/run_hint.mjs`: `detectRunHint` /
-  `runHintLine`. `src/repl.mjs` + `bin/slivr.mjs`: track created files per turn → print the hint; Tab
+  `runHintLine`. `src/repl.mjs` + `bin/proov.mjs`: track created files per turn → print the hint; Tab
   mid-turn fix. `selftest.mjs`: +5 run-hint tests (python/node/html/none/format). Suite 288 → 293.
 - `bench/livecodebench.mjs`: failure classification + a total-cost readout (added while wiring the
   Opus run).

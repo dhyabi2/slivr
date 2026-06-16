@@ -3,7 +3,7 @@
 Twenty-first feature — two challenges at once. **(1)** Most agents ship "3D" games that are actually a flat,
 single fixed view: no camera rig, no terrain, no depth — because they never SEE the scene from more than one
 angle. **(2)** No agent uses a reference picture + an LLM to DISCOVER the world *outside* the frame and build
-it. slivr now does both: it drives a real 3D scene's camera around many angles and SEES each view (WebGL is
+it. proov now does both: it drives a real 3D scene's camera around many angles and SEES each view (WebGL is
 finally capturable headless), and it grows a traversable world map out from the reference tile.
 
 ## The WebGL unlock (the blocker that made this possible)
@@ -20,11 +20,11 @@ through `--dump-dom`, WebGL renders correctly (verified: a drawn triangle's pixe
 - **Challenge 2 — World Inference Graph: 65**: the multimodal LLM reads the reference for "edge-exits"
   (what continues past each border) and "implied features" (haze → mountains beyond), generates connected
   style-consistent regions, re-analyses each for ITS edges, growing an explorable map. (Its assumed diffusion
-  image-generator is dropped — slivr generates tiles *procedurally* in the Block-20 style anchor.)
+  image-generator is dropped — proov generates tiles *procedurally* in the Block-20 style anchor.)
 
 ## What was built
 **Orbit (Challenge 1) — `orbit_scene` (`src/scene3d.mjs`):** a 3D scene exposes a deterministic camera
-contract `window.slivrView = { setCamera({yaw,pitch,dist,target}), render() }` (renderer with
+contract `window.proovView = { setCamera({yaw,pitch,dist,target}), render() }` (renderer with
 `preserveDrawingBuffer:true`). `orbit_scene {path}` injects a driver that polls for the contract (so async
 Three.js-from-CDN scenes are handled), drives the camera through N angles, captures each via WebGL
 `toDataURL`, assembles a **contact sheet** the agent LOOKS at, and reports **`responds`** — whether the view
@@ -55,7 +55,7 @@ features → world_map → style-checked tiles) directives. `src/ui.mjs` adds la
   orthogonal to the tool; the tool's job is to catch precisely that, and it did.)
 
 ## Why it disrupts
-"3D" from other agents is a still frame. slivr builds a real camera rig + landscape and *proves* the world is
+"3D" from other agents is a still frame. proov builds a real camera rig + landscape and *proves* the world is
 3D by orbiting it and seeing parallax/occlusion — and refuses to ship a billboard. And instead of reproducing
 one frame, it treats the picture as the origin of a whole map and discovers the world beyond every edge.
 Composes with the Asset Studio (see each asset), Match/Atlas (fidelity), and Beyond the Frame (style anchor).

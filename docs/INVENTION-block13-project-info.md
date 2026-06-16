@@ -4,7 +4,7 @@ Thirteenth feature — gap #1 from the "existing codebase" assessment, built in 
 measurement that *proved cold-start comprehension is already solved* and *uncovered a CLI bug*.
 
 ## The measurement that framed it
-On an unfamiliar repo (code at root + `lib/`, no `src/`), slivr cold-started correctly: `repo_map` →
+On an unfamiliar repo (code at root + `lib/`, no `src/`), proov cold-started correctly: `repo_map` →
 `grep` → `find_symbol`, locating `/api/exclude` across files (`server.js:46` → `lib/methodology.js:68`)
 in 5 turns / $0.006, without reading every file. So **understanding** an unseen repo is solved (Blocks
 3/6/12). The first attempt *looked* like a failure — but that was a CLI bug (below), not the agent.
@@ -27,15 +27,15 @@ test/run/build command with a confidence score. Zero LLM, pure file inspection.
   confidence-ranked `{ test, run, build, ecosystem }`.
 - `src/tools.mjs`: `project_info` tool so the AGENT learns how to verify/run any repo (no guessing).
 - `src/agent.mjs`: registered + a prompt directive ("call project_info to get the test/run command").
-- `bin/slivr.mjs`: **bare `--verify`** (no value) now auto-detects the test command for verify-repair;
+- `bin/proov.mjs`: **bare `--verify`** (no value) now auto-detects the test command for verify-repair;
   plus the `-p` dir fix.
 - `src/repl.mjs`: "run it" now also runs an **existing project** (via the detected run command), not just
-  artifacts slivr built this session.
+  artifacts proov built this session.
 - `selftest.mjs`: +7 (node/go/rust/python/Makefile/empty + tool wiring). Suite 318 → 325, green.
 
 ## Measured
 - Detector picks the right command across ecosystems (node→`npm test`, go→`go test ./...`,
   rust→`cargo test`, python→`pytest`, Makefile→`make test`); graceful when no manifest.
-- **End-to-end:** `slivr "<task>" --verify` (no value) on an unfamiliar node project →
+- **End-to-end:** `proov "<task>" --verify` (no value) on an unfamiliar node project →
   `auto-verify: npm test` → edit → `✓ verification passed`. verify-repair now works on any repo with no
   flag value.

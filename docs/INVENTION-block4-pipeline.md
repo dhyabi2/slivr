@@ -3,12 +3,12 @@
 Fourth feature from the **brainstorm→rank→build→measure** loop.
 
 ## Seed — the gap
-slivr already had `parallel` (fan out independent sub-agents), but it is **flat**: no dependencies,
+proov already had `parallel` (fan out independent sub-agents), but it is **flat**: no dependencies,
 sub-agents share the workdir (race risk), and no result is passed between them. Real multi-part work
 has order — "design the schema" must finish before "write the model" and "write the migration".
 
-## Brainstorm + rank (fresh, slivr-grounded)
-A focused re-brainstorm (grounded in slivr's *existing* `parallel`, no AST/no extra models) scored far
+## Brainstorm + rank (fresh, proov-grounded)
+A focused re-brainstorm (grounded in proov's *existing* `parallel`, no AST/no extra models) scored far
 higher than the original F4 pool (11–25 → up to **90**). Winner:
 - **#4 (rating 90)** — a `Pipeline` orchestrator over a declarative manifest of subtasks with explicit
   dependencies: build a DAG, run dependency-met tasks concurrently, pass results forward.

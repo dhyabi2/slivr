@@ -1,7 +1,7 @@
-# Invention Block 22 — Sentinel: autonomous agent-to-agent mode (drive slivr with another agent)
+# Invention Block 22 — Sentinel: autonomous agent-to-agent mode (drive proov with another agent)
 
 Twenty-second feature — the answer to "there's no mode for an autonomous agent to use our coding agent."
-Today slivr is human-driven (a REPL). We want another agent ("Hermes") to drive it **non-stop**: hand it a
+Today proov is human-driven (a REPL). We want another agent ("Hermes") to drive it **non-stop**: hand it a
 skill file as the standing directive, let it handle everything with no human prompts, stream a machine-
 readable account of what it's doing, and let the controller **interact mid-run** — inject guidance, redirect,
 or abort — without restarting. Most coding agents don't offer agent-to-agent control. This adds a mode; it
@@ -33,8 +33,8 @@ replaces nothing.
   commands (inject/redirect/answer push a message for the next turn; abort stops; pause blocks while still
   polling), and it emits `turn` / `result` / `done` events. All guarded by `if (bridge)` so every existing
   caller is unchanged.
-- **`bin/slivr.mjs`** — `slivr sentinel "<task>" [dir]` (alias `agent`): builds a Session, wires a bridge
-  (stdout NDJSON + `.slivr/control.jsonl`), auto-approves within guardrails (destructive shell still hard-
+- **`bin/proov.mjs`** — `proov sentinel "<task>" [dir]` (alias `agent`): builds a Session, wires a bridge
+  (stdout NDJSON + `.proov/control.jsonl`), auto-approves within guardrails (destructive shell still hard-
   blocked → a `blocked` event), runs the turn, and emits a terminal `state`. `--skill <name>` uses a skill
   as the directive; `--standing` keeps the agent alive afterwards, awaiting the next directive (a daemon
   Hermes can keep feeding); `--control <file>` overrides the control path.
@@ -44,7 +44,7 @@ replaces nothing.
 - selftest: **395 passed, 0 failed** (was 386; +9) — applyControl/controlToMessage mapping, NDJSON emit,
   byte-offset poll, ack written-and-skipped, malformed-line resilience, no-replay on a fresh session,
   emit-only mode.
-- **Live end-to-end** (gemini-2.5-flash): `slivr sentinel "create a.txt, b.txt, c.txt one at a time"` while a
+- **Live end-to-end** (gemini-2.5-flash): `proov sentinel "create a.txt, b.txt, c.txt one at a time"` while a
   simulated Hermes appended `{"cmd":"inject","text":"also create hermes.txt …"}` to the control file after the
   first result. The event stream showed `start → turn/result (×) → control(applied:inject) → … → done →
   state(done)`, the steering **took effect** (the agent created `hermes.txt` — not in the original task — in
@@ -53,5 +53,5 @@ replaces nothing.
 ## Why it disrupts
 No other CLI coding agent exposes an agent-to-agent control surface: a structured event stream out plus a
 live steering channel in, applied safely between turns. With Sentinel, a higher-level orchestrator can run
-slivr as a non-stop worker — hand it a skill, watch the NDJSON, and inject/redirect/abort on the fly — which
+proov as a non-stop worker — hand it a skill, watch the NDJSON, and inject/redirect/abort on the fly — which
 is exactly what an autonomous system like Hermes needs, while the human REPL keeps working untouched.

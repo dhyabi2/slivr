@@ -1,9 +1,9 @@
-// livecodebench.mjs — run slivr (the agent) against LiveCodeBench code-generation problems and
+// livecodebench.mjs — run proov (the agent) against LiveCodeBench code-generation problems and
 // report pass@1.
 //
 // LiveCodeBench (https://livecodebench.github.io) is a contamination-free coding benchmark of
 // competitive-programming problems (LeetCode / AtCoder / Codeforces) with held-out tests. This
-// harness drives slivr one problem at a time, extracts the generated solution, executes it against
+// harness drives proov one problem at a time, extracts the generated solution, executes it against
 // the problem's test cases (via python3), and computes pass@1 = (#problems where ALL tests pass).
 //
 // IMPORTANT — fidelity / scope:
@@ -85,17 +85,17 @@ function loadProblems(file) {
   });
 }
 
-// ---- driving slivr ----------------------------------------------------------
-// Seed a scratch repo, ask slivr to WRITE solution.py, then read it back. Returns the solution text.
-async function solveWithSlivr(prob, opts) {
+// ---- driving proov ----------------------------------------------------------
+// Seed a scratch repo, ask proov to WRITE solution.py, then read it back. Returns the solution text.
+async function solveWithProov(prob, opts) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `lcb-${prob.id}-`));
   const solPath = path.join(dir, "solution.py");
-  // Note: we do NOT pre-create solution.py — a pre-seeded file forces slivr's edit-anchor path for a
+  // Note: we do NOT pre-create solution.py — a pre-seeded file forces proov's edit-anchor path for a
   // from-scratch write, which is the wrong tool for codegen. Let the agent create_file cleanly.
   const io = prob.func
     ? `This is a function-style problem: implement \`${prob.func}\` (use this starter signature exactly):\n\n${prob.starter || "(no starter provided)"}\n\nPut the full class/function in solution.py.`
     : `This is a standard-IO problem: read input from STDIN and write the answer to STDOUT. Put a runnable script in solution.py.`;
-  // With --repair, slivr's verify-and-repair loop runs solution.py against the tests when the agent
+  // With --repair, proov's verify-and-repair loop runs solution.py against the tests when the agent
   // calls done; on a failing test it gets the failure and must fix solution.py — the whole point.
   const repairNote = opts.repair
     ? ` Your solution.py will be executed against the tests; if a test fails you'll be shown the failing case and must fix solution.py and call done again.`
@@ -210,7 +210,7 @@ async function main() {
   const results = [];
   let solved = 0, totalCost = 0;
   for (const prob of problems) {
-    const sol = opts.mock ? { code: prob.reference || "", cost: 0 } : await solveWithSlivr(prob, opts);
+    const sol = opts.mock ? { code: prob.reference || "", cost: 0 } : await solveWithProov(prob, opts);
     const code = sol.code; totalCost += sol.cost;
     const g = grade(code, prob);
     if (g.pass) solved++;

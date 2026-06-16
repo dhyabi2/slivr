@@ -29,7 +29,7 @@ repeating ~10×).
 
 ### Challenge 1 — session continuity
 - **Journal** (`src/journal.mjs`): `appendJournal` writes a dated handoff (`task / did / files / next`) to
-  `.slivr/journal.md` at the end of every run (one-shot AND each REPL turn). `resumeSummary` reconstructs a
+  `.proov/journal.md` at the end of every run (one-shot AND each REPL turn). `resumeSummary` reconstructs a
   "where you left off" briefing from the persisted blueprint (coverage + next uncovered leaves) + world map
   + git state (uncommitted files, last commit) + the last journal handoff.
 - **`resume` tool + auto-orientation**: the agent can call `resume` to orient itself; the REPL prints a
@@ -44,11 +44,11 @@ repeating ~10×).
   with STUB_EVIDENCE`), in well under 30 turns, after a strong hint. The old consecutive-spin check missed it.
 - **Actionable error:** `blueprint_mark` on a file with a stray `<!-- TODO -->` now returns `at: index.html:2`,
   `marker: TODO`, and the snippet — the agent can fix the exact line.
-- **Continuity (end-to-end):** after a one-shot run, `.slivr/journal.md` holds the handoff, and a new
+- **Continuity (end-to-end):** after a one-shot run, `.proov/journal.md` holds the handoff, and a new
   session's `resume` reconstructs "Last session … / Blueprint X/Y done / next: … / Git: N uncommitted".
 
 ## Why it disrupts
-Other agents start every session blind and thrash on a failing step until they exhaust the budget. slivr
+Other agents start every session blind and thrash on a failing step until they exhaust the budget. proov
 hands itself a briefing on open (resume), records a handoff on close (journal), turns a dead-end failure into
 a file:line fix, and detects the *non-identical* stuck loop that simple repeat-detectors miss — so it picks
 up where it left off and gets unstuck instead of spinning.

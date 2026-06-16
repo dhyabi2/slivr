@@ -5,7 +5,7 @@
     {
       "task": "validate-3-funcs",
       "kind": "small-multi",
-      "harness": "slivr",
+      "harness": "proov",
       "success": true,
       "turns": 5,
       "editFailures": 0,
@@ -33,7 +33,7 @@
     {
       "task": "rename-field",
       "kind": "small-multi",
-      "harness": "slivr",
+      "harness": "proov",
       "success": true,
       "turns": 6,
       "editFailures": 0,
@@ -61,7 +61,7 @@
     {
       "task": "add-endpoint",
       "kind": "small-multi",
-      "harness": "slivr",
+      "harness": "proov",
       "success": true,
       "turns": 3,
       "editFailures": 0,
@@ -89,7 +89,7 @@
     {
       "task": "fix-bug-largefile",
       "kind": "large-single",
-      "harness": "slivr",
+      "harness": "proov",
       "success": true,
       "turns": 3,
       "editFailures": 0,
@@ -117,7 +117,7 @@
     {
       "task": "add-method",
       "kind": "small-single",
-      "harness": "slivr",
+      "harness": "proov",
       "success": true,
       "turns": 3,
       "editFailures": 0,
@@ -145,7 +145,7 @@
     {
       "task": "config-constant",
       "kind": "small-multi",
-      "harness": "slivr",
+      "harness": "proov",
       "success": false,
       "turns": 3,
       "editFailures": 0,
@@ -174,7 +174,7 @@
     {
       "task": "fix-offbyone",
       "kind": "small-single",
-      "harness": "slivr",
+      "harness": "proov",
       "success": true,
       "turns": 9,
       "editFailures": 0,
@@ -202,7 +202,7 @@
     {
       "task": "guard-parse",
       "kind": "medium-single",
-      "harness": "slivr",
+      "harness": "proov",
       "success": true,
       "turns": 3,
       "editFailures": 0,
@@ -230,8 +230,8 @@
   ],
   "summary": {
     "model": "google/gemini-2.5-flash",
-    "slivr": {
-      "harness": "slivr",
+    "proov": {
+      "harness": "proov",
       "n": 8,
       "successes": 7,
       "successRate": 0.875,
@@ -277,5 +277,5 @@
       }
     ]
   },
-  "note": "config-constant slivr row refreshed after adding create_file (removed a 15-edit-failure harness pathology); its remaining oracle failure is a model syntax error, not a harness fault."
+  "note": "config-constant proov row refreshed after adding create_file (removed a 15-edit-failure harness pathology); its remaining oracle failure is a model syntax error, not a harness fault."
 }

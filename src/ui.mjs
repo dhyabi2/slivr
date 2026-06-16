@@ -254,7 +254,7 @@ function shortPath(cwd, max = 48) {
 export function banner({ model, approval, cwd }, palette) {
   const p = palette;
   return [
-    p.bold("slivr") + p.dim(" — interactive coding agent"),
+    p.bold("proov") + p.dim(" — interactive coding agent"),
     p.gray(`model ${model} · approval ${approval}`),
     p.gray(`dir ${shortPath(cwd)}`),
     p.gray("type a request, or /help for commands. /exit to quit."),

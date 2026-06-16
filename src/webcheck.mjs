@@ -48,7 +48,7 @@ export function nodeCheckCode(code, isModule = false) {
   if (!code || !code.trim()) return { ok: true };
   let dir;
   try {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "slivr-check-"));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-check-"));
     const f = path.join(dir, isModule ? "c.mjs" : "c.js");
     fs.writeFileSync(f, code);
     try { execFileSync(NODE, ["--check", f], { stdio: ["ignore", "ignore", "pipe"] }); return { ok: true }; }
@@ -102,17 +102,17 @@ export function checkPageJs(htmlAbs, resolveLocal) {
 // Inject a runtime error capturer and read back any uncaught errors via --dump-dom. Catches runtime
 // SyntaxError/Error/unhandledrejection that static parsing can't. Renders a TEMP copy (never edits the
 // user's file). Returns { ok, errors:[string] }.
-const CAPTURE = `<script>window.__slivrErrs=[];addEventListener('error',function(e){try{__slivrErrs.push((e.message||'error')+(e.filename?(' @'+String(e.filename).split('/').pop()):'')+(e.lineno?(':'+e.lineno):''));}catch(_){}} ,true);addEventListener('unhandledrejection',function(e){try{__slivrErrs.push('unhandledrejection: '+((e.reason&&e.reason.message)||e.reason));}catch(_){}} );</script>`;
+const CAPTURE = `<script>window.__proovErrs=[];addEventListener('error',function(e){try{__proovErrs.push((e.message||'error')+(e.filename?(' @'+String(e.filename).split('/').pop()):'')+(e.lineno?(':'+e.lineno):''));}catch(_){}} ,true);addEventListener('unhandledrejection',function(e){try{__proovErrs.push('unhandledrejection: '+((e.reason&&e.reason.message)||e.reason));}catch(_){}} );</script>`;
 // dumper LAST: POLL (async CDN ES-module games create the canvas + throw their loop error well AFTER the
 // 'load' event, so a fixed delay races them). Dump as soon as an error is captured, or once the canvas has
 // existed long enough to settle — capped at maxWait. Records errors AND whether the canvas is blank (a
 // TypeError-in-the-loop / wrong-camera game renders nothing even when no error fires).
 const dumpScript = (maxWait, checkBlank) => `<script>(function(){
   function blankOf(){if(!${checkBlank})return null;try{var cv=document.querySelector('canvas');if(!cv)return null;var u=cv.toDataURL('image/png');if(u.length<400)return true;var t=document.createElement('canvas');t.width=16;t.height=16;var x=t.getContext('2d');x.drawImage(cv,0,0,16,16);var d=x.getImageData(0,0,16,16).data,same=true;for(var i=4;i<d.length;i+=4){if(Math.abs(d[i]-d[0])+Math.abs(d[i+1]-d[1])+Math.abs(d[i+2]-d[2])>12){same=false;break;}}return same;}catch(_){return null;}}
-  function out(){var el=document.createElement('pre');el.id='__slivr_errs';el.style.display='none';el.textContent=JSON.stringify({errors:window.__slivrErrs||[],blank:blankOf()});document.body.appendChild(el);}
+  function out(){var el=document.createElement('pre');el.id='__proov_errs';el.style.display='none';el.textContent=JSON.stringify({errors:window.__proovErrs||[],blank:blankOf()});document.body.appendChild(el);}
   var waited=0,canvasSeen=0;
   function tick(){
-    if((window.__slivrErrs||[]).length){out();return;}            // an error fired → report now
+    if((window.__proovErrs||[]).length){out();return;}            // an error fired → report now
     if(document.querySelector('canvas')){canvasSeen+=200;if(canvasSeen>=900){out();return;}}  // canvas settled
     waited+=200;if(waited>=${maxWait}){out();return;}
     setTimeout(tick,200);
@@ -131,17 +131,17 @@ export function pageConsoleErrors(htmlAbs, { gl = false } = {}) {
   let injected = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (h) => h + CAPTURE) : (CAPTURE + html);
   injected = /<\/body>/i.test(injected) ? injected.replace(/<\/body>/i, DUMP + "</body>") : injected + DUMP;
   const dir = path.dirname(htmlAbs);
-  const tmp = path.join(dir, `.slivr-webcheck-${process.pid}-${Date.now()}.html`);
+  const tmp = path.join(dir, `.proov-webcheck-${process.pid}-${Date.now()}.html`);
   try {
     fs.writeFileSync(tmp, injected);
     const d = useGL ? renderDomGL(tmp, 14000) : renderDom(tmp);
     if (!d.ok) return { ok: false, errors: [], blank: null };
-    const m = d.dom.match(/<pre id="__slivr_errs"[^>]*>([\s\S]*?)<\/pre>/);
+    const m = d.dom.match(/<pre id="__proov_errs"[^>]*>([\s\S]*?)<\/pre>/);
     let res = { errors: [], blank: null };
     if (m) { try { res = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")); } catch { /* */ } }
     // drop the headless-only bogus "no WebGL context" if it slips through; clean the temp wrapper filename.
     const errors = (res.errors || []).filter((e) => !/Error creating WebGL context/i.test(e))
-      .map((e) => e.replace(/@\.slivr-\w+-\d+-\d+\.html/g, "@" + path.basename(htmlAbs)));
+      .map((e) => e.replace(/@\.proov-\w+-\d+-\d+\.html/g, "@" + path.basename(htmlAbs)));
     return { ok: errors.length === 0, errors, blank: res.blank };
   } catch { return { ok: false, errors: [], blank: null }; }
   finally { try { fs.unlinkSync(tmp); } catch { /* */ } }

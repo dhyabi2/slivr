@@ -41,7 +41,7 @@ try{(function(ctx,W,H){ ${canvas} })(ctx,W,H);}catch(e){document.title='ASSET_ER
 export function renderAsset(spec = {}) {
   if (!spec.svg && !spec.canvas && !spec.html) return { ok: false, error: "NO_ASSET", hint: "pass one of: svg, canvas (draw code), or html" };
   const width = spec.width || 256, height = spec.height || 256;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "slivr-asset-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-asset-"));
   const file = path.join(dir, "asset.html");
   const png = path.join(dir, "asset.png");
   try {

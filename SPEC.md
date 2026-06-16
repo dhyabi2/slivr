@@ -1,4 +1,4 @@
-# slivr — SPEC
+# proov — SPEC
 
 ## What this is
 A **configurable-LLM coding-agent harness** (a real CLI agent that edits real repos) plus a
@@ -27,9 +27,9 @@ plugged in behind a `MODEL` env var.
   ambiguous anchors; returns a repair packet on a miss. No silent wrong-location edits.
 - `src/loop.mjs` — shared tool-use loop. Model emits ONE JSON tool call per turn; harness executes,
   feeds a (truncated) result back; repeats until `done` or the step cap. Tracks turns + edit failures.
-- `src/agent.mjs` — **slivr** harness: system prompt teaching the compact-edit protocol + `edit_file`.
+- `src/agent.mjs` — **proov** harness: system prompt teaching the compact-edit protocol + `edit_file`.
 - `src/baseline.mjs` — **baseline** harness: same loop/tools, system prompt teaching read-whole →
-  write-whole + `write_file`. The ONLY difference from slivr is the edit/context protocol.
+  write-whole + `write_file`. The ONLY difference from proov is the edit/context protocol.
 
 ## Benchmark
 - `bench/tasks.mjs` — 8 real multi-edit tasks across file-size regimes (small-single, small-multi,

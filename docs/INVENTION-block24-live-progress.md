@@ -2,7 +2,7 @@
 
 Twenty-fourth feature — a cross-cutting UX gap in every coding agent: poor progress output. Users can't tell
 what the agent is doing right now, *why* it's doing it, what each step actually accomplished, or how slow a
-step was. slivr now narrates its work clearly: the reasoning (the WHY), a live "doing X…" line before a slow
+step was. proov now narrates its work clearly: the reasoning (the WHY), a live "doing X…" line before a slow
 tool, and a SEMANTIC one-line summary of each result — not a wall of raw tool dumps.
 
 ## The challenge, decomposed
@@ -34,7 +34,7 @@ tool, and a SEMANTIC one-line summary of each result — not a wall of raw tool 
 - **`src/loop.mjs`**: `reasoningProse(text)` pulls the note before the JSON; the loop now times each tool and
   calls an optional `onToolStart({tool,args,reasoning})` before it runs, passing `elapsedMs` + `reasoning` to
   `onStep`. All optional/guarded — existing callers unaffected.
-- **`bin/slivr.mjs`** (one-shot) and **`src/repl.mjs`** (interactive) both wire `makeLiveRenderer` (replacing
+- **`bin/proov.mjs`** (one-shot) and **`src/repl.mjs`** (interactive) both wire `makeLiveRenderer` (replacing
   their scattered, duplicated `extra`-string logic) so the experience is identical and consistent.
 
 ## Measured
@@ -52,6 +52,6 @@ tool, and a SEMANTIC one-line summary of each result — not a wall of raw tool 
   raw dumps.
 
 ## Why it disrupts
-Most agents leave the user guessing — a frozen-looking pause, then a wall of raw output. slivr tells you, at a
+Most agents leave the user guessing — a frozen-looking pause, then a wall of raw output. proov tells you, at a
 glance and honestly: what it's doing, why, what each step produced, and how long it took — on a TTY with a
 live in-place status line, and degrading cleanly to readable lines in logs/CI.

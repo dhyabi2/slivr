@@ -1,6 +1,6 @@
 // baseline.mjs — faithful Claude-Code-STYLE baseline harness.
 //
-// Same model, same tools, same loop as slivr — the ONLY difference is the EDIT/CONTEXT protocol:
+// Same model, same tools, same loop as proov — the ONLY difference is the EDIT/CONTEXT protocol:
 // to change a file the agent uses write_file with the ENTIRE new file content (full rewrite), and
 // it is instructed to re-read the whole file first. There is no compact repair packet; a failed
 // edit just means re-reading and re-writing the full file. This is the naive protocol in wide use.

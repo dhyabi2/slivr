@@ -1,11 +1,11 @@
-# LiveCodeBench runner for slivr
+# LiveCodeBench runner for proov
 
 [LiveCodeBench](https://livecodebench.github.io) is a contamination-free benchmark of competitive-
 programming problems (LeetCode / AtCoder / Codeforces), collected over time and tagged by release
 window so you can evaluate on problems published *after* a model's training cutoff. `release_v6` is
 the newest window.
 
-`bench/livecodebench.mjs` drives **slivr** (the agent) over a set of LiveCodeBench problems, extracts
+`bench/livecodebench.mjs` drives **proov** (the agent) over a set of LiveCodeBench problems, extracts
 the generated `solution.py`, executes it against the problem's tests with `python3`, and reports
 **pass@1** = fraction of problems whose every test passes.
 
@@ -26,7 +26,7 @@ Flags: `--data <file.jsonl>` (one problem per line), `--limit N`, `--model <id>`
 
 ## Verify-and-repair (`--repair N`)
 
-With `--repair N`, the harness wires each problem's tests into slivr's **verify-and-repair loop**:
+With `--repair N`, the harness wires each problem's tests into proov's **verify-and-repair loop**:
 when the agent calls `done`, its `solution.py` is executed against the tests; on a failing test the
 agent is shown the failing case (input / expected / got) and must fix the code and finish again, up
 to `N` times. This is the difference between a blind one-shot agent and a self-correcting one — and
@@ -88,7 +88,7 @@ Two ways to export it:
   JSON). The upstream `private_test_cases` are base64+zlib+**pickle** encoded — pickle can't be
   decoded in Node, so to grade against the hidden tests use the official Python runner. A solution
   can pass public tests and still fail hidden ones, so public-test pass@1 is an **upper bound**.
-- **This benchmarks slivr end-to-end**, not a raw model. The score reflects the agent loop (prompt,
+- **This benchmarks proov end-to-end**, not a raw model. The score reflects the agent loop (prompt,
   tool use, `create_file`, step budget) *and* the model. Raise `--max-steps` for harder problems.
 - **Sample size matters.** A handful of problems is indicative, not authoritative — run the full
   release window (hundreds of problems) for a leaderboard-comparable figure, and note the cost.

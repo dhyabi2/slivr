@@ -3,7 +3,7 @@
 Third feature from the **brainstorm→rank→build→measure** loop.
 
 ## Seed — the gap
-Cursor's edge is repo-wide semantic context; slivr only had `grep`, which returns **every mention** of
+Cursor's edge is repo-wide semantic context; proov only had `grep`, which returns **every mention** of
 a name — the definition buried among all the call sites — forcing the model to read through the noise.
 
 ## Brainstorm + rank (from the 54-idea pool)
@@ -27,10 +27,10 @@ symbol index — no vector DB, no embeddings. Winners:
 - `src/agent.mjs`: registered in both tool maps, added to the system prompt with a "prefer
   find_symbol over grep to locate definitions" note, and to the sub-agent findings set.
 - `selftest.mjs`: +14 tests (multi-language extraction, keyword/local-var filtering, exact-definition
-  resolution on slivr's own source, fuzzy fallback, tool wiring).
+  resolution on proov's own source, fuzzy fallback, tool wiring).
 
 ## Measured result
-Indexing slivr's own `src/` (655 symbols / 18 files), jump-to-definition accuracy and noise vs grep:
+Indexing proov's own `src/` (655 symbols / 18 files), jump-to-definition accuracy and noise vs grep:
 
 | symbol | `find_symbol` | `grep` lines to read |
 |---|---|---|

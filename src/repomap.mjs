@@ -1,6 +1,6 @@
 // repomap.mjs — a zero-dependency repo SYMBOL INDEX (Invention Block 3).
 //
-// Top coding agents (Cursor) lean on a semantic/vector index to locate code; slivr only had grep,
+// Top coding agents (Cursor) lean on a semantic/vector index to locate code; proov only had grep,
 // which returns every mention of a name (definition AND all call sites) and makes the model read
 // through the noise. This builds a precise symbol index by a fast, two-pass, regex-driven scan —
 // no vector DB, no embeddings, no dependencies — so the agent can JUMP to a definition.
@@ -112,7 +112,7 @@ function* walk(dir, root, { maxFiles }) {
 // arbitrarily-large repo near-free — no LLM calls, no embeddings, no vector DB.
 const CACHE_VERSION = 2;
 function cacheFileFor(root, cacheDir) {
-  const dir = cacheDir || path.join(os.homedir(), ".slivr", "index");
+  const dir = cacheDir || path.join(os.homedir(), ".proov", "index");
   const key = crypto.createHash("sha1").update(root).digest("hex").slice(0, 16);
   return { dir, file: path.join(dir, `${key}.json`) };
 }

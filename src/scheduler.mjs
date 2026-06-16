@@ -1,10 +1,10 @@
 // scheduler.mjs — spawn detached background jobs + a simple foreground poller for scheduled jobs.
 //
-// spawnBackground(task,dir): forks a DETACHED slivr one-shot --auto whose output is redirected to
-//   ~/.slivr/jobs/<id>.log; a <id>.json status record tracks queued/running/done/failed. The child
+// spawnBackground(task,dir): forks a DETACHED proov one-shot --auto whose output is redirected to
+//   ~/.proov/jobs/<id>.log; a <id>.json status record tracks queued/running/done/failed. The child
 //   is the *runner* (bin --__bg-run <id>) which flips status to running, then done/failed on exit.
 //
-// runScheduler(): a foreground sleep-loop. Every `intervalMs` it reads ~/.slivr/schedule.json,
+// runScheduler(): a foreground sleep-loop. Every `intervalMs` it reads ~/.proov/schedule.json,
 //   spawns any due jobs in the background, and for cron jobs reschedules the next dueAt; once-jobs
 //   are marked done. HONEST: this is a poller you keep running (or background) — NOT a system
 //   daemon. If the poller isn't running, scheduled jobs don't fire.
@@ -19,7 +19,7 @@ import {
   readSchedule, writeSchedule, dueJobs, nextCron, ccaltHome,
 } from "./jobs.mjs";
 
-const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "slivr.mjs");
+const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "proov.mjs");
 
 // Spawn a detached background job. Returns the job record (status starts "queued"; the child flips
 // it to running/done/failed). The detached child outlives this process.
@@ -51,7 +51,7 @@ export function spawnBackground(task, dir) {
 }
 
 // The runner the detached child executes (bin dispatches `--__bg-run <id>` here). It marks the job
-// running, runs slivr one-shot --auto with output appended to the log, then marks done/failed.
+// running, runs proov one-shot --auto with output appended to the log, then marks done/failed.
 export async function runBackgroundJob(id, { loadConfig, runOneShotInProcess }) {
   const { readJob } = await import("./jobs.mjs");
   const rec = readJob(id);
@@ -60,7 +60,7 @@ export async function runBackgroundJob(id, { loadConfig, runOneShotInProcess }) 
   const lp = logPath(id);
   const log = fs.createWriteStream(lp, { flags: "a" });
   const ts = new Date().toISOString();
-  log.write(`=== slivr bg job ${id} @ ${ts} ===\ntask: ${rec.task}\ndir:  ${rec.dir}\n\n`);
+  log.write(`=== proov bg job ${id} @ ${ts} ===\ntask: ${rec.task}\ndir:  ${rec.dir}\n\n`);
   let code = 0;
   try {
     code = await runOneShotInProcess(rec.task, rec.dir, log);
@@ -83,7 +83,7 @@ export async function runScheduler({ intervalMs = 30000, onTick, daemon = false 
     process.on("SIGTERM", cleanup);
     process.on("SIGINT", cleanup);
   } else {
-    process.stdout.write(`slivr scheduler: polling every ${Math.round(intervalMs / 1000)}s — file: ${path.join(os.homedir(), ".slivr", "schedule.json")}\n`);
+    process.stdout.write(`proov scheduler: polling every ${Math.round(intervalMs / 1000)}s — file: ${path.join(os.homedir(), ".proov", "schedule.json")}\n`);
     process.stdout.write("(this is a simple foreground poller, not a system daemon — run with --daemon to detach.)\n");
   }
   // eslint-disable-next-line no-constant-condition

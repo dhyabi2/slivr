@@ -149,8 +149,8 @@ export function structuralAudit(model, readEvidence = () => null) {
   return findings;
 }
 
-// --- persistence: durable JSON at <dir>/.slivr/blueprint.json -----------------------------------------
-function bpPath(dir) { return path.join(dir, ".slivr", "blueprint.json"); }
+// --- persistence: durable JSON at <dir>/.proov/blueprint.json -----------------------------------------
+function bpPath(dir) { return path.join(dir, ".proov", "blueprint.json"); }
 
 export function loadBlueprint(dir) {
   try { return JSON.parse(fs.readFileSync(bpPath(dir), "utf8")); } catch { return null; }

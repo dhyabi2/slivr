@@ -38,7 +38,7 @@ Validated before building: `--dump-dom` on a buggy page exposed the literal `\n`
 
 ## Measured (the user's exact bug)
 Seeded `index.html` whose JS sets `textContent = "You won!\nGuesses: 3…"` (the `\n` shows literally).
-Asked slivr to check + fix it:
+Asked proov to check + fix it:
 ```
 ✓ see_page index.html        ← the EYE: read the rendered text, saw the literal \n
 ✓ edit index.html            ← fix

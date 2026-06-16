@@ -31,12 +31,12 @@ function region(r, c, g) {
 function compareHtml(targetUrl, candUrl, { box = 256, grid = 8 } = {}) {
   return `<!doctype html><html><body style="margin:0;background:#0b0b0b;font:12px monospace;color:#ddd">
 <div id="wrap" style="display:flex;gap:8px;padding:8px;align-items:flex-start"></div>
-<pre id="__slivr_diff" style="display:none"></pre>
+<pre id="__proov_diff" style="display:none"></pre>
 <img id="t" crossorigin="anonymous" src="${targetUrl}">
 <img id="c" crossorigin="anonymous" src="${candUrl}">
 <script>
 var BOX=${box}, G=${grid};
-function out(o){document.getElementById('__slivr_diff').textContent=JSON.stringify(o);}
+function out(o){document.getElementById('__proov_diff').textContent=JSON.stringify(o);}
 function fit(img){ // scale to fit a BOX x BOX' box preserving aspect of the TARGET
   var w=img.naturalWidth||BOX, h=img.naturalHeight||BOX, s=BOX/Math.max(w,h);
   return {w:Math.max(1,Math.round(w*s)), h:Math.max(1,Math.round(h*s))};
@@ -82,14 +82,14 @@ export function compareImages(targetAbs, candAbs, opts = {}) {
   if (!fs.existsSync(targetAbs)) return { ok: false, error: "TARGET_NOT_FOUND" };
   if (!fs.existsSync(candAbs)) return { ok: false, error: "CANDIDATE_NOT_FOUND" };
   const grid = opts.grid || 8;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "slivr-match-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-match-"));
   const file = path.join(dir, "compare.html");
   const png = path.join(dir, "compare.png");
   try {
     fs.writeFileSync(file, compareHtml(dataUrl(targetAbs), dataUrl(candAbs), { grid }));
     const dom = renderDom(file);
     if (!dom.ok) return { ok: false, error: dom.error };
-    const m = dom.dom.match(/<pre id="__slivr_diff"[^>]*>([\s\S]*?)<\/pre>/);
+    const m = dom.dom.match(/<pre id="__proov_diff"[^>]*>([\s\S]*?)<\/pre>/);
     let res = null;
     if (m) { try { res = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")); } catch { /* */ } }
     if (!res) return { ok: false, error: "DIFF_PARSE_FAILED" };
@@ -112,9 +112,9 @@ function box(b,W,H){var x=px(b.x||0,W),y=px(b.y||0,H),w=px(b.w||0,W),h=px(b.h||0
 
 // --- crop one asset out of an image (the rating-90 mechanic: drawImage the bbox onto a new canvas) -----
 function cropHtml(srcUrl, bbox) {
-  return `<!doctype html><html><body style="margin:0"><img id="s" src="${srcUrl}"><pre id="__slivr_crop" style="display:none"></pre>
+  return `<!doctype html><html><body style="margin:0"><img id="s" src="${srcUrl}"><pre id="__proov_crop" style="display:none"></pre>
 <script>${BBOX_JS}
-function out(o){document.getElementById('__slivr_crop').textContent=JSON.stringify(o);}
+function out(o){document.getElementById('__proov_crop').textContent=JSON.stringify(o);}
 window.addEventListener('load',function(){setTimeout(function(){try{
  var s=document.getElementById('s');if(!s.naturalWidth){out({error:'SRC_LOAD_FAILED'});return;}
  var b=box(${JSON.stringify(bbox)},s.naturalWidth,s.naturalHeight);
@@ -129,13 +129,13 @@ window.addEventListener('load',function(){setTimeout(function(){try{
 // Returns { ok, path, width, height } | { ok:false, error }.
 export function cropImage(srcAbs, bbox, outAbs) {
   if (!fs.existsSync(srcAbs)) return { ok: false, error: "SRC_NOT_FOUND" };
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "slivr-crop-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-crop-"));
   const file = path.join(dir, "crop.html");
   try {
     fs.writeFileSync(file, cropHtml(dataUrl(srcAbs), bbox));
     const dom = renderDom(file);
     if (!dom.ok) return { ok: false, error: dom.error };
-    const m = dom.dom.match(/<pre id="__slivr_crop"[^>]*>([\s\S]*?)<\/pre>/);
+    const m = dom.dom.match(/<pre id="__proov_crop"[^>]*>([\s\S]*?)<\/pre>/);
     let res = null;
     if (m) { try { res = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")); } catch { /* */ } }
     if (!res || res.error) return { ok: false, error: (res && res.error) || "CROP_PARSE_FAILED" };
@@ -152,11 +152,11 @@ export function cropImage(srcAbs, bbox, outAbs) {
 function regionsHtml(targetUrl, candUrl, regions, { box = 480 } = {}) {
   return `<!doctype html><html><body style="margin:0;background:#0b0b0b;font:11px monospace;color:#ddd">
 <div id="wrap" style="display:flex;gap:10px;padding:8px;align-items:flex-start"></div>
-<pre id="__slivr_regions" style="display:none"></pre>
+<pre id="__proov_regions" style="display:none"></pre>
 <img id="t" src="${targetUrl}"><img id="c" src="${candUrl}">
 <script>${BBOX_JS}
 var BOX=${box}, REGIONS=${JSON.stringify(regions)};
-function out(o){document.getElementById('__slivr_regions').textContent=JSON.stringify(o);}
+function out(o){document.getElementById('__proov_regions').textContent=JSON.stringify(o);}
 function fit(img){var w=img.naturalWidth||BOX,h=img.naturalHeight||BOX,s=BOX/Math.max(w,h);return{w:Math.max(1,Math.round(w*s)),h:Math.max(1,Math.round(h*s))};}
 function ctxOf(img,W,H){var cv=document.createElement('canvas');cv.width=W;cv.height=H;var x=cv.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,W,H);x.drawImage(img,0,0,W,H);return x;}
 function maeRegion(ad,bd,W,b){var t=0,n=0;for(var y=b.y;y<b.y+b.h;y++){for(var x=b.x;x<b.x+b.w;x++){var p=(y*W+x)*4;t+=(Math.abs(ad[p]-bd[p])+Math.abs(ad[p+1]-bd[p+1])+Math.abs(ad[p+2]-bd[p+2]))/3;n++;}}return n?t/n:0;}
@@ -191,14 +191,14 @@ export function compareRegions(targetAbs, candAbs, regions, opts = {}) {
   if (!fs.existsSync(targetAbs)) return { ok: false, error: "TARGET_NOT_FOUND" };
   if (!fs.existsSync(candAbs)) return { ok: false, error: "CANDIDATE_NOT_FOUND" };
   if (!Array.isArray(regions) || !regions.length) return { ok: false, error: "NO_REGIONS" };
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "slivr-regions-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-regions-"));
   const file = path.join(dir, "regions.html");
   const png = path.join(dir, "regions.png");
   try {
     fs.writeFileSync(file, regionsHtml(dataUrl(targetAbs), dataUrl(candAbs), regions, opts));
     const dom = renderDom(file);
     if (!dom.ok) return { ok: false, error: dom.error };
-    const m = dom.dom.match(/<pre id="__slivr_regions"[^>]*>([\s\S]*?)<\/pre>/);
+    const m = dom.dom.match(/<pre id="__proov_regions"[^>]*>([\s\S]*?)<\/pre>/);
     let res = null;
     if (m) { try { res = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")); } catch { /* */ } }
     if (!res) return { ok: false, error: "REGIONS_PARSE_FAILED" };
@@ -217,9 +217,9 @@ export function compareRegions(targetAbs, candAbs, regions, opts = {}) {
 // Deterministic in-Chrome style extractor: a dominant colour palette (3D RGB histogram, fixed bins → no
 // nondeterministic clustering) + average brightness/saturation (HSL) + contrast (stddev of lightness).
 function profileHtml(srcUrl) {
-  return `<!doctype html><html><body style="margin:0"><img id="s" src="${srcUrl}"><pre id="__slivr_prof" style="display:none"></pre>
+  return `<!doctype html><html><body style="margin:0"><img id="s" src="${srcUrl}"><pre id="__proov_prof" style="display:none"></pre>
 <script>
-function out(o){document.getElementById('__slivr_prof').textContent=JSON.stringify(o);}
+function out(o){document.getElementById('__proov_prof').textContent=JSON.stringify(o);}
 function rgb2hsl(r,g,b){r/=255;g/=255;b/=255;var mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2,s=0,h=0,d=mx-mn;
  if(d){s=l>0.5?d/(2-mx-mn):d/(mx+mn);}return {h:h,s:s,l:l};}
 window.addEventListener('load',function(){setTimeout(function(){try{
@@ -244,13 +244,13 @@ window.addEventListener('load',function(){setTimeout(function(){try{
 // Extract a style profile { palette:[{rgb,freq}], brightness, saturation, contrast } from an image.
 export function styleProfile(imgAbs) {
   if (!fs.existsSync(imgAbs)) return { ok: false, error: "IMG_NOT_FOUND" };
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "slivr-prof-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-prof-"));
   const file = path.join(dir, "profile.html");
   try {
     fs.writeFileSync(file, profileHtml(dataUrl(imgAbs)));
     const dom = renderDom(file);
     if (!dom.ok) return { ok: false, error: dom.error };
-    const m = dom.dom.match(/<pre id="__slivr_prof"[^>]*>([\s\S]*?)<\/pre>/);
+    const m = dom.dom.match(/<pre id="__proov_prof"[^>]*>([\s\S]*?)<\/pre>/);
     let res = null;
     if (m) { try { res = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")); } catch { /* */ } }
     if (!res || res.error) return { ok: false, error: (res && res.error) || "PROFILE_PARSE_FAILED" };
@@ -296,7 +296,7 @@ export function styleAdherence(anchorProfile, assetAbs) {
   if (!ap.ok) return { ok: false, error: ap.error };
   const score = adherenceScore(anchorProfile, ap.profile);
   let dataUrlOut = null;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "slivr-swatch-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-swatch-"));
   const file = path.join(dir, "swatch.html");
   const png = path.join(dir, "swatch.png");
   try {
@@ -314,9 +314,9 @@ export { hex as hexColor };
 // edge/detail density, and smooth-gradient presence → a 0–100 richness score + a verdict. The agent
 // still LOOKS at the image (the real judge); this gives an objective nudge + closes the "blobs" gap.
 function artHtml(srcUrl) {
-  return `<!doctype html><html><body style="margin:0"><img id="s" src="${srcUrl}"><pre id="__slivr_art" style="display:none"></pre>
+  return `<!doctype html><html><body style="margin:0"><img id="s" src="${srcUrl}"><pre id="__proov_art" style="display:none"></pre>
 <script>
-function out(o){document.getElementById('__slivr_art').textContent=JSON.stringify(o);}
+function out(o){document.getElementById('__proov_art').textContent=JSON.stringify(o);}
 window.addEventListener('load',function(){setTimeout(function(){try{
  var s=document.getElementById('s');if(!s.naturalWidth){out({error:'SRC_LOAD_FAILED'});return;}
  var W=Math.min(200,s.naturalWidth),H=Math.round(W*(s.naturalHeight/s.naturalWidth))||W;
@@ -346,13 +346,13 @@ window.addEventListener('load',function(){setTimeout(function(){try{
 // Rate an image's visual richness. Returns { ok, richness, colors, flatPct, edgePct, gradientPct } | err.
 export function artReview(imgAbs) {
   if (!fs.existsSync(imgAbs)) return { ok: false, error: "IMG_NOT_FOUND" };
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "slivr-art-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-art-"));
   const file = path.join(dir, "art.html");
   try {
     fs.writeFileSync(file, artHtml(dataUrl(imgAbs)));
     const dom = renderDom(file);
     if (!dom.ok) return { ok: false, error: dom.error };
-    const m = dom.dom.match(/<pre id="__slivr_art"[^>]*>([\s\S]*?)<\/pre>/);
+    const m = dom.dom.match(/<pre id="__proov_art"[^>]*>([\s\S]*?)<\/pre>/);
     let res = null;
     if (m) { try { res = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")); } catch { /* */ } }
     if (!res || res.error) return { ok: false, error: (res && res.error) || "ART_PARSE_FAILED" };

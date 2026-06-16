@@ -5,14 +5,14 @@ from a real weakness, research how the best agents win, brainstorm many "better 
 rank them, build the winner as one self-contained block, and **measure** it.
 
 ## 1. Seed — the real challenge
-While building and benchmarking slivr, the standout failure was concrete and measured: on
-[LiveCodeBench](https://livecodebench.github.io) problems, slivr **could not tell its own solution was
+While building and benchmarking proov, the standout failure was concrete and measured: on
+[LiveCodeBench](https://livecodebench.github.io) problems, proov **could not tell its own solution was
 wrong**. It generated code, called `done`, and submitted — blind. It also *stalled*, burning its step
 budget on easy problems without producing anything (since fixed separately). The #1 gap: **no
 self-verification.**
 
 ## 2. Research — why the top agents win
-Claude Code (88.6% SWE-bench Verified), Devin, and Codex all share one trait slivr lacked: they
+Claude Code (88.6% SWE-bench Verified), Devin, and Codex all share one trait proov lacked: they
 **run code, read failures, and iterate**. Cursor adds a repo index; Claude adds sub-agents and dynamic
 workflows. (See the landscape table in the PR description.)
 
@@ -23,7 +23,7 @@ cost-edit), each with typed challenges and a practicality rating.
 
 ## 4. Rank — 3 independent evaluators, weighted rubric
 `weighted = impact*3 + feasibility*2 + reliability_cost*2 + novelty*1` (max 80), scored against
-slivr's real constraints (zero-dependency Node, a cheap small model, the benchmark-proven gaps).
+proov's real constraints (zero-dependency Node, a cheap small model, the benchmark-proven gaps).
 
 | rank | weighted | idea |
 |---|---|---|
@@ -45,8 +45,8 @@ a non-gap and/or break the zero-dependency + single-cheap-model constraints.
   `verified` / `repairs`; an exhausted budget finishes with an explicit "still failing" status, never a
   silent green. Opt-out (no `verify`) leaves behavior byte-for-byte unchanged.
 - `src/agent.mjs`: threads `verify`/`maxRepairs` through `runAgent` and `Session.runTurn`.
-- `bin/slivr.mjs`: `--verify "<cmd>"` (and `--repair N`) — real users get it for free, e.g.
-  `slivr "make tests pass" --auto --verify "npm test"`.
+- `bin/proov.mjs`: `--verify "<cmd>"` (and `--repair N`) — real users get it for free, e.g.
+  `proov "make tests pass" --auto --verify "npm test"`.
 - `bench/livecodebench.mjs`: `--repair N` wires the problem tests in as the verification.
 - `selftest.mjs`: 8 new tests (repairs once and finishes verified; bounded by maxRepairs; no silent
   green; opt-out unchanged).

@@ -1,4 +1,4 @@
-// e2e.mjs — END-TO-END tests: drive the real `slivr` CLI as a subprocess across the major flows.
+// e2e.mjs — END-TO-END tests: drive the real `proov` CLI as a subprocess across the major flows.
 // Deterministic flows always run; LLM-backed flows run only when OPENROUTER_API_KEY is set (cheap,
 // google/gemini-2.5-flash). Exit non-zero on any failure.  Run:  node e2e.mjs
 import { spawnSync } from "node:child_process";
@@ -7,21 +7,21 @@ import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
 
-const BIN = path.resolve("bin/slivr.mjs");
+const BIN = path.resolve("bin/proov.mjs");
 const STUB = path.resolve("test/stub-mcp.mjs");
 const HAS_KEY = !!(process.env.OPENROUTER_API_KEY);
 const env = { ...process.env, MODEL: process.env.MODEL || "google/gemini-2.5-flash" };
 let pass = 0, fail = 0, skip = 0;
 const ok = (b, m) => { console.log(`  ${b ? "PASS" : "FAIL"}  ${m}`); b ? pass++ : fail++; };
 const skipIf = (m) => { console.log(`  SKIP  ${m} (no OPENROUTER_API_KEY)`); skip++; };
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "slivr-e2e-"));
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "proov-e2e-"));
 const run = (args, opts = {}) => spawnSync("node", [BIN, ...args], { encoding: "utf8", env, timeout: opts.timeout || 60000, cwd: opts.cwd || process.cwd() });
 
-console.log("E2E: slivr CLI" + (HAS_KEY ? " (with live LLM flows)" : " (deterministic only)"));
+console.log("E2E: proov CLI" + (HAS_KEY ? " (with live LLM flows)" : " (deterministic only)"));
 
 // 1. version / help / config (deterministic)
 console.log("\n1) CLI basics");
-{ const r = run(["--version"]); ok(r.status === 0 && /slivr/.test(r.stdout), "--version prints slivr"); }
+{ const r = run(["--version"]); ok(r.status === 0 && /proov/.test(r.stdout), "--version prints proov"); }
 { const r = run(["--help"]); ok(/skills/.test(r.stdout) && /schedule/.test(r.stdout) && /mcp/.test(r.stdout), "--help lists skills/schedule/mcp"); }
 { const r = run(["config"]); ok(/model/.test(r.stdout), "config prints resolved config"); }
 { const r = run(["--help"]); ok(/upgrade/.test(r.stdout), "--help lists upgrade"); }
@@ -38,7 +38,7 @@ console.log("\n2) skills");
 console.log("\n3) mcp");
 {
   const d = tmp();
-  fs.writeFileSync(path.join(d, ".slivr.json"), JSON.stringify({ mcpServers: { stub: { command: "node", args: [STUB] } } }));
+  fs.writeFileSync(path.join(d, ".proov.json"), JSON.stringify({ mcpServers: { stub: { command: "node", args: [STUB] } } }));
   const r = run(["mcp", "list"], { cwd: d });
   ok(/mcp__stub__echo/.test(r.stdout) && /mcp__stub__add/.test(r.stdout), "mcp list discovers stub echo+add tools");
 }
@@ -49,7 +49,7 @@ if (HAS_KEY) {
   const d = tmp();
   const fname = "bgout_" + Math.floor(Number(process.hrtime.bigint() % 1000000n)) + ".txt"; // unique -> no stale-job collision
   const target = () => [path.join(d, fname), path.join(fs.realpathSync(d), fname)].find(fs.existsSync);
-  const r = run(["bg", `create a file ${fname} containing exactly the word ok`], { cwd: d }); // canonical: cd repo && slivr bg "task"
+  const r = run(["bg", `create a file ${fname} containing exactly the word ok`], { cwd: d }); // canonical: cd repo && proov bg "task"
   const id = (r.stdout + r.stderr).match(/job ([a-z0-9-]+) \(pid/)?.[1];
   ok(r.status === 0 && !!id, "bg starts a detached job (returns a job id + log path)");
   // poll up to ~30s for THIS job's output file to actually appear (the real end-to-end goal)
@@ -167,7 +167,7 @@ if (HAS_KEY) {
 console.log("\n13) real MCP server (npx)");
 {
   const d = tmp();
-  fs.writeFileSync(path.join(d, ".slivr.json"), JSON.stringify({ mcpServers: { everything: { command: "npx", args: ["-y", "@modelcontextprotocol/server-everything"] } } }));
+  fs.writeFileSync(path.join(d, ".proov.json"), JSON.stringify({ mcpServers: { everything: { command: "npx", args: ["-y", "@modelcontextprotocol/server-everything"] } } }));
   const r = run(["mcp", "list"], { cwd: d, timeout: 120000 });
   if (/mcp__everything__/.test(r.stdout)) ok(true, "real npx everything-server: tools discovered");
   else { console.log("  SKIP  real MCP server (npx/network unavailable)"); skip++; }

@@ -8,7 +8,7 @@ import fs from "node:fs";
 import { hasPdfInContext, PDF_PLUGIN } from "./multimodal.mjs";
 
 // Portable key fallback: OPENROUTER_API_KEY env, then a .env / .env.local in the CURRENT dir.
-// (config.apiKey — resolved from env / flags / ~/.slivr.json — is the primary path via opts.)
+// (config.apiKey — resolved from env / flags / ~/.proov.json — is the primary path via opts.)
 function loadKey() {
   if (process.env.OPENROUTER_API_KEY) return process.env.OPENROUTER_API_KEY.trim();
   for (const f of [".env.local", ".env"]) {

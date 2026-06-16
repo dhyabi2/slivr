@@ -52,7 +52,7 @@ export class Tools {
     this.tasks = [];                     // [{ id, subject, status }] maintained via task_write
   }
 
-  // plan (slivr): record a numbered list of concrete steps BEFORE mutating the repo. In plan-mode
+  // plan (proov): record a numbered list of concrete steps BEFORE mutating the repo. In plan-mode
   // the harness blocks all edits/commands until a plan exists and is approved. Calling plan again
   // REPLACES the steps and resets approval (the harness re-asks). Returns the recorded steps.
   plan_tool({ steps } = {}) {
@@ -65,7 +65,7 @@ export class Tools {
     return { ok: true, steps: clean, note: "Plan recorded. In plan-mode it must be approved before edits/commands run." };
   }
 
-  // replan (slivr, Block 5): dynamic re-planning. When a step fails or the situation changes, revise
+  // replan (proov, Block 5): dynamic re-planning. When a step fails or the situation changes, revise
   // the REMAINING steps locally instead of abandoning the plan. Keeps a revision count + history.
   replan_tool({ reason, steps } = {}) {
     if (!this.plan) return { ok: false, error: "NO_PLAN", hint: "Call plan first; replan revises an existing plan." };
@@ -84,7 +84,7 @@ export class Tools {
     return { ok: true, steps: clean, revisions: this.plan.revisions, note: "Plan revised." };
   }
 
-  // task_write (slivr): replace/update the live task checklist. tasks = [{id?, subject, status}],
+  // task_write (proov): replace/update the live task checklist. tasks = [{id?, subject, status}],
   // status ∈ pending|in_progress|completed. Items WITH a matching id update in place; items without
   // an id (or a new id) are appended/created. Keep exactly one task in_progress at a time.
   task_write({ tasks } = {}) {
@@ -123,7 +123,7 @@ export class Tools {
   _gameArtRichness(rel) {
     try {
       const abs = this._resolve(rel);
-      const cap = path.join(os.tmpdir(), `slivr-gameart-${process.pid}-${Date.now()}.png`);
+      const cap = path.join(os.tmpdir(), `proov-gameart-${process.pid}-${Date.now()}.png`);
       const shot = screenshotWebGL(abs, cap);
       if (!shot.ok) { try { fs.unlinkSync(cap); } catch { /* */ } return null; }
       const a = artReview(cap);
@@ -137,7 +137,7 @@ export class Tools {
   _gameCanvasDataURL(rel) {
     try {
       const abs = this._resolve(rel);
-      const cap = path.join(os.tmpdir(), `slivr-gameshot-${process.pid}-${Date.now()}.png`);
+      const cap = path.join(os.tmpdir(), `proov-gameshot-${process.pid}-${Date.now()}.png`);
       const shot = screenshotWebGL(abs, cap);
       if (!shot.ok) { try { fs.unlinkSync(cap); } catch { /* */ } return null; }
       const b64 = fs.readFileSync(cap).toString("base64");
@@ -176,7 +176,7 @@ export class Tools {
     return { ok: bad.length === 0, levels: results.length, certified: results.length - bad.length, failures: bad, results };
   }
 
-  // GATE helper: a game can expose window.slivrLevels (array of row-string levels). If it does, certify
+  // GATE helper: a game can expose window.proovLevels (array of row-string levels). If it does, certify
   // each; returns { checked, failures:[{index,reason}] } or null when the game doesn't expose levels (→
   // never blocks games that don't opt in). Reads the page via the harness (browser); errors → null.
   _certifyGameLevels(rel) {
@@ -322,7 +322,7 @@ export class Tools {
   // Canvas richness of a SERVED game (over HTTP via the injecting proxy) — the served analog of
   // _gameArtRichness. null = couldn't capture (no browser / blank).
   async _servedCanvasRichness(url) {
-    const cap = path.join(os.tmpdir(), `slivr-servedart-${process.pid}-${Date.now()}.png`);
+    const cap = path.join(os.tmpdir(), `proov-servedart-${process.pid}-${Date.now()}.png`);
     try {
       const shot = await screenshotWebGLUrl(url, cap);
       if (!shot.ok) { try { fs.unlinkSync(cap); } catch { /* */ } return null; }
@@ -335,7 +335,7 @@ export class Tools {
   // DONE-GATE helper for SERVED games (Blocks 41–42): when there's no static game file but the project
   // serves one, start the server (or reuse a running one), fetch the entry HTML, and verify it over HTTP at
   // FULL parity with the static gate — broken (see_page {url}), FROZEN (autoplay over HTTP), flat-boxes art
-  // (canvas capture over HTTP), structure contract, and lock-and-key solvability (window.slivrLevels over
+  // (canvas capture over HTTP), structure contract, and lock-and-key solvability (window.proovLevels over
   // HTTP). All HTTP-harness checks degrade gracefully (no browser → skipped). Returns { ran, problem }.
   async _verifyServedGame({ task } = {}) {
     let url = null, startedPid = null;
@@ -351,7 +351,7 @@ export class Tools {
     try {
       const res = await this.http_request({ url, timeoutMs: 8000 });
       const html = res && res.ok ? res.body : "";
-      const isGame = /<canvas/i.test(html) && /(requestAnimationFrame|slivrSim|getContext\s*\()/i.test(html);
+      const isGame = /<canvas/i.test(html) && /(requestAnimationFrame|proovSim|slivrSim|getContext\s*\()/i.test(html);
       if (!html || !isGame) return { ran: false };
       const sp = this.see_page({ url });
       if (sp && sp.broken) return { ran: true, problem: `the served page at ${url} is BROKEN: ${(sp.errors || []).slice(0, 3).join("; ")}` };
@@ -378,7 +378,7 @@ export class Tools {
         // ANIMATION (Block 48): a served 3D character must animate its parts, not just translate.
         const anv = animationDriverViolation(html, task);
         if (anv) return { ran: true, problem: anv };
-        // LOCK-AND-KEY solvability — certify window.slivrLevels exposed over HTTP
+        // LOCK-AND-KEY solvability — certify window.proovLevels exposed over HTTP
         try {
           const levels = await extractLevelsUrl(url);
           if (Array.isArray(levels) && levels.length) {
@@ -431,7 +431,7 @@ export class Tools {
     } finally { clearTimeout(timer); }
   }
 
-  // COMPACT edit protocol (slivr). Returns structured repair packet on failure.
+  // COMPACT edit protocol (proov). Returns structured repair packet on failure.
   edit_file({ path: rel, anchor, replacement, op = "replace", occurrence }) {
     if (typeof rel !== "string" || !rel) return { ok: false, error: "NO_PATH", hint: 'edit_file needs a "path" (string), an "anchor" (a small VERBATIM snippet copied from the file to locate the edit), and a "replacement". Example: {"tool":"edit_file","args":{"path":"index.html","anchor":"<old lines>","replacement":"<new lines>"}}' };
     if (typeof anchor !== "string" || !anchor) return { ok: false, error: "NO_ANCHOR", path: rel, hint: 'edit_file needs an "anchor": a small verbatim snippet copied character-for-character from the file at the spot to change. To create a NEW file use create_file instead.' };
@@ -453,7 +453,7 @@ export class Tools {
     return { ok: true, tier: res.tier, path: rel };
   }
 
-  // create_file (slivr): write a NEW file. Refuses to overwrite an existing one — for changes to
+  // create_file (proov): write a NEW file. Refuses to overwrite an existing one — for changes to
   // existing files the compact edit_file protocol must be used. This is NOT a full-rewrite escape
   // hatch; it only covers the legitimate "no anchor exists yet" case (creating a file).
   create_file({ path: rel, content }) {
@@ -473,7 +473,7 @@ export class Tools {
     return { ok: true, path: rel, bytes: Buffer.byteLength(content) };
   }
 
-  // edit_files (slivr): apply MANY compact edits ATOMICALLY (all-or-nothing) — fewer turns for
+  // edit_files (proov): apply MANY compact edits ATOMICALLY (all-or-nothing) — fewer turns for
   // multi-file/multi-edit changes. edits = [{path, anchor, replacement, op}]. Edits to the same
   // file apply IN ORDER on the evolving buffer. If ANY edit fails to apply uniquely, NOTHING is
   // written and per-edit repair packets are returned (so the model fixes and resends all edits).
@@ -636,7 +636,7 @@ export class Tools {
   async web_fetch({ url, max = 8000 }) {
     if (!/^https?:\/\//i.test(url || "")) return { ok: false, error: "BAD_URL", hint: "Pass a full http(s) URL." };
     try {
-      const r = await fetch(url, { headers: { "User-Agent": "slivr/0.1" }, signal: AbortSignal.timeout(15000) });
+      const r = await fetch(url, { headers: { "User-Agent": "proov/0.1" }, signal: AbortSignal.timeout(15000) });
       if (!r.ok) return { ok: false, error: `HTTP ${r.status}`, url };
       let text = await r.text();
       text = text.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ")
@@ -673,7 +673,7 @@ export class Tools {
     // reports the post-JS visible text (or a screenshot with visual:true) + a blank-page check.
     if (typeof url === "string" && /^https?:\/\//i.test(url)) {
       if (visual) {
-        const out = path.join(os.tmpdir(), `slivr-shot-${process.pid}-${Date.now()}.png`);
+        const out = path.join(os.tmpdir(), `proov-shot-${process.pid}-${Date.now()}.png`);
         const r = renderShot(url, out);
         if (!r.ok) return { ok: false, error: r.error, hint: "couldn't screenshot the URL — is the server running? try see_page (text mode) or http_request" };
         let b64; try { b64 = fs.readFileSync(out).toString("base64"); } catch (e) { return { ok: false, error: String(e.message || e) }; }
@@ -690,7 +690,7 @@ export class Tools {
     let abs; try { abs = this._resolve(rel); } catch (e) { return { ok: false, error: e.message }; }
     if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
     if (visual) {
-      const out = path.join(os.tmpdir(), `slivr-shot-${process.pid}-${Date.now()}.png`);
+      const out = path.join(os.tmpdir(), `proov-shot-${process.pid}-${Date.now()}.png`);
       let isGL = false; try { isGL = isWebGLPage(fs.readFileSync(abs, "utf8")); } catch { /* */ }
       const r = isGL ? screenshotWebGL(abs, out) : renderShot(abs, out);
       if (!r.ok) return { ok: false, error: r.error, hint: "couldn't get a visual — use see_page (text mode) or reason about the code" };
@@ -725,7 +725,7 @@ export class Tools {
   }
 
   // play_game (Block 15): DRIVE a web game headlessly and observe it — the keystone for making real
-  // games. The game must expose window.slivrSim={reset,step,input,state}; this resets it, applies a
+  // games. The game must expose window.proovSim={reset,step,input,state}; this resets it, applies a
   // scripted input timeline, steps N frames, and returns the game STATE over time + a final-frame
   // screenshot, so you can verify it actually plays (moves, scores, ends) and fix what doesn't.
   play_game({ path: rel, steps, dt, inputs, seed } = {}) {
@@ -736,14 +736,14 @@ export class Tools {
     if (!r.ok) return { ok: false, error: r.error, hint: "couldn't drive the game — is Chrome installed?" };
     const res = r.result || {};
     const img = r.screenshot ? { multimodal: { kind: "image", path: `${rel} (frame)`, mime: "image/png", dataUrl: r.screenshot } } : {};
-    if (res.error) return { ok: true, played: false, note: `could not drive the game: ${res.error}. Expose window.slivrSim={reset,step,input,state} to make it playtestable.${r.screenshot ? " (final frame attached)" : ""}`, ...img };
+    if (res.error) return { ok: true, played: false, note: `could not drive the game: ${res.error}. Expose window.proovSim={reset,step,input,state} to make it playtestable.${r.screenshot ? " (final frame attached)" : ""}`, ...img };
     const snaps = res.snapshots || [];
     return { ok: true, played: true, snapshots: snaps, note: `played ${res.steps} steps · ${snaps.length} state snapshots:\n${JSON.stringify(snaps).slice(0, 2200)}`, ...img };
   }
 
   // autoplay (Block 28 — play the REAL game): dispatch REAL KeyboardEvent/MouseEvent into the running page
   // and watch whether the SCREEN actually changes. Unlike play_game/play_levels (which drive the
-  // window.slivrSim contract — and the agent can stub that with a no-op input), this drives the game's OWN
+  // window.proovSim contract — and the agent can stub that with a no-op input), this drives the game's OWN
   // keydown/click handlers, so a frozen/dead game is caught even when the contract lies. Returns whether it
   // RESPONDS to input, the per-input screen-change %, console errors, and a contact sheet you SEE.
   autoplay({ path: rel, keys, clicks, holdMs } = {}) {
@@ -755,7 +755,7 @@ export class Tools {
     const errs = r.errors && r.errors.length ? ` Console errors: ${r.errors.slice(0, 4).join("; ")}.` : "";
     const verdict = r.responds
       ? `the screen RESPONDS to real input (max ${r.maxChange}% change) — it plays.`
-      : `the screen does NOT change when real keys/clicks are sent (${r.maxChange}% change) — the game is FROZEN/DEAD as the user would experience it. Fix the real input + update loop (not just the slivrSim contract).`;
+      : `the screen does NOT change when real keys/clicks are sent (${r.maxChange}% change) — the game is FROZEN/DEAD as the user would experience it. Fix the real input + update loop (not just the proovSim contract).`;
     const out = { ok: true, responds: r.responds, maxChange: r.maxChange, perStep: r.perStep, errors: r.errors,
       note: `Autoplayed with REAL keyboard/mouse input: ${verdict}${errs} Look at the contact sheet — the player/screen should visibly change between frames.` };
     if (r.dataUrl) out.multimodal = { kind: "image", path: "autoplay", mime: "image/png", dataUrl: r.dataUrl };
@@ -765,13 +765,13 @@ export class Tools {
   // play_levels (Block 23 — multi-level): drive EVERY level of a multi-level game and verify each one
   // loads, is DISTINCT (not a clone of level 1 — the usual failure), plays, and (if state exposes a win
   // flag) is completable, plus a contact sheet of every level's initial frame. The game must extend the
-  // Simulacrum contract with window.slivrSim.levels (count or array) + load(i) (or reset(i)).
+  // Simulacrum contract with window.proovSim.levels (count or array) + load(i) (or reset(i)).
   play_levels({ path: rel, steps, dt, inputs, cap } = {}) {
     if (!rel) return { ok: false, error: "NO_PATH", hint: 'pass {"path":"index.html"} — the multi-level game' };
     let abs; try { abs = this._resolve(rel); } catch (e) { return { ok: false, error: e.message }; }
     if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
     const r = playLevels(abs, { steps, dt, inputs, cap });
-    if (!r.ok) return { ok: false, error: r.error, hint: r.hint || "couldn't drive levels — is Chrome installed? expose slivrSim.levels + load(i)" };
+    if (!r.ok) return { ok: false, error: r.error, hint: r.hint || "couldn't drive levels — is Chrome installed? expose proovSim.levels + load(i)" };
     const broken = r.levels.filter((l) => !l.loads || !l.plays).map((l) => l.level);
     const clonesNote = r.clones.length ? ` CLONES: levels ${r.clones.join(",")} are identical to another level — make them meaningfully different (layout/enemies/goal).` : "";
     const allGood = r.clones.length === 0 && broken.length === 0 && r.count > 1;
@@ -799,7 +799,7 @@ export class Tools {
 
   // blueprint_plan: lock in the full hierarchical build tree from the goal. `tree` is nested:
   // [{title, leafType?, decision?, children?:[...]}]. Childless nodes are leaves (real work);
-  // nodes with children are groups. Persists to .slivr/blueprint.json (re-planning preserves progress).
+  // nodes with children are groups. Persists to .proov/blueprint.json (re-planning preserves progress).
   blueprint_plan({ goal, tree } = {}) {
     if (!goal || !String(goal).trim()) return { ok: false, error: "NO_GOAL", hint: "pass goal: the one-line description of what you're building" };
     if (!Array.isArray(tree) || !tree.length) return { ok: false, error: "NO_TREE", hint: "pass tree: a NESTED array of concrete nodes [{title, leafType?, children?[]}] — expand to real leaves (every sprite/sound/UI state/sub-component), no abstractions" };
@@ -808,7 +808,7 @@ export class Tools {
     if (prev) model = bp.mergeProgress(prev, model);
     const p = bp.saveBlueprint(this.workdir, model);
     const cov = bp.coverage(model);
-    return { ok: true, saved: path.relative(this.workdir, p) || ".slivr/blueprint.json", coverage: cov, tree: bp.renderTree(model), note: `Blueprint locked: ${cov.totalLeaves} concrete leaves. Work them one by one; mark each done only when it's a real, finished artifact.` };
+    return { ok: true, saved: path.relative(this.workdir, p) || ".proov/blueprint.json", coverage: cov, tree: bp.renderTree(model), note: `Blueprint locked: ${cov.totalLeaves} concrete leaves. Work them one by one; mark each done only when it's a real, finished artifact.` };
   }
 
   // blueprint_status: cheap orientation — the tree, coverage, and the next uncovered leaves to do.
@@ -896,7 +896,7 @@ export class Tools {
   // session journal handoff, so you continue instead of re-reading everything and guessing.
   resume() {
     const r = resumeSummary(this.workdir);
-    if (!r.hasState) return { ok: true, hasState: false, note: "Fresh project — no prior slivr session, blueprint, or git changes found. Start from the task." };
+    if (!r.hasState) return { ok: true, hasState: false, note: "Fresh project — no prior proov session, blueprint, or git changes found. Start from the task." };
     return { ok: true, hasState: true, summary: r.text, coverage: r.data.coverage, next: r.data.next, note: `Resuming. ${r.text}\n\nContinue from the NEXT items above (don't redo done work). If a blueprint exists, blueprint_status for detail.` };
   }
 
@@ -920,7 +920,7 @@ export class Tools {
     if (render) {
       let pageAbs; try { pageAbs = this._resolve(render); } catch (e) { return { ok: false, error: e.message }; }
       if (!fs.existsSync(pageAbs)) return { ok: false, error: "RENDER_NOT_FOUND", path: render };
-      tmpShot = path.join(os.tmpdir(), `slivr-cand-${process.pid}-${Date.now()}.png`);
+      tmpShot = path.join(os.tmpdir(), `proov-cand-${process.pid}-${Date.now()}.png`);
       const shot = renderShot(pageAbs, tmpShot, { width: 1000, height: 750 });
       if (!shot.ok) return { ok: false, error: "RENDER_SCREENSHOT_FAILED", hint: shot.error };
       candAbs = tmpShot;
@@ -972,7 +972,7 @@ export class Tools {
     if (render) {
       let pageAbs; try { pageAbs = this._resolve(render); } catch (e) { return { ok: false, error: e.message }; }
       if (!fs.existsSync(pageAbs)) return { ok: false, error: "RENDER_NOT_FOUND", path: render };
-      tmpShot = path.join(os.tmpdir(), `slivr-rcand-${process.pid}-${Date.now()}.png`);
+      tmpShot = path.join(os.tmpdir(), `proov-rcand-${process.pid}-${Date.now()}.png`);
       const shot = renderShot(pageAbs, tmpShot, { width: 1000, height: 750 });
       if (!shot.ok) return { ok: false, error: "RENDER_SCREENSHOT_FAILED", hint: shot.error };
       candAbs = tmpShot;
@@ -995,7 +995,7 @@ export class Tools {
 
   // style_profile (Block 20 — Beyond the Frame): the picture is only a BASELINE for a bigger world. Derive
   // a STYLE ANCHOR from it — dominant palette + brightness/saturation/contrast — and persist it to
-  // .slivr/style-anchor.json, so assets you INVENT beyond the frame (not in the picture) can be checked for
+  // .proov/style-anchor.json, so assets you INVENT beyond the frame (not in the picture) can be checked for
   // consistency. Call this once on the reference before extrapolating the world.
   style_profile({ target } = {}) {
     if (!target) return { ok: false, error: "NO_TARGET", hint: "pass target: the reference image to derive the style anchor from" };
@@ -1005,12 +1005,12 @@ export class Tools {
     const r = styleProfile(targetAbs);
     if (!r.ok) return { ok: false, error: r.error, hint: "couldn't profile — is Chrome installed and target a real image?" };
     try {
-      const p = path.join(this.workdir, ".slivr", "style-anchor.json");
+      const p = path.join(this.workdir, ".proov", "style-anchor.json");
       fs.mkdirSync(path.dirname(p), { recursive: true });
       fs.writeFileSync(p, JSON.stringify(r.profile, null, 2));
     } catch { /* best effort */ }
     const hexes = r.profile.palette.map((c) => hexColor(c.rgb));
-    return { ok: true, palette: hexes, brightness: r.profile.brightness, saturation: r.profile.saturation, contrast: r.profile.contrast, saved: ".slivr/style-anchor.json", note: `Style anchor saved: palette ${hexes.join(" ")}. When you build assets NOT in the picture, keep them in this family and verify with style_check.` };
+    return { ok: true, palette: hexes, brightness: r.profile.brightness, saturation: r.profile.saturation, contrast: r.profile.contrast, saved: ".proov/style-anchor.json", note: `Style anchor saved: palette ${hexes.join(" ")}. When you build assets NOT in the picture, keep them in this family and verify with style_check.` };
   }
 
   // style_check (Block 20): verify an INVENTED asset (not in the picture, so it can't be pixel-diffed) is
@@ -1030,14 +1030,14 @@ export class Tools {
       if (!tp.ok) return { ok: false, error: tp.error };
       anchor = tp.profile;
     } else {
-      try { anchor = JSON.parse(fs.readFileSync(path.join(this.workdir, ".slivr", "style-anchor.json"), "utf8")); }
+      try { anchor = JSON.parse(fs.readFileSync(path.join(this.workdir, ".proov", "style-anchor.json"), "utf8")); }
       catch { return { ok: false, error: "NO_ANCHOR", hint: "call style_profile on the reference first, or pass target" }; }
     }
     let assetAbs, tmpShot = null;
     if (render) {
       let pageAbs; try { pageAbs = this._resolve(render); } catch (e) { return { ok: false, error: e.message }; }
       if (!fs.existsSync(pageAbs)) return { ok: false, error: "RENDER_NOT_FOUND", path: render };
-      tmpShot = path.join(os.tmpdir(), `slivr-style-${process.pid}-${Date.now()}.png`);
+      tmpShot = path.join(os.tmpdir(), `proov-style-${process.pid}-${Date.now()}.png`);
       const shot = renderShot(pageAbs, tmpShot, { width: 600, height: 600 });
       if (!shot.ok) return { ok: false, error: "RENDER_SCREENSHOT_FAILED", hint: shot.error };
       assetAbs = tmpShot;
@@ -1066,7 +1066,7 @@ export class Tools {
     if (render) {
       let pageAbs; try { pageAbs = this._resolve(render); } catch (e) { return { ok: false, error: e.message }; }
       if (!fs.existsSync(pageAbs)) return { ok: false, error: "RENDER_NOT_FOUND", path: render };
-      tmpShot = path.join(os.tmpdir(), `slivr-art-${process.pid}-${Date.now()}.png`);
+      tmpShot = path.join(os.tmpdir(), `proov-art-${process.pid}-${Date.now()}.png`);
       // WebGL/Three.js pages render BLANK with --screenshot (--disable-gpu) — capture on the GPU path.
       let isGL = false; try { isGL = isWebGLPage(fs.readFileSync(pageAbs, "utf8")); } catch { /* */ }
       const shot = isGL ? screenshotWebGL(pageAbs, tmpShot) : renderShot(pageAbs, tmpShot, { width: 800, height: 500 });
@@ -1086,7 +1086,7 @@ export class Tools {
     } finally { if (tmpShot) { try { fs.unlinkSync(tmpShot); } catch { /* */ } } }
   }
 
-  // artkit (Block 30 — draw rich art, not blocks): returns the slivr ARTKIT source — canvas helpers that
+  // artkit (Block 30 — draw rich art, not blocks): returns the proov ARTKIT source — canvas helpers that
   // bake in the techniques that move art_review richness toward 100: palette() (harmonized, no raw
   // primaries), shadedBall()/shadedBox() (gradient shading + outline + rim + AO), eyes() (with catchlights),
   // grain() (procedural texture), contactShadow(), sky() + hills() (gradient + parallax depth). Paste the
@@ -1103,7 +1103,7 @@ export class Tools {
 
   // orbit_scene (Block 21 — the 3D eye): drive a WebGL/Three.js scene's CAMERA to many angles and SEE each
   // view as a contact sheet, so you build REAL 3D (camera rig + landscape + 360°) instead of a flat
-  // single-view billboard. The scene must expose window.slivrView={setCamera({yaw,pitch,dist,target}),
+  // single-view billboard. The scene must expose window.proovView={setCamera({yaw,pitch,dist,target}),
   // render()} and create its renderer with preserveDrawingBuffer:true. Returns whether the view actually
   // RESPONDS to the camera (true 3D) vs ignores it (a flat billboard), plus the contact-sheet image.
   orbit_scene({ path: rel, angles, pitch, dist, target, budget } = {}) {
@@ -1111,7 +1111,7 @@ export class Tools {
     let abs; try { abs = this._resolve(rel); } catch (e) { return { ok: false, error: e.message }; }
     if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
     const r = orbitScene(abs, { angles, pitch, dist, target, budget });
-    if (!r.ok) return { ok: false, error: r.error, hint: r.hint || "couldn't orbit — is Chrome installed? the scene must expose window.slivrView and use preserveDrawingBuffer:true" };
+    if (!r.ok) return { ok: false, error: r.error, hint: r.hint || "couldn't orbit — is Chrome installed? the scene must expose window.proovView and use preserveDrawingBuffer:true" };
     const verdict = r.responds ? "the view CHANGES as the camera orbits — real 3D" : "the view does NOT change as the camera orbits — it's a flat billboard / the camera isn't wired. Build a real camera rig + depth.";
     const out = { ok: true, views: r.views, responds: r.responds, adjDiff: r.adjDiff, note: `Orbited ${r.views} camera angles. ${verdict} Look at the contact sheet: check for parallax, occlusion, and that the landscape has depth.` };
     if (r.dataUrl) out.multimodal = { kind: "image", path: "orbit", mime: "image/png", dataUrl: r.dataUrl };

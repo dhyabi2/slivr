@@ -1,6 +1,6 @@
 // world.mjs — outer-world discovery (Block 21, Challenge 2): no agent uses a reference picture + an LLM to
 // DISCOVER the world beyond the frame — what's north, over the hill, inside the building, the rest of the
-// map. slivr does: it treats the reference as the ORIGIN tile of a spatial grid map, the model infers the
+// map. proov does: it treats the reference as the ORIGIN tile of a spatial grid map, the model infers the
 // neighbouring regions (edge-exits + implied features), and each is built as a style-consistent tile (verify
 // with style_check, Block 20). This module is the persistent, traversable map + oversight. Zero deps.
 
@@ -9,7 +9,7 @@ import path from "node:path";
 
 const DIRS = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0], ne: [1, -1], nw: [-1, -1], se: [1, 1], sw: [-1, 1] };
 
-function mapPath(dir) { return path.join(dir, ".slivr", "world-map.json"); }
+function mapPath(dir) { return path.join(dir, ".proov", "world-map.json"); }
 export function loadWorld(dir) { try { return JSON.parse(fs.readFileSync(mapPath(dir), "utf8")); } catch { return null; } }
 export function saveWorld(dir, model) { const p = mapPath(dir); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(model, null, 2)); return p; }
 

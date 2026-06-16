@@ -1,10 +1,10 @@
-// run.mjs — head-to-head benchmark: slivr (compact-edit) vs Claude-Code-style baseline.
+// run.mjs — head-to-head benchmark: proov (compact-edit) vs Claude-Code-style baseline.
 //
 // For each task and each harness: seed a FRESH workdir, run the harness on the SAME model,
 // then run the task's behavioral oracle (exit 0 == success). Record success/tokens/$/turns/
 // editFailures. Writes bench/results.json and prints a head-to-head table.
 //
-// env: MODEL (default google/gemini-2.5-flash), SLIVR_TASKS (csv of task ids to run a subset),
+// env: MODEL (default google/gemini-2.5-flash), PROOV_TASKS (csv of task ids to run a subset),
 //      MAX_STEPS (default 16).
 
 import fs from "node:fs";
@@ -29,7 +29,7 @@ function genLargeFile() {
 }
 
 function seedWorkdir(task) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `slivr-${task.id}-`));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `proov-${task.id}-`));
   if (task.seed.__generate === "largefile") {
     fs.mkdirSync(path.join(dir, "src"), { recursive: true });
     fs.writeFileSync(path.join(dir, "src", "math.js"), genLargeFile());
@@ -75,13 +75,13 @@ async function runOne(task, harness, runner) {
 }
 
 async function main() {
-  const subset = process.env.SLIVR_TASKS ? process.env.SLIVR_TASKS.split(",") : null;
+  const subset = process.env.PROOV_TASKS ? process.env.PROOV_TASKS.split(",") : null;
   const tasks = subset ? TASKS.filter(t => subset.includes(t.id)) : TASKS;
   const rows = [];
   console.error(`benchmark: ${tasks.length} tasks x 2 harnesses, model=${MODEL}`);
 
   for (const task of tasks) {
-    for (const [harness, runner] of [["slivr", runAgent], ["baseline", runBaseline]]) {
+    for (const [harness, runner] of [["proov", runAgent], ["baseline", runBaseline]]) {
       process.error?.write?.("");
       console.error(`\n[${task.id} / ${harness}] running...`);
       const row = await runOne(task, harness, runner);
@@ -104,12 +104,12 @@ async function main() {
       totalEditFailures: r.reduce((a, x) => a + x.editFailures, 0),
     };
   };
-  const summary = { model: MODEL, slivr: agg("slivr"), baseline: agg("baseline") };
+  const summary = { model: MODEL, proov: agg("proov"), baseline: agg("baseline") };
 
   // per-kind cost comparison (where is the win biggest?)
   const kinds = [...new Set(rows.map(r => r.kind))];
   summary.byKind = kinds.map(k => {
-    const a = rows.filter(r => r.harness === "slivr" && r.kind === k);
+    const a = rows.filter(r => r.harness === "proov" && r.kind === k);
     const b = rows.filter(r => r.harness === "baseline" && r.kind === k);
     const ac = a.reduce((s, x) => s + x.cost, 0), bc = b.reduce((s, x) => s + x.cost, 0);
     return { kind: k, ccaltCost: +ac.toFixed(6), baselineCost: +bc.toFixed(6),
@@ -122,18 +122,18 @@ async function main() {
 
   console.log("\n================ HEAD-TO-HEAD (" + MODEL + ") ================");
   console.log(`harness   success      tokens     cost($)     turns  editFail`);
-  for (const h of ["slivr", "baseline"]) {
+  for (const h of ["proov", "baseline"]) {
     const s = summary[h];
-    console.log(`${(h === "slivr" ? "slivr" : "baseline").padEnd(9)} ${(s.successes + "/" + s.n).padEnd(11)} ${String(s.totalTokens).padEnd(11)} ${s.totalCost.toFixed(5).padEnd(11)} ${String(s.totalTurns).padEnd(6)} ${s.totalEditFailures}`);
+    console.log(`${(h === "proov" ? "proov" : "baseline").padEnd(9)} ${(s.successes + "/" + s.n).padEnd(11)} ${String(s.totalTokens).padEnd(11)} ${s.totalCost.toFixed(5).padEnd(11)} ${String(s.totalTurns).padEnd(6)} ${s.totalEditFailures}`);
   }
-  const ca = summary.slivr, bl = summary.baseline;
+  const ca = summary.proov, bl = summary.baseline;
   if (bl.totalCost > 0) {
     const saved = (1 - ca.totalCost / bl.totalCost) * 100;
-    console.log(`\ncost: slivr is ${saved.toFixed(1)}% ${saved >= 0 ? "CHEAPER" : "MORE EXPENSIVE"} than baseline (same model).`);
-    console.log(`success: slivr ${(ca.successRate * 100).toFixed(0)}% vs baseline ${(bl.successRate * 100).toFixed(0)}%`);
+    console.log(`\ncost: proov is ${saved.toFixed(1)}% ${saved >= 0 ? "CHEAPER" : "MORE EXPENSIVE"} than baseline (same model).`);
+    console.log(`success: proov ${(ca.successRate * 100).toFixed(0)}% vs baseline ${(bl.successRate * 100).toFixed(0)}%`);
   }
-  console.log("\nby kind (cost saved by slivr vs baseline):");
-  for (const k of summary.byKind) console.log(`  ${k.kind.padEnd(14)} slivr=$${k.ccaltCost.toFixed(5)} baseline=$${k.baselineCost.toFixed(5)} saved=${k.costSavedPct}%`);
+  console.log("\nby kind (cost saved by proov vs baseline):");
+  for (const k of summary.byKind) console.log(`  ${k.kind.padEnd(14)} proov=$${k.ccaltCost.toFixed(5)} baseline=$${k.baselineCost.toFixed(5)} saved=${k.costSavedPct}%`);
   console.log(`\nwrote ${outPath}`);
 }
 

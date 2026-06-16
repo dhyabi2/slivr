@@ -7,7 +7,7 @@ Block 3 gave `find_symbol` (jump to a definition) and `repo_map` (overview). But
 safely you need the other direction: **who calls it?** grep mixes the definition, imports, comments,
 and call-sites into one noisy list.
 
-## Brainstorm + rank (fresh, slivr-grounded)
+## Brainstorm + rank (fresh, proov-grounded)
 The B6 winner (**#4, rating 85**, "Contextual Call-Site Locator") proposed on-demand, regex-driven
 reference analysis around the symbol, filtering comments/strings and excluding the definition.
 
@@ -24,7 +24,7 @@ reference analysis around the symbol, filtering comments/strings and excluding t
   signature so you update every caller") + sub-agent findings set.
 - `selftest.mjs`: +6 tests.
 
-## Measured result (slivr's own src/)
+## Measured result (proov's own src/)
 | query | find_refs | grep noise |
 |---|---|---|
 | `runLoop` | the **3 real call-sites** (agent.mjs ×2, baseline.mjs), definition excluded | mixes def + imports + calls |
@@ -37,7 +37,7 @@ refactor, which a substring grep cannot give cleanly.
 
 ## Note on the cost-edit direction (Block 7 candidate)
 The brainstorm's other r85 direction — "fuzzy anchor recovery" — turned out to be **already shipped**
-in slivr's vendored SEAL engine (`src/seal.mjs`): it auto-applies `exact` and canonical
+in proov's vendored SEAL engine (`src/seal.mjs`): it auto-applies `exact` and canonical
 (whitespace + operator-spacing-insensitive) anchor matches locally with no model round-trip, and
 deliberately refuses to silently apply riskier fuzzy matches (a correctness-first choice). So that
 slot was redirected to a genuinely-new cost-compounding feature (`edit_symbol`) instead of duplicating

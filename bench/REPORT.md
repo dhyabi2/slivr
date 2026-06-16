@@ -1,6 +1,6 @@
-# slivr vs a Claude-Code-style baseline — a scaled, oracle-judged head-to-head
+# proov vs a Claude-Code-style baseline — a scaled, oracle-judged head-to-head
 
-**What this measures.** `slivr` is a coding-agent CLI whose only structural differentiator is its
+**What this measures.** `proov` is a coding-agent CLI whose only structural differentiator is its
 **edit protocol**: it makes targeted, anchor-based edits and never re-sends a whole file. The
 **baseline** harness is identical in every other respect — same model, same agent loop, same tools,
 same step cap — but uses the naive **full-file rewrite** protocol that Claude-Code-style agents use
@@ -51,12 +51,12 @@ $4.46. The guard would have stopped any *subsequent* run. No runs were skipped.
 
 | Model | Harness | Success | Cost/run (mean +/- sd) | Tokens/run (mean +/- sd) | Turns (mean) | Runaways |
 |---|---|---|---|---|---|---|
-| gemini-2.5-flash | **slivr** | **42/51 (82%)** | **$0.00606 +/- 0.00725** | 17,335 +/- 21,154 | 6.0 | 3/51 |
+| gemini-2.5-flash | **proov** | **42/51 (82%)** | **$0.00606 +/- 0.00725** | 17,335 +/- 21,154 | 6.0 | 3/51 |
 | gemini-2.5-flash | baseline | 33/51 (65%) | $0.03195 +/- 0.07552 | 59,404 +/- 137,289 | 7.9 | 9/51 |
-| claude-sonnet-4 | **slivr** | **14/14 (100%)** | **$0.07081 +/- 0.04697** | 21,078 +/- 15,155 | — | 0/14 |
+| claude-sonnet-4 | **proov** | **14/14 (100%)** | **$0.07081 +/- 0.04697** | 21,078 +/- 15,155 | — | 0/14 |
 | claude-sonnet-4 | baseline | 10/14 (71%) | $0.24792 +/- 0.28842 | 65,850 +/- 75,115 | — | 3/14 |
 
-Aggregate: slivr is **81% cheaper at equal-or-better success on gemini**, **71% cheaper at
+Aggregate: proov is **81% cheaper at equal-or-better success on gemini**, **71% cheaper at
 100% vs 71% success on claude**. But the aggregate is **dominated by large-file blowups** and hides
 real regime-level structure — the per-regime view below is the honest one.
 
@@ -66,7 +66,7 @@ real regime-level structure — the per-regime view below is the honest one.
 
 ### gemini-2.5-flash (17 tasks x 3 reps)
 
-| Regime | slivr success | baseline success | slivr $/run | baseline $/run | Cost saved | baseline runaways |
+| Regime | proov success | baseline success | proov $/run | baseline $/run | Cost saved | baseline runaways |
 |---|---|---|---|---|---|---|
 | tiny-single | 9/9 | 9/9 | $0.00096 | $0.00349 | 72.6% | 2/9 |
 | small-multi | **9/15** | **15/15** | $0.00280 | $0.00259 | **-8.1%** | 0/15 |
@@ -76,7 +76,7 @@ real regime-level structure — the per-regime view below is the honest one.
 
 ### claude-sonnet-4 (7-task subset x 2 reps)
 
-| Regime | slivr success | baseline success | slivr $/run | baseline $/run | Cost saved | baseline runaways |
+| Regime | proov success | baseline success | proov $/run | baseline $/run | Cost saved | baseline runaways |
 |---|---|---|---|---|---|---|
 | tiny-single | 2/2 | 2/2 | $0.02424 | $0.02236 | **-8.4%** | 0/2 |
 | small-multi | 4/4 | 4/4 | $0.03613 | $0.03226 | **-12.0%** | 0/4 |
@@ -89,7 +89,7 @@ real regime-level structure — the per-regime view below is the honest one.
 - **LARGE files (single and multi): a big, decisive win — on both cost AND success.** This is the
   whole point of the protocol and it holds on both models.
 - **MEDIUM files: a modest, consistent cost win** (gemini ~74%, claude ~30%), equal success.
-- **TINY / SMALL files: a tie on success and a small NEGATIVE on cost.** slivr's longer
+- **TINY / SMALL files: a tie on success and a small NEGATIVE on cost.** proov's longer
   system prompt + read-then-edit handshake costs slightly more than a one-shot full rewrite when
   the file is trivially small and the rewrite is cheap. On gemini, small-multi is **-8%**; on
   claude, tiny **-8%** and small **-12%**. We report this against ourselves.
@@ -115,7 +115,7 @@ slow, and the agent burns the step budget without converging.
 
 - **gemini baseline large-file success rate: 0/18 (0%).** Every large-file/large-multi rep failed.
 - **gemini baseline runaway rate on large files: 8/18 (44%)** hit the 16-turn cap; the single worst
-  run reached **536k tokens** — more than the entire 102-run slivr half of the benchmark combined.
+  run reached **536k tokens** — more than the entire 102-run proov half of the benchmark combined.
 - The other failures are "quick" wrong full-rewrites (3-9 turns) that still fail the oracle: the
   model emits a complete file with the edit subtly wrong or with collateral damage.
 
@@ -123,30 +123,30 @@ slow, and the agent burns the step budget without converging.
 penalty is still large:
 
 - baseline large-single: **2/4 success**, and even its *successes* are runaways/cap-grazers
-  (134k tok, $0.46) costing **~3.5x** slivr for the same result.
+  (134k tok, $0.46) costing **~3.5x** proov for the same result.
 - baseline large-multi (rename-largepair): **0/2** — one runaway (215,400 tok, **$0.845**, the most
   expensive single run in the whole study) and one wrong-rewrite (186,590 tok, $0.759).
 
-slivr, by contrast, edits one anchor regardless of file size: its large-file token cost is roughly
+proov, by contrast, edits one anchor regardless of file size: its large-file token cost is roughly
 flat across 248->409 lines and it has **0 runaways** on any non-588-line task on either model.
 
 ---
 
-## Where slivr itself loses or struggles (reported against us)
+## Where proov itself loses or struggles (reported against us)
 
-1. **The 588-line single append (`add-fn-large-600`): slivr fails 3/3 on gemini** (it also runs
+1. **The 588-line single append (`add-fn-large-600`): proov fails 3/3 on gemini** (it also runs
    away: 65k-78k tokens, $0.021-0.027). Appending a function to a very large file requires reading
    it to find a unique tail anchor; the read result is clipped at 6,000 chars, the model can't pin a
-   clean anchor, and it loops. slivr's *only* advantage here is that its failures cost ~1/10th the
+   clean anchor, and it loops. proov's *only* advantage here is that its failures cost ~1/10th the
    baseline's ($0.027 vs $0.289). **Neither harness reliably solves this task on gemini-flash.**
    (Not in the claude subset.)
-2. **Tiny/small files: slivr is a few percent more expensive** (see regime tables). Honest tie on
+2. **Tiny/small files: proov is a few percent more expensive** (see regime tables). Honest tie on
    correctness, slight loss on cost.
-3. **`config-constant` + `wire-logger` (small-multi, create-a-new-file): slivr fails 0/3 on
-   gemini** — gemini-flash emits malformed output through slivr's `create_file` tool (e.g. invalid
+3. **`config-constant` + `wire-logger` (small-multi, create-a-new-file): proov fails 0/3 on
+   gemini** — gemini-flash emits malformed output through proov's `create_file` tool (e.g. invalid
    `export import` syntax). This drags small-multi to 9/15 and -8% cost. **It is model-specific**:
    on claude, `config-constant` passes **2/2**. So this is a gemini-flash x create_file interaction,
-   not a structural protocol defect — but on gemini-flash it is a real, repeatable slivr loss.
+   not a structural protocol defect — but on gemini-flash it is a real, repeatable proov loss.
 
 ---
 
@@ -180,16 +180,16 @@ flat across 248->409 lines and it has **0 runaways** on any non-588-line task on
 
 ## Verdict (the precise, defensible, measured claim)
 
-Holding the model fixed, **`slivr`'s compact anchor-edit protocol matches or beats a Claude-Code-
+Holding the model fixed, **`proov`'s compact anchor-edit protocol matches or beats a Claude-Code-
 style full-rewrite baseline, and the advantage is concentrated entirely in large files.** On
-single edits to large files (248-588 lines) and edits spanning two large files, slivr achieved
+single edits to large files (248-588 lines) and edits spanning two large files, proov achieved
 **equal-or-better success at 66-89% lower cost on both gemini-2.5-flash and claude-sonnet-4**, while
 the full-rewrite baseline failed every large-file task on gemini (0/18) and, on claude, either
 failed or "succeeded" only by burning ~3.5x the tokens — with worst-case single runs of **522k-536k
 tokens on gemini and 215k tokens / $0.85 on claude**. On medium files the win shrinks to a modest
-cost saving at equal success; **on tiny/small files there is no win — slivr is a few percent more
+cost saving at equal success; **on tiny/small files there is no win — proov is a few percent more
 expensive at identical success**, and on gemini-flash specifically it loses two new-file tasks
-outright. The honest, publishable headline is therefore **not** "slivr is 80% cheaper" (that
+outright. The honest, publishable headline is therefore **not** "proov is 80% cheaper" (that
 number is an artifact of large-file baseline blowups) but: **"for edits to large files, an anchor-
 based edit protocol delivers equal-or-better correctness at a large and reproducible cost reduction
 versus full-file rewrites — and is cost-neutral-to-slightly-negative on small files."**

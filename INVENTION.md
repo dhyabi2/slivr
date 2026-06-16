@@ -1,7 +1,7 @@
-# The invention behind slivr
+# The invention behind proov
 
-slivr is a coding-agent CLI in your terminal. The model it runs on is configurable
-and swappable — Claude, GPT, Gemini, anything on OpenRouter. So slivr itself is **not a model**
+proov is a coding-agent CLI in your terminal. The model it runs on is configurable
+and swappable — Claude, GPT, Gemini, anything on OpenRouter. So proov itself is **not a model**
 and makes **no claim to be smarter** than Claude Code. The invention is in the *harness* — and it
 is one specific, measured thing.
 
@@ -11,7 +11,7 @@ is one specific, measured thing.
 > re-sending whole files** — making edits dramatically cheaper *and* structurally safer, on any
 > model.
 
-Everything else in slivr (REPL, config, safety, git tools) is ordinary harness plumbing. The
+Everything else in proov (REPL, config, safety, git tools) is ordinary harness plumbing. The
 *invention* is how it edits.
 
 ## The problem it solves
@@ -33,7 +33,7 @@ Coding agents change code in one of two ways today, and both are bad in a specif
    - a fuzzy/token-similarity match splices onto a span that merely shares tokens.
    A wrong edit that says "ok" is worse than an honest failure, because it's invisible.
 
-slivr's edit protocol is designed to beat *both* problems at once.
+proov's edit protocol is designed to beat *both* problems at once.
 
 ## The mechanism (the actual invention)
 
@@ -67,17 +67,17 @@ written** and per-edit repair packets come back. Multi-file changes cost a few t
 
 From a **130-run** head-to-head (17 tasks × 5 file-size regimes × reps, $6.40 spend, same model
 both arms so the difference is the *protocol*, not the model). Full numbers + raw data in
-[`bench/REPORT.md`](bench/REPORT.md). Aggregate: slivr is **81% cheaper at 82% vs 65% success on
+[`bench/REPORT.md`](bench/REPORT.md). Aggregate: proov is **81% cheaper at 82% vs 65% success on
 gemini-2.5-flash**, **71% cheaper at 100% vs 71% on claude-sonnet-4** — but the aggregate is *inflated
 by large-file blowups*, so the **per-regime view is the honest one:**
 
-| regime | cost saved vs full-rewrite baseline | success (slivr vs baseline) |
+| regime | cost saved vs full-rewrite baseline | success (proov vs baseline) |
 |---|---|---|
-| **large single-edit** | **65–85% cheaper** | **decisive** — baseline **0/12** (gemini), 2/4 (claude) vs slivr 9/12, 4/4 |
-| **large multi-file** | **82–89% cheaper** | **decisive** — baseline **0/6** (gemini), 0/2 (claude) vs slivr 6/6, 2/2 |
+| **large single-edit** | **65–85% cheaper** | **decisive** — baseline **0/12** (gemini), 2/4 (claude) vs proov 9/12, 4/4 |
+| **large multi-file** | **82–89% cheaper** | **decisive** — baseline **0/6** (gemini), 0/2 (claude) vs proov 6/6, 2/2 |
 | medium | 30–74% cheaper | tie |
 | tiny single-edit | model-dependent: 73% cheaper (gemini) … **−8% (claude)** | tie |
-| **small multi-file** | **−8% to −12% (slivr costlier)** | **slivr can LOSE** — 9/15 vs 15/15 on gemini-flash |
+| **small multi-file** | **−8% to −12% (proov costlier)** | **proov can LOSE** — 9/15 vs 15/15 on gemini-flash |
 
 **The core finding — reliability, not just cost:** on large files the full-rewrite baseline
 **failed 0/18 runs on gemini** (44% hit the turn cap in a token *runaway* — worst single run
@@ -85,8 +85,8 @@ by large-file blowups*, so the **per-regime view is the honest one:**
 cost tax, it's a *failure mode*; the anchor protocol simply doesn't have it.
 
 **Honest losses (reported against us):** on **small/tiny files there's no win** — a full rewrite of a
-small file is already cheap, so slivr is cost-neutral-to-slightly-*negative* there; and on
-gemini-flash slivr actually **fails some small-multi (new-file) tasks** the baseline passes (a
+small file is already cheap, so proov is cost-neutral-to-slightly-*negative* there; and on
+gemini-flash proov actually **fails some small-multi (new-file) tasks** the baseline passes (a
 model-specific weakness, not structural — it passes them on claude).
 
 **The defensible, publishable claim is therefore narrow and true:** *for edits to **large files**,
@@ -100,7 +100,7 @@ blow up where full-rewrite tools do.
 This was established by *measurement*, not hope, across multiple invention-pipeline runs:
 
 - **It is not smarter than Claude Code.** With the *same model*, a coding agent's quality is set by
-  the model, not the harness. slivr ties Claude-Code-style harnesses on *task success* — it wins on
+  the model, not the harness. proov ties Claude-Code-style harnesses on *task success* — it wins on
   *cost and reliability*, not capability. Running it on a weak model gives weak results.
 - **The cost win is conditional on file size.** It's huge on large/multi-file work (the common real
   case) and a *wash or slight loss* on tiny single-edit files (full-rewriting a small file is cheap).
@@ -125,12 +125,12 @@ converge → build → **measure head-to-head**), then a hole-finding pass:
 3. Re-measured at scale on **both** a cheap model (gemini) and a **realistically-priced model
    (Claude Sonnet 4)**, the compact-edit protocol showed a **real, reproducible 65–89% cost cut on
    large-file edits at equal-or-better correctness** — and exposed the full-rewrite baseline's
-   large-file *failure* (0/18 on gemini, token runaways). slivr is that fixed engine wrapped in a
+   large-file *failure* (0/18 on gemini, token runaways). proov is that fixed engine wrapped in a
    usable agent. (The early cheap-model preview had *hidden* this — cheap input pricing erased the
    token savings; pricing a realistic model, and scaling the benchmark, revealed it.)
 
 The meta-lesson, paid for in measurements: *with the same model you cannot out-think Claude Code at
-the harness level — you can only make it cheaper and more reliable.* slivr is exactly that, honestly.
+the harness level — you can only make it cheaper and more reliable.* proov is exactly that, honestly.
 
 ## Architecture (where each piece lives)
 
@@ -142,6 +142,6 @@ the harness level — you can only make it cheaper and more reliable.* slivr is 
 - `src/loop.mjs` / `src/agent.mjs` — the tool-use loop + a persistent `Session` for the REPL.
 - `src/repl.mjs`, `src/ui.mjs`, `src/diff.mjs`, `src/config.mjs`, `src/safety.mjs` — daily-use shell:
   REPL, streaming colored diffs, config, destructive-command blocklist + approval.
-- `bin/slivr.mjs` — the CLI. `bench/` — the head-to-head harness + measured results.
+- `bin/proov.mjs` — the CLI. `bench/` — the head-to-head harness + measured results.
 
 See `README.md` for usage and `bench/REPORT.md` for the full measured numbers.

@@ -11,7 +11,7 @@ millions of lines → agents hallucinate architecture they can't see. Plus embed
 per chunk + a vector DB.
 
 ## Brainstorm result (11 ideas, avg 84.5; winner r90)
-Strong convergence: extend slivr's **existing zero-LLM regex symbol index** (Blocks 3/6) into a
+Strong convergence: extend proov's **existing zero-LLM regex symbol index** (Blocks 3/6) into a
 **persistent, incremental, hierarchical Graph-of-Symbols** — NOT embeddings.
 
 ## The winner (built here)
@@ -21,7 +21,7 @@ Strong convergence: extend slivr's **existing zero-LLM regex symbol index** (Blo
 > calls, no embeddings, no vector DB, no file cap.
 
 ## Implementation (`src/repomap.mjs`)
-- `buildSymbolIndex` now: loads a disk cache (`~/.slivr/index/<repo-hash>.json`), walks the repo,
+- `buildSymbolIndex` now: loads a disk cache (`~/.proov/index/<repo-hash>.json`), walks the repo,
   reuses cached symbols for unchanged files (mtime+size match), re-parses only changed ones, drops
   deleted ones, persists the updated cache, and returns `stats {total, parsed, reused, removed}`.
   Opts: `persist` (default true), `cacheDir`, `maxFiles` (raised to 50k). Built-in `crypto` for the

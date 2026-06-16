@@ -1,5 +1,5 @@
 /* Vendored from https://github.com/dhyabi2/esg-coreach (ESG-CoReach, AGPL-3.0-or-later, same
-   author + license as slivr). EXACT play-state graph + sound co-reachability certificate proving a
+   author + license as proov). EXACT play-state graph + sound co-reachability certificate proving a
    discrete lock-and-key level is solvable AND soft-lock-free. Tiles: # wall, S spawn, G goal,
    . floor, k key (+1 held when first stepped), D door (consumes 1 held key, stays open).
    State = (x,y,doorMask,keyMask). Certified iff every reachable state can still reach the goal.

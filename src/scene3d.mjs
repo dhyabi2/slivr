@@ -1,11 +1,11 @@
 // scene3d.mjs — the 3D eye (Block 21 "Orbit"): most agents ship a flat, single-view "3D" game because they
-// never SEE it from more than one angle. slivr can: it drives a WebGL/Three.js scene's CAMERA to many
+// never SEE it from more than one angle. proov can: it drives a WebGL/Three.js scene's CAMERA to many
 // angles in headless Chrome, captures each view (WebGL is capturable via the SwiftShader backend + the
 // page's own canvas.toDataURL), assembles a CONTACT SHEET, and checks the views actually CHANGE as the
 // camera orbits — so a flat billboard that ignores the camera is caught, not shipped. Zero new deps.
 //
-// Contract ("View"): a slivr 3D scene exposes a deterministic camera surface:
-//   window.slivrView = {
+// Contract ("View"): a proov 3D scene exposes a deterministic camera surface:
+//   window.proovView = {
 //     setCamera({yaw, pitch, dist, target}),  // yaw/pitch in DEGREES, dist = distance to target, target=[x,y,z]
 //     render(),                                // render ONE frame at the current camera (your RAF loop calls this)
 //   }
@@ -30,13 +30,13 @@ export function buildOrbitDriver(plan = {}) {
   // that never sets the contract still reports NO_VIEW_CONTRACT instead of producing no output at all.
   const pollMs = Math.max(1000, (plan.budget || 9000) - 1500);
   return `<script>(function(){
-  function out(o){var el=document.getElementById('__slivr_view');if(!el){el=document.createElement('pre');el.id='__slivr_view';el.style.display='none';document.body.appendChild(el);}el.textContent=JSON.stringify(o);}
+  function out(o){var el=document.getElementById('__proov_view');if(!el){el=document.createElement('pre');el.id='__proov_view';el.style.display='none';document.body.appendChild(el);}el.textContent=JSON.stringify(o);}
   function smallData(cv){try{var t=document.createElement('canvas');t.width=48;t.height=48;var x=t.getContext('2d');x.drawImage(cv,0,0,48,48);return x.getImageData(0,0,48,48).data;}catch(e){return null;}}
   function meanDiff(a,b){if(!a||!b)return 0;var t=0,n=0;for(var i=0;i<a.length;i+=4){t+=(Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2]))/3;n++;}return n?t/n:0;}
-  function ready(){var V=window.slivrView;return V&&typeof V.setCamera==='function'&&typeof V.render==='function'&&document.querySelector('canvas');}
+  function ready(){var V=window.proovView;return V&&typeof V.setCamera==='function'&&typeof V.render==='function'&&document.querySelector('canvas');}
   function run(){try{
-    var V=window.slivrView;
-    if(!V||typeof V.setCamera!=='function'||typeof V.render!=='function'){out({error:'NO_VIEW_CONTRACT',hint:'expose window.slivrView={setCamera({yaw,pitch,dist,target}),render()} and create the renderer with preserveDrawingBuffer:true. (If you load Three.js as an ES module from a CDN, set window.slivrView from INSIDE the module after it loads.)'});return;}
+    var V=window.proovView;
+    if(!V||typeof V.setCamera!=='function'||typeof V.render!=='function'){out({error:'NO_VIEW_CONTRACT',hint:'expose window.proovView={setCamera({yaw,pitch,dist,target}),render()} and create the renderer with preserveDrawingBuffer:true. (If you load Three.js as an ES module from a CDN, set window.proovView from INSIDE the module after it loads.)'});return;}
     var cv=document.querySelector('canvas');
     if(!cv){out({error:'NO_CANVAS'});return;}
     var ANGLES=${JSON.stringify(angles)},PITCH=${pitch},DIST=${dist},TARGET=${JSON.stringify(target)};
@@ -53,7 +53,7 @@ export function buildOrbitDriver(plan = {}) {
     out({ok:true,frames:frames,labels:labels,adjDiff:adj});
   }catch(e){out({error:String(e&&e.message||e)});}}
   // POLL for the contract for up to ~7s — Three.js loaded as an async ES module from a CDN won't have set
-  // window.slivrView by the time 'load' fires, so a fixed delay would spuriously report NO_VIEW_CONTRACT.
+  // window.proovView by the time 'load' fires, so a fixed delay would spuriously report NO_VIEW_CONTRACT.
   var waited=0,POLL=${pollMs};function wait(){if(ready()){setTimeout(run,150);return;}waited+=150;if(waited>POLL){run();return;}setTimeout(wait,150);}
   if(document.readyState==='complete')wait();else window.addEventListener('load',wait);
 })();</script>`;
@@ -71,22 +71,22 @@ export function orbitScene(htmlAbs, plan = {}) {
   const sceneHtml = read(htmlAbs);
   if (!sceneHtml) return { ok: false, error: "FILE_NOT_FOUND_OR_EMPTY" };
   const dir = path.dirname(htmlAbs);
-  const tmp = path.join(dir, `.slivr-orbit-${process.pid}-${Date.now()}.html`);
+  const tmp = path.join(dir, `.proov-orbit-${process.pid}-${Date.now()}.html`);
   try {
     const driver = buildOrbitDriver(plan);
     const merged = /<\/body>/i.test(sceneHtml) ? sceneHtml.replace(/<\/body>/i, driver + "</body>") : sceneHtml + driver;
     fs.writeFileSync(tmp, merged);
     const dom = renderDomGL(tmp, plan.budget || 9000);
     if (!dom.ok) return { ok: false, error: dom.error };
-    const m = dom.dom.match(/<pre id="__slivr_view"[^>]*>([\s\S]*?)<\/pre>/);
+    const m = dom.dom.match(/<pre id="__proov_view"[^>]*>([\s\S]*?)<\/pre>/);
     let res = null;
     if (m) { try { res = JSON.parse(decodeEntities(m[1])); } catch { /* */ } }
     if (!res) return { ok: false, error: "ORBIT_PARSE_FAILED" };
     if (res.error) return { ok: false, error: res.error, hint: res.hint };
     // build the contact sheet image
     let dataUrl = null;
-    const sheet = path.join(os.tmpdir(), `slivr-orbit-${process.pid}-${Date.now()}.png`);
-    const sheetHtml = path.join(os.tmpdir(), `slivr-orbit-${process.pid}-${Date.now()}.html`);
+    const sheet = path.join(os.tmpdir(), `proov-orbit-${process.pid}-${Date.now()}.png`);
+    const sheetHtml = path.join(os.tmpdir(), `proov-orbit-${process.pid}-${Date.now()}.html`);
     try {
       fs.writeFileSync(sheetHtml, contactSheetHtml(res.frames, res.labels));
       const shot = renderShot(sheetHtml, sheet, { width: 1100, height: 700 });

@@ -1,5 +1,5 @@
 // journal.mjs — session continuity (Block 25, Challenge 1): coding agents lose their place between
-// sessions — open a new window and there's no clarity on what was done or where to continue. slivr keeps
+// sessions — open a new window and there's no clarity on what was done or where to continue. proov keeps
 // a durable on-disk JOURNAL and reconstructs a "where you left off" briefing on startup from the persisted
 // blueprint + world map + git state + the last handoff. Zero dependencies (files + an optional git call).
 
@@ -9,7 +9,7 @@ import { execSync } from "node:child_process";
 import { loadBlueprint, coverage, nextUncovered } from "./blueprint.mjs";
 import { loadWorld, worldCoverage } from "./world.mjs";
 
-function journalPath(dir) { return path.join(dir, ".slivr", "journal.md"); }
+function journalPath(dir) { return path.join(dir, ".proov", "journal.md"); }
 
 // Append a session entry (a dated handoff). entry: { task, summary, next, files }.
 export function appendJournal(dir, entry = {}, when) {

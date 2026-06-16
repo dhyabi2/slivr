@@ -1,6 +1,6 @@
 // server.mjs — run a generated app as a REAL server, not just a static index.html: spawn it, wait for
 // its port to listen, hand back an http URL, verify over HTTP, and kill it (process group) on teardown.
-// This is what lets slivr build Node apps that "give a URL with a port". Zero deps (node net +
+// This is what lets proov build Node apps that "give a URL with a port". Zero deps (node net +
 // child_process). Running servers are tracked so they're cleaned up on process exit (no orphaned ports).
 
 import { spawn } from "node:child_process";

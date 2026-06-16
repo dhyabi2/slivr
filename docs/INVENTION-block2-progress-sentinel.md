@@ -3,7 +3,7 @@
 Second feature from the **brainstorm→rank→build→measure** loop.
 
 ## Seed — the real challenge
-In the first LiveCodeBench run, slivr *stalled*: it burned its whole step budget making valid tool
+In the first LiveCodeBench run, proov *stalled*: it burned its whole step budget making valid tool
 calls that went nowhere and produced no result. PR #1 added a guard for non-JSON / unknown-tool calls,
 but not for the harder case: **valid tool calls that just repeat** (re-reading the same file, retrying
 the same failing edit) — the agent spinning in place.

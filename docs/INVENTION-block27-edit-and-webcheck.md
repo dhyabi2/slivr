@@ -34,7 +34,7 @@ errors were never captured**. The agent had no signal that the script never ran.
 
 ## 3. License → AGPL-3.0
 `LICENSE` replaced with the canonical GNU AGPL-3.0 text; `package.json` → `"AGPL-3.0-or-later"`; README
-updated. slivr is now free and open source under the AGPL.
+updated. proov is now free and open source under the AGPL.
 
 ## Measured
 - selftest: **449 passed, 0 failed** (was 438; +11).

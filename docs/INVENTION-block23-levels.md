@@ -1,7 +1,7 @@
 # Invention Block 23 — Levels: real multi-level games (data-driven, distinct, verified)
 
 Twenty-third feature — the answer to "agents can only build a single-level playground." They hardcode one
-scene and stop, or — if they try — clone level 1. slivr now builds games with several **meaningfully
+scene and stop, or — if they try — clone level 1. proov now builds games with several **meaningfully
 different** levels and **verifies every one** loads, is distinct (not a clone), plays, and progresses.
 
 ## The challenge, decomposed
@@ -19,14 +19,14 @@ different** levels and **verifies every one** loads, is distinct (not a clone), 
   / `TriggerEvent` so a harness can jump to any level and drive win/lose/next transitions.
 - **Verification — 75**: behavioral-structural FINGERPRINTING — `reset(N)` → loads; scripted input →
   plays; compare each level's fingerprint to flag **clones**; a win-state reachable → completable. (The RL
-  completability agent is dropped — slivr uses scripted-input + a win flag, and per-level `play_game` for
+  completability agent is dropped — proov uses scripted-input + a win flag, and per-level `play_game` for
   deep completability.)
 
 ## What was built — `play_levels` (`src/gameharness.mjs`)
 Extends the Block-15 Simulacrum contract to be **level-aware**:
 ```js
-window.slivrSim.levels      // number of levels (or the level array)
-window.slivrSim.load(i)     // load level i deterministically (or reset(i))
+window.proovSim.levels      // number of levels (or the level array)
+window.proovSim.load(i)     // load level i deterministically (or reset(i))
 // + the existing reset / step / input / state
 ```
 `play_levels {path}` injects a driver that iterates EVERY level: `load(i)`, snapshot the initial state
@@ -53,7 +53,7 @@ play_levels, each level a blueprint leaf). `src/ui.mjs` adds a label. `selftest.
   3-level game, not a single playground or a clone.
 
 ## Why it disrupts
-"Multi-level" from other agents is one playground or three copies of it. slivr separates level data from the
+"Multi-level" from other agents is one playground or three copies of it. proov separates level data from the
 engine, drives every level, and *proves* each one is distinct and playable — flagging clones automatically.
 Composes with the game harness (per-level `play_game`), the Blueprint (a leaf per level), and the Asset
 Studio / world map (distinct level art and layout).

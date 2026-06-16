@@ -1,6 +1,6 @@
 // mcp.mjs — Model Context Protocol (MCP) CLIENT, stdio transport.
 //
-// Lets slivr connect to external MCP servers (Claude-Desktop-compatible config) and surface
+// Lets proov connect to external MCP servers (Claude-Desktop-compatible config) and surface
 // their tools to the model as namespaced, callable tools (mcp__<server>__<tool>). One process per
 // server; we speak JSON-RPC 2.0 over the child's stdin/stdout as NEWLINE-DELIMITED JSON (one JSON
 // object per line) — NOT the LSP Content-Length framing. Requests are correlated by `id`.
@@ -11,12 +11,12 @@
 //   closeAll(clients)                                      // kill children cleanly
 //
 // Everything here is OPTIONAL: with no `mcpServers` configured, connectAll returns empty and the
-// rest of slivr is untouched.
+// rest of proov is untouched.
 
 import { spawn } from "node:child_process";
 
 const PROTOCOL_VERSION = "2025-06-18";
-const CLIENT_INFO = { name: "slivr", version: "0.1.0" };
+const CLIENT_INFO = { name: "proov", version: "0.1.0" };
 const DEFAULT_TIMEOUT_MS = 20000;
 
 // Sanitize a server or tool name into the [A-Za-z0-9_] charset used for the namespaced tool id.

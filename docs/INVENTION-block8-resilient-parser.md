@@ -20,7 +20,7 @@ plan → task_write → BADCALL → task_write → BADCALL → BADCALL → … �
 first BADCALL = "The problem asks us to select a subset… Constraints: N,M ≤ 2×10^5…"
 ```
 
-slivr demanded "respond with EXACTLY ONE JSON object, nothing else." On hard problems the cheap model
+proov demanded "respond with EXACTLY ONE JSON object, nothing else." On hard problems the cheap model
 (gemini-2.5-flash) keeps emitting **pure reasoning prose with no JSON tool call** — each a wasted
 `BADCALL` turn — burning its step budget before it ever commits a `solution.py`. The old parser made
 it worse: it only tried the **first** `{…}` in the message, so reasoning containing stray braces

@@ -1,6 +1,6 @@
 # Invention Block 14 — house_style: match the repo's conventions
 
-Fourteenth feature — gap #2 of the existing-codebase work. When adding/editing code, slivr wrote in
+Fourteenth feature — gap #2 of the existing-codebase work. When adding/editing code, proov wrote in
 its OWN default style (spaces, semicolons, camelCase) instead of the repo's, producing diffs reviewers
 reject. Now it matches the house style.
 
@@ -24,7 +24,7 @@ into the agent. Zero LLM, zero dependencies.
 
 ## Measured (end-to-end)
 A repo with a deliberately distinctive style — **tabs · single quotes · no semicolons · snake_case** —
-detected exactly. Asked slivr to add a function:
+detected exactly. Asked proov to add a function:
 ```
 function multiply_nums(a, b) {
 	return a * b

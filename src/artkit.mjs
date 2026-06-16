@@ -15,7 +15,7 @@ function fbm(x,y,oct){oct=oct||5;var s=0,a=0.5,f=1;for(var i=0;i<oct;i++){s+=a*n
 `;
 
 export const ARTKIT = `
-// ---- slivr artkit: draw RICH art (shading, texture, outline, harmony), never flat rectangles ----
+// ---- proov artkit: draw RICH art (shading, texture, outline, harmony), never flat rectangles ----
 function _hsl(h,s,l){return 'hsl('+(((h%360)+360)%360)+','+Math.round(s)+'%,'+Math.round(l)+'%)';}
 // harmonized palette: n swatches around a base hue, desaturated — NEVER pure #f00/#0f0 primaries.
 function palette(baseHue,n){n=n||6;var offs=[0,28,-28,150,200,-60,90],o=[];for(var i=0;i<n;i++)o.push(_hsl(baseHue+(offs[i%offs.length]||i*37),52,56));return o;}

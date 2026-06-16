@@ -1,6 +1,6 @@
 // repl.mjs — interactive multi-turn session.
 //
-// `slivr` (no task) opens this. You type a request, the agent works (streaming each step with a
+// `proov` (no task) opens this. You type a request, the agent works (streaming each step with a
 // compact diff for edits), then you type the next — the conversation + tool results PERSIST across
 // turns (Session keeps the thread). Ctrl-C interrupts the CURRENT turn without killing the session;
 // a second Ctrl-C at the prompt exits. REPL commands: /help /model /cost /reset /exit.
@@ -22,10 +22,10 @@ import { freePort, waitForPort } from "./server.mjs";
 import { detectCommands } from "./project.mjs";
 import { resumeSummary, appendJournal } from "./journal.mjs";
 
-// Persist an API key to ~/.slivr.json (merging into any existing config). Returns true on success.
+// Persist an API key to ~/.proov.json (merging into any existing config). Returns true on success.
 function saveKeyToConfig(key) {
   try {
-    const file = path.join(os.homedir(), ".slivr.json");
+    const file = path.join(os.homedir(), ".proov.json");
     let cfg = {};
     try { cfg = JSON.parse(fs.readFileSync(file, "utf8")); } catch { /* new or unparseable → start fresh */ }
     cfg.apiKey = key;
@@ -45,21 +45,21 @@ export function parseCommand(line) {
 
 const HELP = `commands:
   /help            show this help
-  /key <sk-or-…>   set + save your OpenRouter API key (to ~/.slivr.json)
+  /key <sk-or-…>   set + save your OpenRouter API key (to ~/.proov.json)
   /model <id>      switch model (e.g. anthropic/claude-sonnet-4, openai/gpt-4o)
   /cost            show session tokens + cost so far
   /plan [on|off]   toggle plan-mode (agent must plan + get approval before editing)
-  /skills          list available skills (.slivr/skills/*.md, ~/.slivr/skills/*.md)
+  /skills          list available skills (.proov/skills/*.md, ~/.proov/skills/*.md)
   /run <name> [..] run a skill as a task (also: /<name> [..] if not a built-in command)
   /finish [note]   keep going until ALL tasks are done & verified (auto-continue, budgeted)
   /mcp             list connected MCP servers + tools (and any that failed to connect)
-  /jobs            list background jobs started with \`slivr bg\`
+  /jobs            list background jobs started with \`proov bg\`
   /clear           clear the screen
   /reset           clear the conversation context (keeps cost totals)
   /exit            quit
 modes: [edits] prompt before edits/commands · [auto] no prompts · [plan] plan + approve before editing
 keys: Shift-Tab (or Tab) cycle mode [edits → auto → plan] (at the prompt)  ·  Ctrl-C interrupt turn  ·  ↑/↓ history
-background: run \`slivr bg "<task>"\`, \`slivr jobs\`, \`slivr logs <id>\`, \`slivr schedule …\` from your shell.
+background: run \`proov bg "<task>"\`, \`proov jobs\`, \`proov logs <id>\`, \`proov schedule …\` from your shell.
 anything else is sent to the agent as a request.`;
 
 export async function startRepl({ workdir, config, palette } = {}) {
@@ -75,7 +75,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
   // No key: show clear, actionable guidance (the agent still opens so the user can read it).
   if (!session.provider.hasKey()) {
     process.stdout.write(p.yellow("no API key — the agent can't call the model.\n"));
-    process.stdout.write(p.dim("  set one right here:  ") + p.cyan("/key sk-or-…") + p.dim("   (saved to ~/.slivr.json · keys: https://openrouter.ai/keys)\n"));
+    process.stdout.write(p.dim("  set one right here:  ") + p.cyan("/key sk-or-…") + p.dim("   (saved to ~/.proov.json · keys: https://openrouter.ai/keys)\n"));
   }
   // Connect any configured MCP servers up front; their tools become callable as mcp__<server>__<tool>.
   if (config.mcpServers) {
@@ -94,7 +94,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
   // the active mode is shown in the prompt; Shift-Tab / Tab (at the prompt) cycles it.
   const modeKey = () => session.tools.planMode ? "plan" : approval;   // edits | auto | all | plan
   const displayMode = () => modeKey();
-  const promptStr = () => p.cyan("slivr ") + p.dim("[" + displayMode() + "]") + p.cyan("› ");
+  const promptStr = () => p.cyan("proov ") + p.dim("[" + displayMode() + "]") + p.cyan("› ");
   const rl = readline.createInterface({
     input: process.stdin, output: process.stdout, prompt: promptStr(),
     completer: (line) => [[], line],         // suppress Tab autocomplete — Tab is used for mode cycling
@@ -162,7 +162,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
     const isServe = hint.kind === "serve";
     let port = null, url = null;
     if (isServe) { try { port = await freePort(); url = `http://localhost:${port}`; } catch { /* no port → run without */ } }
-    process.stdout.write(p.dim(isServe ? "  starting it — press Ctrl-C to stop and return to slivr.\n" : "  running it — press Ctrl-C to stop and return.\n"));
+    process.stdout.write(p.dim(isServe ? "  starting it — press Ctrl-C to stop and return to proov.\n" : "  running it — press Ctrl-C to stop and return.\n"));
     if (url) process.stdout.write(p.green("  ▶ ") + p.cyan(url) + p.dim("  (opening in your browser once it's up)\n"));
     await new Promise((resolve) => {
       inDemo = true;
@@ -330,7 +330,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
       // is transparent; only multi-round continuation prints status.
       const untilDone = explicitFinish || config.untilDone !== false;
 
-      // "run it" / "open it" / "run in browser" / "show me" → slivr LAUNCHES the artifact directly,
+      // "run it" / "open it" / "run in browser" / "show me" → proov LAUNCHES the artifact directly,
       // instead of sending it to the model (which just describes how to open it). This is what the
       // user means by "run in browser": actually open it.
       if (!command) {
@@ -474,15 +474,15 @@ export async function startRepl({ workdir, config, palette } = {}) {
   });
 
   // First-run onboarding: if there's no key and we're interactive, ASK for it (rather than make the
-  // user discover /key). Reuses the main readline; pressing Enter skips. Saved to ~/.slivr.json.
+  // user discover /key). Reuses the main readline; pressing Enter skips. Saved to ~/.proov.json.
   if (!session.provider.hasKey() && process.stdin.isTTY) {
     const k = await prompting(() => new Promise((resolve) => {
       rl.question(p.cyan("paste your OpenRouter API key (or press Enter to skip): "), (a) => resolve((a || "").trim()));
     }));
     if (k) {
       session.provider.key = k;
-      if (saveKeyToConfig(k)) process.stdout.write(p.green(`✓ key saved to ${path.join(os.homedir(), ".slivr.json")}\n`));
-      else process.stdout.write(p.yellow("key set for this session (could not save to ~/.slivr.json)\n"));
+      if (saveKeyToConfig(k)) process.stdout.write(p.green(`✓ key saved to ${path.join(os.homedir(), ".proov.json")}\n`));
+      else process.stdout.write(p.yellow("key set for this session (could not save to ~/.proov.json)\n"));
     } else {
       process.stdout.write(p.dim("skipped — set it any time with  /key sk-or-…\n"));
     }
@@ -522,12 +522,12 @@ async function handleCommand(command, ctx) {
       if (!k) {
         process.stdout.write(session.provider.hasKey()
           ? p.dim("an API key is set. To replace it: /key sk-or-…\n")
-          : p.dim("no API key set. Usage: /key sk-or-…  (saved to ~/.slivr.json · keys: https://openrouter.ai/keys)\n"));
+          : p.dim("no API key set. Usage: /key sk-or-…  (saved to ~/.proov.json · keys: https://openrouter.ai/keys)\n"));
         return;
       }
       session.provider.key = k;   // apply to the live session immediately
-      if (saveKeyToConfig(k)) process.stdout.write(p.green(`✓ key set and saved to ${path.join(os.homedir(), ".slivr.json")}\n`));
-      else process.stdout.write(p.yellow("key set for this session, but could not save it to ~/.slivr.json\n"));
+      if (saveKeyToConfig(k)) process.stdout.write(p.green(`✓ key set and saved to ${path.join(os.homedir(), ".proov.json")}\n`));
+      else process.stdout.write(p.yellow("key set for this session, but could not save it to ~/.proov.json\n"));
       if (!/^sk-/.test(k)) process.stdout.write(p.yellow("  note: that doesn't look like an OpenRouter key (expected sk-or-…).\n"));
       return;
     }
@@ -538,7 +538,7 @@ async function handleCommand(command, ctx) {
     case "mcp": {
       const cat = session.mcpCatalog || [];
       const errs = session.mcpErrors || [];
-      if (!cat.length && !errs.length) { process.stdout.write(p.dim("no MCP servers configured. Add them under \"mcpServers\" in .slivr.json.\n")); return; }
+      if (!cat.length && !errs.length) { process.stdout.write(p.dim("no MCP servers configured. Add them under \"mcpServers\" in .proov.json.\n")); return; }
       if (cat.length) {
         const byServer = {};
         for (const t of cat) (byServer[t.server] ||= []).push(t.name || t.id);
@@ -553,18 +553,18 @@ async function handleCommand(command, ctx) {
     }
     case "jobs": {
       const jobs = (() => { try { return listJobs(); } catch { return []; } })();
-      if (!jobs.length) { process.stdout.write(p.dim("no background jobs. Start one with `slivr bg \"<task>\"` from your shell.\n")); return; }
+      if (!jobs.length) { process.stdout.write(p.dim("no background jobs. Start one with `proov bg \"<task>\"` from your shell.\n")); return; }
       process.stdout.write(p.bold("background jobs") + "\n");
       for (const j of jobs.slice(0, 20)) {
         const mark = j.status === "done" ? p.green("✓") : j.status === "failed" ? p.red("✗") : p.yellow("●");
         process.stdout.write(`  ${mark} ${p.dim(j.id)} ${p.gray((j.task || "").replace(/\s+/g, " ").slice(0, 60))} ${p.dim(j.status)}\n`);
       }
-      process.stdout.write(p.dim("  view a job's log with: slivr logs <id>\n"));
+      process.stdout.write(p.dim("  view a job's log with: proov logs <id>\n"));
       return;
     }
     case "skills": {
       const skills = listSkills(workdir);
-      if (!skills.length) { process.stdout.write(p.dim("no skills found. Add prompts under ./.slivr/skills/*.md or ~/.slivr/skills/*.md\n")); return; }
+      if (!skills.length) { process.stdout.write(p.dim("no skills found. Add prompts under ./.proov/skills/*.md or ~/.proov/skills/*.md\n")); return; }
       process.stdout.write(p.bold("skills") + p.dim("  (run with /run <name> [args] or /<name> [args])") + "\n");
       for (const s of skills) process.stdout.write(`  ${p.cyan(s.name.padEnd(14))} ${p.gray((s.description || "").slice(0, 70))}\n`);
       return;

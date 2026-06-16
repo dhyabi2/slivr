@@ -1,6 +1,6 @@
 # LOFT (vendored) — serverless realtime multiplayer, no always-on game server
 
-Vendored from https://github.com/dhyabi2/loft-poc (same author + AGPL-3.0-or-later as slivr).
+Vendored from https://github.com/dhyabi2/loft-poc (same author + AGPL-3.0-or-later as proov).
 
 LOFT = Lazy-Oracle Fixed-Tick: authoritative, cheat-resistant realtime multiplayer that runs on
 serverless infra (Vercel/Cloudflare/Lambda + any CAS KV) with NO persistent game-server process.

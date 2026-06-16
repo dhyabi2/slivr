@@ -1,16 +1,16 @@
-# slivr Sentinel — agent-to-agent protocol
+# proov Sentinel — agent-to-agent protocol
 
-`slivr sentinel` runs the coding agent **non-stop, with no human prompts**, so another agent ("Hermes")
+`proov sentinel` runs the coding agent **non-stop, with no human prompts**, so another agent ("Hermes")
 can drive it. It does not replace the interactive REPL — it adds a mode. Zero dependencies: the transport
 is stdout (events) + an append-only control file (commands).
 
 ## Start it
 
 ```
-slivr sentinel "<task>" [dir]          # task as the standing directive
-slivr sentinel --skill <name> [dir]    # a skill file as the standing directive
-slivr sentinel ... --standing          # stay alive after the task, awaiting more directives
-slivr sentinel ... --control <file>    # control file path (default: <dir>/.slivr/control.jsonl)
+proov sentinel "<task>" [dir]          # task as the standing directive
+proov sentinel --skill <name> [dir]    # a skill file as the standing directive
+proov sentinel ... --standing          # stay alive after the task, awaiting more directives
+proov sentinel ... --control <file>    # control file path (default: <dir>/.proov/control.jsonl)
 ```
 
 Actions auto-approve within guardrails (destructive shell commands are still hard-blocked and reported
@@ -34,7 +34,7 @@ One JSON object per line. Every event has `seq` (monotonic), `ts` (ms), and `t` 
 
 ## IN — control commands (append to the control file)
 
-Append one JSON object per line. slivr drains them **between turns** (never mid tool-call) and appends an
+Append one JSON object per line. proov drains them **between turns** (never mid tool-call) and appends an
 `{"t":"ack","ref":<id>,"status":...}` line for each. Give each command a unique `id` to track its ack.
 
 | command                                   | effect                                                     |
@@ -50,7 +50,7 @@ Append one JSON object per line. slivr drains them **between turns** (never mid 
 ## A minimal Hermes loop (pseudocode)
 
 ```js
-const proc = spawn("slivr", ["sentinel", task, dir]);
+const proc = spawn("proov", ["sentinel", task, dir]);
 proc.stdout.on("line", (l) => {
   const e = JSON.parse(l);
   if (e.t === "result" && looksOffTrack(e)) append(control, { id: id(), cmd: "redirect", text: "..." });
@@ -62,6 +62,6 @@ fs.appendFileSync(control, JSON.stringify({ id: "g1", cmd: "inject", text: "pref
 
 ## Guarantees & limits
 - Steering applies only in the inter-turn window, so a half-done edit is never corrupted.
-- The control file is append-only; slivr tracks a byte offset and never replays old lines (a fresh
+- The control file is append-only; proov tracks a byte offset and never replays old lines (a fresh
   session starts at the file's current end). Malformed lines are skipped, never halting.
 - Single controller assumed (one writer of commands). Rotate/truncate the control file between sessions.

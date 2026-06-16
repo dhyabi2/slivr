@@ -23,7 +23,7 @@ import { analyzeStructure, wantsMinimal, assetSourceViolation, animationDriverVi
 // EITHER a literal <canvas> OR a WebGL/Three.js page (same signal the renderer uses), plus a loop/contract.
 export function isGameHtml(html) {
   const s = String(html || "");
-  const hasLoopOrContract = /(requestAnimationFrame|slivrSim|getContext\s*\()/i.test(s);
+  const hasLoopOrContract = /(requestAnimationFrame|proovSim|slivrSim|getContext\s*\()/i.test(s);
   return hasLoopOrContract && (/<canvas/i.test(s) || isWebGLPage(s));
 }
 function detectGameFile(workdir) {
@@ -117,7 +117,7 @@ function clip(obj, max = 6000) {
 // verify (optional): an async gate run when the model calls `done`. It returns { ok, feedback }.
 //   ok:true  → the work passed; the turn finishes.
 //   ok:false → the work failed; `feedback` (e.g. test output) is fed back and the model must REPAIR
-//   and call done again, up to `maxRepairs` times (the progress guard). This is what turns slivr from
+//   and call done again, up to `maxRepairs` times (the progress guard). This is what turns proov from
 //   a blind one-shot agent into a self-verifying one — it never finishes "green" on a failing check.
 // The agent may write a short reasoning note before its JSON tool call. Pull that prose out (everything
 // before the tool object) so the UI can show the WHY. "" when the message is JSON-only.
@@ -209,7 +209,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
       // Surface the failure to the caller instead of swallowing it. A bare "NO_OPENROUTER_KEY"
       // or "API 401/4xx" otherwise renders as a silent "1 turn · 0 tok" footer with no explanation.
       error = e.message === "NO_OPENROUTER_KEY"
-        ? "no API key — set OPENROUTER_API_KEY (or apiKey in ~/.slivr.json)"
+        ? "no API key — set OPENROUTER_API_KEY (or apiKey in ~/.proov.json)"
         : `provider error: ${e.message}`;
       trace.push({ step, error: "PROVIDER_ERROR", detail: e.message });
       break;
@@ -281,7 +281,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
                       else { const anv = animationDriverViolation(html, task); if (anv) { problem = anv; trace.push({ step, animGate: clip(anv, 80) }); } }
                     } catch { /* */ }
                   }
-                  // LOCK-AND-KEY SOLVABILITY (Block 39): if the game OPTS IN by exposing window.slivrLevels,
+                  // LOCK-AND-KEY SOLVABILITY (Block 39): if the game OPTS IN by exposing window.proovLevels,
                   // prove every level is solvable AND soft-lock-free (ESG-CoReach) — no key spent into an
                   // unwinnable state, the soft-lock that "a path exists / I played it once" can't see. Opt-in
                   // via the contract → never blocks games without keys/doors. A browser-read failure → no block.

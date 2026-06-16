@@ -2,7 +2,7 @@
 
 Twentieth feature — the answer to "the reference picture is only a window into a larger world." A game needs
 far more than one frame shows: off-screen areas, other levels, enemies, items, menus, weather, day/night,
-win/lose screens — all implied by the GAME IDEA, none of it in the picture. Blocks 18–19 made slivr faithful
+win/lose screens — all implied by the GAME IDEA, none of it in the picture. Blocks 18–19 made proov faithful
 to *what's shown*; this makes it **extrapolate what isn't** — and verify the invented content is consistent
 with the picture's world even though there's nothing in the reference to diff it against.
 
@@ -25,7 +25,7 @@ with the picture's world even though there's nothing in the reference to diff it
 
 ## What was built — `style_profile` + `style_check` + blueprint `origin` (`src/match.mjs`, `src/blueprint.mjs`)
 - **`style_profile {target}`** — extract the style anchor (dominant palette + brightness/saturation/contrast)
-  from the reference and persist it to `.slivr/style-anchor.json`. Deterministic, in-Chrome, zero deps.
+  from the reference and persist it to `.proov/style-anchor.json`. Deterministic, in-Chrome, zero deps.
 - **`style_check {candidate|render, target?}`** — verify an INVENTED asset against the anchor: a 0–100
   **adherence** score (palette 70% + tone 30%) with per-metric deltas, plus a composite (the asset beside the
   anchor palette + its own palette) the agent LOOKS at to judge fit. Anchor from the persisted file or a
@@ -52,7 +52,7 @@ rework < ~85) → finish only when both are complete and coherent. `src/ui.mjs` 
   picture's family.
 
 ## Why it disrupts
-Other agents stop at the frame — they reproduce the screenshot and call it a game. slivr treats the picture as
+Other agents stop at the frame — they reproduce the screenshot and call it a game. proov treats the picture as
 a style + world *baseline*, extrapolates everything the game idea needs beyond it, and verifies the invented
 content is coherent with the original world — a deterministic adherence score plus an eye check — so the result
 is a whole game in one consistent style, not a single static frame. Composes with the Blueprint (pictured vs

@@ -4,7 +4,7 @@ Seventeenth feature — the answer to "agents one-shot a big build into a basic 
 drop the inner parts." Building something large (a real game, a real app) is a **structuring + memory +
 persistence** problem: you must know what will be in it *in advance*, decompose it with **no abstraction**
 down to the small parts, and then grind through *all of them* one by one over hours without losing focus
-or the thread. Most agents can't — they lose coverage as context grows. slivr now holds the whole plan on
+or the thread. Most agents can't — they lose coverage as context grows. proov now holds the whole plan on
 disk and works it leaf by leaf.
 
 ## The challenge, decomposed
@@ -30,7 +30,7 @@ Then an **exclusion round** designed away the two killers — *needing a maintai
 tree from genre/convention at plan time (no static ontology), and intent is **inferred** (no Q&A).
 
 ## What was built — the Blueprint (`src/blueprint.mjs` + 5 tools)
-A persistent, on-disk hierarchical build tree at `<workdir>/.slivr/blueprint.json`:
+A persistent, on-disk hierarchical build tree at `<workdir>/.proov/blueprint.json`:
 - **`blueprint_plan {goal, tree}`** — lock the whole build as a NESTED tree of concrete leaves (childless
   node = a real artifact to make; node with children = a group). Persists; re-planning **preserves** prior
   progress by id (settled work is never wiped).

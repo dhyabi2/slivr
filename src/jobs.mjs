@@ -1,10 +1,10 @@
-// jobs.mjs — background + scheduled task store (lives under ~/.slivr/).
+// jobs.mjs — background + scheduled task store (lives under ~/.proov/).
 //
-//   ~/.slivr/jobs/<id>.json   one record per background job: { id, task, dir, status, ... }
-//   ~/.slivr/jobs/<id>.log    captured stdout+stderr of that job
-//   ~/.slivr/schedule.json    array of scheduled jobs the `scheduler` poller runs when due
+//   ~/.proov/jobs/<id>.json   one record per background job: { id, task, dir, status, ... }
+//   ~/.proov/jobs/<id>.log    captured stdout+stderr of that job
+//   ~/.proov/schedule.json    array of scheduled jobs the `scheduler` poller runs when due
 //
-// Background jobs are run by a DETACHED child that re-invokes slivr one-shot --auto (see bin).
+// Background jobs are run by a DETACHED child that re-invokes proov one-shot --auto (see bin).
 // The pure helpers here (id, duration parsing, store read/write, due-check) are unit-tested with
 // no child process. HONEST: `scheduler` is a foreground sleep-loop poller, not a system daemon.
 
@@ -12,7 +12,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export function ccaltHome() { return path.join(os.homedir(), ".slivr"); }
+export function ccaltHome() {
+  const next = path.join(os.homedir(), ".proov");
+  // BACK-COMPAT: if the new home doesn't exist yet but the old ~/.slivr does, keep using it (in-flight jobs).
+  try { if (!fs.existsSync(next) && fs.existsSync(path.join(os.homedir(), ".slivr"))) return path.join(os.homedir(), ".slivr"); } catch { /* */ }
+  return next;
+}
 export function jobsDir() { return path.join(ccaltHome(), "jobs"); }
 export function schedulePath() { return path.join(ccaltHome(), "schedule.json"); }
 

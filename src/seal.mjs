@@ -1,6 +1,6 @@
 // VENDORED (read-only reuse) from /Users/mac/methadology_invent/better-cc-fresh/src/seal.mjs
 // Original author's correctness-first edit applier + structured Repair Packet. Copied verbatim
-// per task instructions; this is the cornerstone of the compact-edit protocol used by slivr.
+// per task instructions; this is the cornerstone of the compact-edit protocol used by proov.
 //
 // SEAL — Structured Edit-Application Loop (deterministic core, NO LLM)
 // Applies an intent-based edit; on failure returns a structured Repair Packet.
