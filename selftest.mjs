@@ -2835,6 +2835,29 @@ console.log("== 68n. see_page verifies — describes what's seen + goal match, n
   ok("see_page: still flags a missing file (FILE_NOT_FOUND), now async", (await t.see_page({ path: "nope.html" })).error === "FILE_NOT_FOUND");
 }
 
+console.log("== 68o. plan-first gate — decompose a substantial task before building (Block 73) ==");
+{
+  const { isSubstantialTask } = await import("./src/loop.mjs");
+  ok("plan-first: a short single-action task is NOT substantial", isSubstantialTask("fix the typo on line 4") === false);
+  ok("plan-first: a multi-part task IS substantial", isSubstantialTask("build a todo app with auth, a dashboard, and CSV export") === true);
+  ok("plan-first: a long task IS substantial", isSubstantialTask("x".repeat(240)) === true);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-plan-"));
+  const run = async (task, tasks, script) => {
+    let i = 0; const tools = { workdir: dir, tasks, edit_file: () => ({ ok: true }) };
+    const provider = { chat: async () => ({ text: script[i++] ?? '{"tool":"done","args":{}}', usage: {}, raw: {} }), totals: () => ({ cost: 0 }) };
+    return runLoop({ provider, tools, toolMap: { edit_file: (a) => tools.edit_file(a) }, systemPrompt: "s", task, maxSteps: 5, designFirst: false });
+  };
+  const big = "build a todo app with auth, a dashboard, and CSV export";
+  const editThenDone = ['{"tool":"edit_file","args":{"path":"a.js"}}', '{"tool":"done","args":{}}'];
+  const r1 = await run(big, [], editThenDone);
+  ok("plan-first: first edit on a substantial task with no plan → nudge once", r1.trace.filter((s) => s.planNudge).length === 1);
+  const r2 = await run(big, [{ id: "1", subject: "x", status: "in_progress" }], editThenDone);
+  ok("plan-first: with a plan already present → no nudge", !r2.trace.some((s) => s.planNudge));
+  const r3 = await run("fix the typo", [], editThenDone);
+  ok("plan-first: a trivial task → no nudge", !r3.trace.some((s) => s.planNudge));
+}
+
 console.log("== 69. animation-driver gate — a static 3D character is rejected (Block 48) ==");
 {
   const { animationDriverViolation } = await import("./src/structure.mjs");

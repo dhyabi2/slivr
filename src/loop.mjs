@@ -38,6 +38,17 @@ export function detectGameFile(workdir) {
 // Does this task describe a VISUAL build (something whose LOOK matters — a game/UI/site)? Conservative +
 // keyword-based: a clear non-visual deliverable (cli/api/script/library/backend) opts out so we never draw a
 // reference for a text-only job. Drives the design-first preflight (Block 67).
+// Tools that MUTATE the workspace — used by the plan-first gate (Block 73).
+const MUTATING_TOOLS = new Set(["edit_file", "edit_files", "edit_symbol", "create_file", "write_file"]);
+// A SUBSTANTIAL task warrants an up-front plan: long, or multi-clause / lists several deliverables. A short
+// single-action task ("fix the typo on line 4") never trips the plan-first gate.
+export function isSubstantialTask(task) {
+  const s = String(task || "").trim();
+  if (s.length < 30) return false;                 // truly trivial one-liners never trip it
+  const clauses = (s.match(/\b(and|then|also|plus|with|including|as well as)\b|[,;]|\b\d[.)]/gi) || []).length;
+  return clauses >= 2 || s.length > 180;
+}
+
 export function isVisualBuild(task) {
   const t = String(task || "").toLowerCase();
   if (!t.trim()) return false;
@@ -242,6 +253,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
   let doneTaskNudged = false;   // push back ONCE when done is called with incomplete checklist tasks
   let gameGateDone = false;     // push back ONCE when done is called on a game that doesn't actually play
   let taskFidelityDone = false; // Block 58: push back ONCE when done is called but a prompt-named requirement is unreferenced
+  let planNudged = false;       // Block 73: push back ONCE to decompose a substantial task before the first edit
   let visualMatchTries = 0;     // Block 64: block done until the render matches a reference image per-asset ≥95% (capped)
   let taskCheckTries = 0;       // Block 68: block done while any task's executable acceptance check fails (capped)
   let replanNudged = false;   // Block 5: nudge to re-plan once per failure streak (when a plan exists)
@@ -552,6 +564,17 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
       continue;
     }
     noProgress = 0; // a real, known tool call — making progress again
+
+    // PLAN-FIRST gate (Block 73): a SUBSTANTIAL, multi-part task should be DECOMPOSED before building. If the
+    // first mutating action happens with an EMPTY checklist, push back ONCE to lay out a task_write plan —
+    // planning first beats building blind (audit #1). One-shot; trivial/short tasks never trigger.
+    if (!planNudged && MUTATING_TOOLS.has(call.tool) && tools && Array.isArray(tools.tasks) && tools.tasks.length === 0 && isSubstantialTask(task)) {
+      planNudged = true;
+      messages.push({ role: "user", content: `Before you start building: this is a multi-part task — DECOMPOSE it first. Call task_write with a concrete checklist (one step per deliverable), give each mechanically-testable step a 'check' (a shell command that exits 0 when it's truly done), then build to the plan and mark steps completed as you verify them. Planning first prevents stacking work on the wrong foundation.` });
+      trace.push({ step, planNudge: 1 });
+      continue;
+    }
+
     if (bridge) bridge.emit("turn", { n: turns, tool: call.tool, args: call.args || {} });
 
     // approval/safety gate: let the host veto a tool BEFORE it runs.

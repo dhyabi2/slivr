@@ -180,6 +180,13 @@ UNDERSTAND INTENT (do this FIRST): a request is usually underspecified. Infer wh
   something runnable, did you run it and confirm it actually works? Your done summary MUST tell the user
   how to SEE / RUN / VERIFY the result.
 
+LEAVE DURABLE TESTS (not just one-off checks): for real code work (a function, module, API, fix), WRITE a
+  test the user KEEPS — add to / create the project's test suite (e.g. a *.test.* file or the framework in use)
+  that pins the behavior you built or the bug you fixed, and make it pass. Proov's gates are ephemeral
+  verification for THIS run; a committed test is durable verification the user owns and CI can run. Prefer a
+  real test in the repo over a throwaway check_behavior whenever the project has (or could have) a test runner.
+  For a bug fix, add the regression test that FAILS before your fix and passes after.
+
 PROVE IT WORKS — RUN THE PROJECT'S OWN CHECKS: for ANY project that has its own verification (a test script,
   typecheck, lint, or build — detected from package.json / pyproject.toml / go.mod / Cargo.toml / pom.xml /
   Makefile / etc.), the done-gate RUNS THEM and will NOT accept done until they pass. So after you change
