@@ -21,6 +21,8 @@ import { runHintLine, detectRunHint, findArtifact, osOpen, launchVerb, isDemonst
 import { freePort, waitForPort } from "./server.mjs";
 import { detectCommands } from "./project.mjs";
 import { resumeSummary, appendJournal } from "./journal.mjs";
+import { detectGameFile } from "./loop.mjs";
+import { suggestNextStep } from "./nextstep.mjs";
 
 // Persist an API key to ~/.proov.json (merging into any existing config). Returns true on success.
 function saveKeyToConfig(key) {
@@ -452,6 +454,24 @@ export async function startRepl({ workdir, config, palette } = {}) {
       }
       if (session.tools.tasks.length) process.stdout.write("\n" + renderTasks(session.tools.tasks, p) + "\n");
       process.stdout.write(footer({ turns: res.turns, totalTokens: res.totals.totalTokens, cachedTokens: res.totals.cachedTokens, cost: res.totals.cost, model: session.provider.model, status: footerStatus }, p) + "\n\n");
+
+      // NEXT-STEP SUGGESTER (Block 63): when the turn finished CLEANLY (done, not stopped, no open tasks),
+      // propose the single most valuable next thing to build — grounded in a REAL gap the production-structure
+      // standard found in THIS build (never generic, never hallucinated). Offer to do it ([y/N], default NO so
+      // we never auto-spend on extra work); on yes, queue it as the next task. Quiet when nothing's worth it.
+      if (process.stdin.isTTY && res.done && !res.stopped && !(session.tools.tasks || []).some((t) => t.status !== "completed")) {
+        try {
+          const gameFile = detectGameFile(workdir);
+          const next = gameFile ? suggestNextStep(workdir, taskToRun, { fsMod: fs, pathMod: path, gameFile }) : null;
+          if (next) {
+            process.stdout.write(p.cyan("◇ next idea: ") + next.offer + p.dim(`  (${next.reason})`) + "\n");
+            const yes = await prompting(() => new Promise((resolve) => {
+              rl.question(p.bold("  do it now?") + p.dim(" [y/N] "), (a) => resolve(/^\s*y/i.test(a || "")));
+            }));
+            if (yes) { queue.unshift(next.task); }
+          }
+        } catch { /* a suggestion must never break the REPL */ }
+      }
       safePrompt();
     }
     busy = false;

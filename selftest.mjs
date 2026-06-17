@@ -2613,6 +2613,25 @@ console.log("== 68g. served-preferred done-gate — judge the served reality, no
   ok("served-pref: the static file autoplay is NOT used when a server exists", staticAutoplay === 0);
 }
 
+console.log("== 68h. next-step suggester — propose a real, grounded next gap (Block 63) ==");
+{
+  const { structureGaps } = await import("./src/structure.mjs");
+  const { suggestNextStep } = await import("./src/nextstep.mjs");
+  const basic = '<canvas></canvas><script>function loop(){requestAnimationFrame(loop)}loop()</script>';
+  const gaps = structureGaps(basic, "make a mario platformer game");
+  ok("nextstep: structureGaps lists absent layers, required-first", gaps.length > 0 && gaps[0].required === true && gaps.every((g, i) => i === 0 || Number(gaps[i - 1].required) >= Number(g.required)));
+  // grounded: adding more game code can only REDUCE the gap list, never grow it.
+  const more = basic + '<script>class Player{} const enemies=[{},{}]; function drawHUD(){score} const levels=[1,2]; ctx.createPattern();</script>';
+  ok("nextstep: more real content → no MORE gaps (suggestions track the actual build)", structureGaps(more, "mario platformer").length <= gaps.length);
+  // the suggester picks the top gap and phrases an accept-with-yes task naming a specific layer.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-next-"));
+  fs.writeFileSync(path.join(dir, "index.html"), basic);
+  const s = suggestNextStep(dir, "make a mario platformer game", { fsMod: fs, pathMod: path, gameFile: "index.html" });
+  ok("nextstep: suggests a concrete next gap with a runnable task", s && typeof s.offer === "string" && /^Add /.test(s.task) && !!s.id);
+  // stays quiet when there's no game (never generic busywork).
+  ok("nextstep: no gameFile → null (stays quiet)", suggestNextStep(dir, "x", { fsMod: fs, pathMod: path, gameFile: null }) === null);
+}
+
 console.log("== 69. animation-driver gate — a static 3D character is rejected (Block 48) ==");
 {
   const { animationDriverViolation } = await import("./src/structure.mjs");

@@ -26,7 +26,7 @@ export function isGameHtml(html) {
   const hasLoopOrContract = /(requestAnimationFrame|proovSim|slivrSim|getContext\s*\()/i.test(s);
   return hasLoopOrContract && (/<canvas/i.test(s) || isWebGLPage(s));
 }
-function detectGameFile(workdir) {
+export function detectGameFile(workdir) {
   for (const name of ["index.html", "game.html"]) {
     try {
       if (isGameHtml(fs.readFileSync(path.join(workdir, name), "utf8"))) return name;

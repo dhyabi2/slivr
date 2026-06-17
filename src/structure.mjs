@@ -209,3 +209,17 @@ export function analyzeStructure(html, task = "") {
   const pass = zeroCategories.length <= 1 && requiredScore >= 55;
   return { genre, score, requiredScore, optionalScore, pass, zeroCategories, missing, antiHits, nodes: results.map((r) => ({ id: r.node.id, present: r.present, count: r.count, anti: r.anti })) };
 }
+
+// Ranked "what's not built YET" for the genre — required-missing first, then absent OPTIONAL layers, each by
+// weight. Feeds the Next-Step Suggester (Block 63): every item is a REAL gap the structure model found by
+// inspecting the build, so a suggestion can never hallucinate. Returns [{id,label,cat,required,weight}].
+export function structureGaps(html, task = "") {
+  const src = String(html || "");
+  const genre = classifyGenre(task);
+  return NODES
+    .filter((n) => n.applies.includes(genre) && !n.palette)   // palette is a quality check, not a buildable layer
+    .map((n) => ({ n, present: detectNode(n, src).present }))
+    .filter((x) => !x.present)
+    .map((x) => ({ id: x.n.id, label: x.n.label, cat: x.n.cat, required: !!x.n.required, weight: x.n.weight }))
+    .sort((a, b) => (Number(b.required) - Number(a.required)) || (b.weight - a.weight));
+}
