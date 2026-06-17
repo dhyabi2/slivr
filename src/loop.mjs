@@ -309,7 +309,38 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
       // claiming "playable". Push back ONCE; if Chrome can't run the checks, don't block. Games only.
       if (!gameGateDone && tools && typeof tools.autoplay === "function" && tools.workdir) {
         const gameFile = detectGameFile(tools.workdir);
-        if (gameFile) {
+        // PREFER THE SERVED REALITY (Block 62): if the project is a startable server, judge the game as the
+        // user actually RUNS it — over HTTP — even when a static index.html exists. A file:// check of the file
+        // misses server-only behavior (ES modules, fetch, server-served assets) and silently passes. Fall back
+        // to the static file gate only when there's no server (or the server yielded no game).
+        let servedHandled = false;
+        const hasServer = typeof tools._serverStartCommand === "function" && !!tools._serverStartCommand();
+        if (hasServer && typeof tools._verifyServedGame === "function") {
+          // The vision judge runs INSIDE _verifyServedGame while the server is alive; gated on a real key so
+          // offline/selftest runs skip it (identical to the static branch's visionChecklistGame call).
+          const visionCheck = (verifyModel && provider && typeof provider.hasKey === "function" && provider.hasKey())
+            ? async (dataUrl) => {
+                const crit = await visionChecklistGame(provider, verifyModel, task, dataUrl, signal);
+                if (crit && crit.total >= 4 && crit.missing.length) {
+                  trace.push({ step, visionChecklist: { present: crit.present, total: crit.total, missing: crit.missing.slice(0, 8), served: true } });
+                  return `the vision QA checklist (${String(verifyModel).split("/").pop()}) found ${crit.present}/${crit.total} required things present — these are NOT visible in your served render yet:\n${crit.missing.slice(0, 8).map((m) => "  ✗ " + m).join("\n")}\nAdd each so EVERY checklist item is present, then verify again.`;
+                }
+                return null;
+              }
+            : null;
+          let sv = null;
+          try { sv = await tools._verifyServedGame({ task, visionCheck }); } catch { sv = null; }
+          if (sv && sv.ran) {
+            gameGateDone = true; servedHandled = true;
+            if (sv.problem) {
+              noProgress = 0;
+              messages.push({ role: "user", content: `You called done, but the SERVED app isn't finished to the bar: ${sv.problem}\nFix it for real, then restart and RE-VERIFY over the URL (start_server, see_page {url}, http_request), THEN call done.` });
+              trace.push({ step, servedGate: clip(sv.problem, 80) });
+              continue;
+            }
+          }
+        }
+        if (!servedHandled && gameFile) {
           gameGateDone = true;
           let problem = null;
           try {
@@ -387,35 +418,6 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
             messages.push({ role: "user", content: `You called done, but the GAME isn't finished to the bar: ${problem}\nFix it for real (recognizable characters not boxes, real input + render loop, and it must actually play), verify again with see_page/autoplay/art_review, THEN call done. The DEFAULT is an advanced, complete game — do not declare a boxes/basic prototype done.` });
             trace.push({ step, gameGate: clip(problem, 80) });
             continue;
-          }
-        } else if (typeof tools._verifyServedGame === "function") {
-          // SERVED GAME (Block 41): no static index.html, but the project may SERVE a game over HTTP (a Node
-          // app). Start it, fetch the entry HTML, and verify it over the URL at FULL parity with the static
-          // gate — broken, FROZEN (autoplay), flat-boxes art, structure, asset-source, animation, level-cert,
-          // AND the semantic vision checklist (Block 58, via the visionCheck callback below, since the
-          // provider/verifyModel live here in the loop). Opt-in by being a startable server.
-          // The vision judge runs INSIDE _verifyServedGame while the server is alive; gated on a real key so
-          // offline/selftest runs skip it (identical to the static branch at the visionChecklistGame call).
-          const visionCheck = (verifyModel && provider && typeof provider.hasKey === "function" && provider.hasKey())
-            ? async (dataUrl) => {
-                const crit = await visionChecklistGame(provider, verifyModel, task, dataUrl, signal);
-                if (crit && crit.total >= 4 && crit.missing.length) {
-                  trace.push({ step, visionChecklist: { present: crit.present, total: crit.total, missing: crit.missing.slice(0, 8), served: true } });
-                  return `the vision QA checklist (${String(verifyModel).split("/").pop()}) found ${crit.present}/${crit.total} required things present — these are NOT visible in your served render yet:\n${crit.missing.slice(0, 8).map((m) => "  ✗ " + m).join("\n")}\nAdd each so EVERY checklist item is present, then verify again.`;
-                }
-                return null;
-              }
-            : null;
-          let sv = null;
-          try { sv = await tools._verifyServedGame({ task, visionCheck }); } catch { sv = null; }
-          if (sv && sv.ran) {
-            gameGateDone = true;
-            if (sv.problem) {
-              noProgress = 0;
-              messages.push({ role: "user", content: `You called done, but the SERVED app isn't finished to the bar: ${sv.problem}\nFix it for real, then restart and RE-VERIFY over the URL (start_server, see_page {url}, http_request), THEN call done.` });
-              trace.push({ step, servedGate: clip(sv.problem, 80) });
-              continue;
-            }
           }
         }
       }

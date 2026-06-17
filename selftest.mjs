@@ -2592,6 +2592,27 @@ console.log("== 68f. structure source-bundle — map split-file games, not just 
   ok("bundle: no workdir → html unchanged (safe fallback)", bundleGameSource(raw, null, fs, path) === raw);
 }
 
+console.log("== 68g. served-preferred done-gate — judge the served reality, not the file (Block 62) ==");
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-served62-"));
+  // a real static game file EXISTS — but the project also serves, so the served gate must win over it.
+  fs.writeFileSync(path.join(dir, "index.html"), '<canvas id="c"></canvas><script>function loop(){requestAnimationFrame(loop)}loop()</script>');
+  let servedCalls = 0, staticAutoplay = 0;
+  const tools = {
+    workdir: dir, tasks: [],
+    autoplay: () => { staticAutoplay++; return { ok: true, responds: true }; },
+    see_page: () => ({ ok: true }),
+    _serverStartCommand: () => "node server.js",
+    _verifyServedGame: async () => { servedCalls++; return { ran: true, problem: "the served game is FROZEN over HTTP" }; },
+  };
+  let i = 0;
+  const script = ['{"tool":"done","args":{"summary":"d"}}', '{"tool":"done","args":{"summary":"d"}}'];
+  const provider = { chat: async () => ({ text: script[i++] ?? '{"tool":"done","args":{}}', usage: {}, raw: {} }), totals: () => ({ cost: 0 }) };
+  const res = await runLoop({ provider, tools, toolMap: {}, systemPrompt: "s", task: "make a mario game", maxSteps: 6 });
+  ok("served-pref: a project with a start script runs the SERVED gate, not the static file gate", servedCalls >= 1 && res.trace.some((s) => s.servedGate) && !res.trace.some((s) => s.gameGate));
+  ok("served-pref: the static file autoplay is NOT used when a server exists", staticAutoplay === 0);
+}
+
 console.log("== 69. animation-driver gate — a static 3D character is rejected (Block 48) ==");
 {
   const { animationDriverViolation } = await import("./src/structure.mjs");
