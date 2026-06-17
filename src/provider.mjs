@@ -54,6 +54,7 @@ export class Provider {
     this.maxRetries = opts.maxRetries ?? 2;
     this.maxTokens = opts.maxTokens ?? opts.maxTokensPerTurn ?? 4000;
     this.cacheTtl = opts.cacheTtl || "";   // "1h" → keep the system-prompt cache warm across idle REPL gaps
+    this.imageModel = opts.imageModel || "";   // image-OUTPUT model for design-first reference mockups (Block 65)
     // optional UI hook: called with a short string on transient events (retry/timeout) so the
     // user isn't staring at a silent hang. No-op by default.
     this.notify = typeof opts.notify === "function" ? opts.notify : () => {};
@@ -146,6 +147,41 @@ export class Provider {
     throw lastErr || new Error("chat failed");
   }
 
+  // Generate an IMAGE from a text prompt (Block 65, design-first). Uses an OpenRouter image-OUTPUT model
+  // (modalities:["image","text"]) and returns the first image as a base64 data URL. Single attempt (image gen
+  // is slow + costly). Errors are RETURNED, not thrown (except a user abort), so callers degrade gracefully.
+  async generateImage(prompt, { model, signal } = {}) {
+    if (!this.key) return { ok: false, error: "NO_OPENROUTER_KEY" };
+    const useModel = model || this.imageModel;
+    if (!useModel) return { ok: false, error: "NO_IMAGE_MODEL", hint: "set imageModel in ~/.proov.json to an OpenRouter image-output model" };
+    const ctrl = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, Math.max(this.timeoutMs, 120000));
+    const onAbort = () => ctrl.abort();
+    if (signal) { if (signal.aborted) ctrl.abort(); else signal.addEventListener("abort", onAbort, { once: true }); }
+    try {
+      const r = await fetch(this.baseUrl + "/chat/completions", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + this.key, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: useModel, modalities: ["image", "text"], messages: [{ role: "user", content: String(prompt || "") }] }),
+        signal: ctrl.signal,
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return { ok: false, error: humanizeApiError(r.status, d) };
+      const dataUrl = extractImageDataUrl(d);
+      if (!dataUrl) return { ok: false, error: "NO_IMAGE_RETURNED", hint: `${useModel} returned no image — is it an image-output model?` };
+      const u = d.usage || {};
+      const c = costUSD(useModel, u.prompt_tokens ?? 0, u.completion_tokens ?? 0, cachedTokensOf(u));
+      this.calls++; this.cost += c; this.log.push({ image: true, cost: c });
+      return { ok: true, dataUrl, model: useModel };
+    } catch (e) {
+      if (signal?.aborted) { const a = new Error("aborted"); a.name = "AbortError"; throw a; }
+      if (timedOut) return { ok: false, error: "image generation timed out" };
+      if (e.name === "AbortError") { const a = new Error("aborted"); a.name = "AbortError"; throw a; }
+      return { ok: false, error: String(e.message || e) };
+    } finally { clearTimeout(timer); if (signal) signal.removeEventListener?.("abort", onAbort); }
+  }
+
   // Fold in token usage from a SEPARATE OpenRouter call made outside chat() (e.g. the web_search
   // tool's own request) so session totals + cost stay honest. usage = { promptTokens, completionTokens, cost }.
   recordExternalUsage(usage = {}) {
@@ -170,6 +206,25 @@ export class Provider {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Pull the generated image out of an OpenRouter image-output response. Handles the documented shape
+// (choices[0].message.images[].image_url.url) plus a couple of fallbacks (content blocks / bare string).
+export function extractImageDataUrl(d) {
+  const msg = d?.choices?.[0]?.message;
+  if (!msg) return null;
+  const imgs = msg.images;
+  if (Array.isArray(imgs) && imgs.length) {
+    const u = imgs[0]?.image_url?.url || imgs[0]?.url || (typeof imgs[0] === "string" ? imgs[0] : null);
+    if (typeof u === "string" && u) return u;
+  }
+  if (Array.isArray(msg.content)) {
+    for (const b of msg.content) {
+      const u = b?.image_url?.url || (typeof b?.image_url === "string" ? b.image_url : null);
+      if (typeof u === "string" && /^data:image\//.test(u)) return u;
+    }
+  }
+  return null;
+}
 
 // PROMPT CACHING (token efficiency, ZERO text change): mark the stable prefix with cache_control so the
 // provider bills it at the cached rate (~10% of input) instead of re-billing the full prompt every turn.

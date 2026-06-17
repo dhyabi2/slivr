@@ -62,6 +62,7 @@ export class Tools {
   constructor(workdir, opts = {}) {
     this.workdir = path.resolve(workdir);
     this.opts = opts; // { apiKey, model, baseUrl } — used by the web tools
+    this.provider = opts.provider || null;   // injected so generate_image (Block 65) can call image generation
     // --- plan-mode + task-management state (lives on the Tools instance so both the tool
     //     implementations and the harness gate/UI can read it for the duration of a session) ---
     this.planMode = !!opts.planMode;     // when true, mutating tools are gated until a plan is approved
@@ -224,6 +225,28 @@ export class Tools {
       if (!r.checked.length) return null;              // prompt named nothing verifiable → nothing to gate
       return r;
     } catch { return null; }
+  }
+
+  // generate_image (Block 65, DESIGN-FIRST): generate a reference IMAGE from a text prompt and save it, so
+  // proov can draw the intended design BEFORE coding and then build to MATCH it (the visual-match gate
+  // enforces ≥95% per-asset against this file). out defaults to reference.png. Needs an image-output model
+  // (config.imageModel) + a key. async.
+  async generate_image({ prompt, out = "reference.png", model } = {}) {
+    if (!prompt || typeof prompt !== "string") return { ok: false, error: "NO_PROMPT", hint: 'pass {"prompt":"a 2D platformer scene: …","out":"reference.png"}' };
+    if (!this.provider || typeof this.provider.generateImage !== "function") return { ok: false, error: "NO_IMAGE_PROVIDER", hint: "image generation isn't available in this context" };
+    let absOut; try { absOut = this._resolve(out); } catch (e) { return { ok: false, error: e.message }; }
+    let r;
+    try { r = await this.provider.generateImage(prompt, { model }); }
+    catch (e) { if (e.name === "AbortError") throw e; r = { ok: false, error: String(e.message || e) }; }
+    if (!r.ok) return { ok: false, error: r.error, hint: r.hint || "couldn't generate the image — check imageModel + key" };
+    const m = /^data:image\/(\w+);base64,(.+)$/s.exec(r.dataUrl || "");
+    if (!m) return { ok: false, error: "BAD_IMAGE_DATA", hint: "the model didn't return a base64 image" };
+    try {
+      fs.mkdirSync(path.dirname(absOut), { recursive: true });
+      fs.writeFileSync(absOut, Buffer.from(m[2], "base64"));
+    } catch (e) { return { ok: false, error: `couldn't save the image: ${e.message}` }; }
+    return { ok: true, path: out, model: r.model, note: `generated a reference image (${r.model}) → ${out}. Build to MATCH it, then verify per-asset with compare_regions {target:"${out}", render:"<page>"} (every asset ≥95%).`,
+      multimodal: { kind: "image", path: out, mime: "image/png", dataUrl: r.dataUrl } };
   }
 
   // Detect a user-provided REFERENCE image the build is meant to reproduce (Block 64): scans the workdir

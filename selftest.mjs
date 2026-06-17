@@ -2660,6 +2660,29 @@ console.log("== 68i. visual-match gate — reproduce a reference per-asset ≥95
   ok("vmatch: no reference → gate dormant", r4.done && !r4.trace.some((s) => s.visualMatchGate));
 }
 
+console.log("== 68j. design-first image generation — draw the target, then build to it (Block 65) ==");
+{
+  const { extractImageDataUrl } = await import("./src/provider.mjs");
+  // parse the generated image out of an OpenRouter image-output response (documented shape + fallbacks).
+  ok("img-extract: documented images[] shape", extractImageDataUrl({ choices: [{ message: { images: [{ image_url: { url: "data:image/png;base64,AAAA" } }] } }] }) === "data:image/png;base64,AAAA");
+  ok("img-extract: content-block fallback", extractImageDataUrl({ choices: [{ message: { content: [{ image_url: { url: "data:image/png;base64,BBBB" } }] } }] }) === "data:image/png;base64,BBBB");
+  ok("img-extract: no image → null", extractImageDataUrl({ choices: [{ message: { content: "just text" } }] }) === null);
+
+  // the tool: a stub image provider → saves the PNG and returns the path (the reference the gate will use).
+  const { Tools } = await import("./src/tools.mjs");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-img-"));
+  const tinyPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+  const t = new Tools(dir, { provider: { generateImage: async () => ({ ok: true, dataUrl: tinyPng, model: "stub-img" }) } });
+  const r = await t.generate_image({ prompt: "a hero scene", out: "reference.png" });
+  ok("generate_image: saves the PNG + returns the path", r.ok && r.path === "reference.png" && fs.existsSync(path.join(dir, "reference.png")));
+  ok("generate_image: the saved reference is then detected by the visual-match gate", t._referenceImage() === "reference.png");
+  ok("generate_image: requires a prompt", (await t.generate_image({})).error === "NO_PROMPT");
+  ok("generate_image: no provider → clear error (degrades)", (await new Tools(dir, {}).generate_image({ prompt: "x" })).error === "NO_IMAGE_PROVIDER");
+  // config default points at an image model.
+  const { DEFAULTS: CFG } = await import("./src/config.mjs");
+  ok("imageModel default is set to an image model", typeof CFG.imageModel === "string" && /image/i.test(CFG.imageModel));
+}
+
 console.log("== 69. animation-driver gate — a static 3D character is rejected (Block 48) ==");
 {
   const { animationDriverViolation } = await import("./src/structure.mjs");

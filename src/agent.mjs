@@ -42,6 +42,7 @@ wastes the turn). The JSON object looks like:
   {"tool":"view_pdf","args":{"path":"spec.pdf"}}
   {"tool":"see_page","args":{"path":"index.html"}}
   {"tool":"see_asset","args":{"svg":"<svg ...>...</svg>"}}
+  {"tool":"generate_image","args":{"prompt":"a polished 2D platformer scene: a mustachioed hero, 2 enemy types, coins, a HUD, themed parallax background","out":"reference.png"}}
   {"tool":"play_game","args":{"path":"index.html","inputs":[{"at":0,"key":"ArrowRight","down":true}],"steps":120}}
   {"tool":"play_levels","args":{"path":"index.html","steps":80}}
   {"tool":"autoplay","args":{"path":"index.html","keys":["ArrowRight","ArrowUp","Space"]}}
@@ -198,6 +199,15 @@ BUILD FIRST, THEN VERIFY — do NOT screenshot after every edit: verification is
   chunk. A see_page (visual) costs ~3s + vision tokens; it is a checkpoint between features, not a feedback
   loop for single lines. If you've called see_page twice in a row with only a line or two changed between,
   STOP looking and go build the next unfinished task on your checklist to completion. Work, then watch.
+
+DESIGN FIRST — DRAW THE TARGET, THEN BUILD TO MATCH IT: for a VISUAL build (a game, a UI, anything where
+  look matters) and you have NO reference image yet, your FIRST step is generate_image {prompt:"<a vivid
+  description of the finished design>", out:"reference.png"} to produce a reference MOCKUP of what you're
+  about to build. Then build the real thing to MATCH that mockup, and verify per-asset with compare_regions
+  {target:"reference.png", render:"<your page>"} — every asset ≥95% AND the whole scene ≥95%. This is
+  ENFORCED: once reference.png exists, the done-gate won't let you finish until the render matches it
+  per-asset. Building toward a concrete drawn target beats building blind. (Skip only if the user explicitly
+  supplied their own reference, or asked for a non-visual / text-only deliverable.)
 
 VISUAL CHECK (web pages — use your EYE): when you've FINISHED building or substantially changing a page,
   call see_page {path} to READ how it ACTUALLY renders (the post-JS visible text). Look for render bugs — a
@@ -511,7 +521,7 @@ the checklist updated → call done. Keep going until the task is verifiably com
 export function makeAgent(workdir, opts = {}) {
   const provider = new Provider(opts);
   // fold web_search's separate OpenRouter spend into this provider's session accounting.
-  const tools = new Tools(workdir, { ...opts, onExternalUsage: (u) => provider.recordExternalUsage(u) });
+  const tools = new Tools(workdir, { ...opts, provider, onExternalUsage: (u) => provider.recordExternalUsage(u) });
   const toolMap = {
     read_file: (a) => tools.read_file(a),
     list_dir: (a) => tools.list_dir(a),
@@ -558,6 +568,7 @@ export function makeAgent(workdir, opts = {}) {
     style_profile: (a) => tools.style_profile(a),
     style_check: (a) => tools.style_check(a),
     art_review: (a) => tools.art_review(a),
+    generate_image: (a) => tools.generate_image(a),
     artkit: (a) => tools.artkit(a),
     orbit_scene: (a) => tools.orbit_scene(a),
     world_map: (a) => tools.world_map(a),
@@ -590,7 +601,7 @@ const SUBAGENT_BRIEF =
 // READ/INFORMATIONAL tools (not edits/commits), de-noised and length-capped.
 const FINDING_TOOLS = new Set([
   "read_file", "list_dir", "grep", "glob", "repo_map", "project_info", "house_style", "find_symbol", "find_refs", "run_command", "web_search",
-  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "play_levels", "autoplay", "compare_image", "compare_regions", "crop_image", "style_profile", "style_check", "art_review", "artkit", "orbit_scene", "world_map", "resume", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
+  "web_fetch", "view_pdf", "view_image", "see_page", "see_asset", "play_game", "play_levels", "autoplay", "compare_image", "compare_regions", "crop_image", "generate_image", "style_profile", "style_check", "art_review", "artkit", "orbit_scene", "world_map", "resume", "blueprint_status", "blueprint_audit", "git_status", "git_diff", "git_log",
 ]);
 export function extractFindings(sub, maxTotal = 2000) {
   const out = [];
@@ -751,7 +762,7 @@ export class Session {
     this.opts = opts;
     this.provider = new Provider(opts);
     // fold web_search's separate OpenRouter spend into the session provider's accounting.
-    this.tools = new Tools(workdir, { ...opts, onExternalUsage: (u) => this.provider.recordExternalUsage(u) });
+    this.tools = new Tools(workdir, { ...opts, provider: this.provider, onExternalUsage: (u) => this.provider.recordExternalUsage(u) });
     this.messages = null; // seeded on first run; persists across turns
     this.maxSteps = opts.maxSteps ?? Infinity;
     this.editModel = opts.editModel || "";   // optional 2nd model for editing/bug-fixing (creator = model)
@@ -881,6 +892,7 @@ export class Session {
       style_profile: (a) => t.style_profile(a),
       style_check: (a) => t.style_check(a),
       art_review: (a) => t.art_review(a),
+      generate_image: (a) => t.generate_image(a),
       artkit: (a) => t.artkit(a),
       orbit_scene: (a) => t.orbit_scene(a),
       world_map: (a) => t.world_map(a),
