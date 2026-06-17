@@ -19,10 +19,11 @@ import { buildSymbolIndex, findSymbol, findReferences, repoOverview, langOf, sym
 import { renderDom, renderShot, visibleText, screenshotWebGL, screenshotWebGLUrl } from "./eye.mjs";
 import { detectCommands, describeCommands } from "./project.mjs";
 import { detectStyle, styleBrief } from "./style.mjs";
-import { playGame, playLevels, autoPlay, extractLevels, autoPlayUrl, extractLevelsUrl } from "./gameharness.mjs";
+import { playGame, playLevels, autoPlay, extractLevels, autoPlayUrl, extractLevelsUrl, playGameUrl, playLevelsUrl } from "./gameharness.mjs";
 import { parse as parseLevel, certify as certifyLevel, recheck as recheckLevel } from "./levelcert.mjs";
 import { startServer, stopServer, listServers } from "./server.mjs";
 import { analyzeStructure, wantsMinimal, assetSourceViolation, animationDriverViolation } from "./structure.mjs";
+import { collectWorkspaceCode, taskFidelityMisses } from "./fidelity.mjs";
 import { isDestructive } from "./safety.mjs";
 import { renderAsset } from "./asset.mjs";
 import * as bp from "./blueprint.mjs";
@@ -32,6 +33,15 @@ import { compareImages, cropImage, compareRegions, styleProfile, styleAdherence,
 import { ARTKIT, ARTKIT3D, NOISE_FBM_SRC } from "./artkit.mjs";
 import { orbitScene } from "./scene3d.mjs";
 import * as world from "./world.mjs";
+
+// A served game is driven by URL, not a file path. The agent commonly passes the served URL in the `url`
+// slot OR (mistakenly) in `path` — accept BOTH so a URL never falls through to file resolution (which
+// returned FILE_NOT_FOUND and trapped the agent in an edit-the-server loop, Block 58). Returns the URL or "".
+export function pickUrl(url, rel) {
+  if (typeof url === "string" && /^https?:\/\//i.test(url)) return url;
+  if (typeof rel === "string" && /^https?:\/\//i.test(rel)) return rel;
+  return "";
+}
 
 // Re-indent a replacement block to a target base indent (strip its own common indent, prepend target).
 function reindentBlock(block, indent) {
@@ -193,8 +203,27 @@ export class Tools {
     } catch { return null; }
   }
 
+  // TASK-FIDELITY (Block 58, Tier 1): did the produced code actually USE what the prompt explicitly named?
+  // Mechanical grep of prompt-named entities (repos, quoted libs) against the workspace — no model, no
+  // sandbox. Returns { misses, checked, files } (misses = named things referenced NOWHERE in code), or null
+  // when there's nothing to check (no named requirement, or no code produced yet). Drives the done-gate's
+  // one-shot advisory push-back; never a hard block.
+  _verifyTaskFidelity(task) {
+    try {
+      if (typeof task !== "string" || !task) return null;
+      const code = collectWorkspaceCode(this.workdir, fs, path);
+      if (!code.files.length) return null;             // nothing built yet → don't gate
+      const r = taskFidelityMisses(task, code);
+      if (!r.checked.length) return null;              // prompt named nothing verifiable → nothing to gate
+      return r;
+    } catch { return null; }
+  }
+
   _resolve(rel) {
     if (typeof rel !== "string" || !rel) throw new Error("a 'path' string argument is required (you passed none)");
+    // A URL is not a file path: reject it with direction instead of silently resolving to a junk in-sandbox
+    // path that then reports FILE_NOT_FOUND (which the agent misread as a broken server — Block 58).
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rel)) throw new Error(`'${rel}' is a URL, not a file path — pass it as {"url":"${rel}"} (see_page/play_game/autoplay accept a url for a running server). Do NOT edit the server because of this error.`);
     const abs = path.resolve(this.workdir, rel);
     const wd = this.workdir.endsWith(path.sep) ? this.workdir : this.workdir + path.sep;
     if (abs !== this.workdir && !abs.startsWith(wd)) {
@@ -435,7 +464,20 @@ export class Tools {
   // FULL parity with the static gate — broken (see_page {url}), FROZEN (autoplay over HTTP), flat-boxes art
   // (canvas capture over HTTP), structure contract, and lock-and-key solvability (window.proovLevels over
   // HTTP). All HTTP-harness checks degrade gracefully (no browser → skipped). Returns { ran, problem }.
-  async _verifyServedGame({ task } = {}) {
+  // Capture the SERVED game's canvas over HTTP as a PNG data-URL (the URL analog of _gameCanvasDataURL) so
+  // the same vision judge that gates static games can look at a served game too (Block 58). async, null on fail.
+  async _servedCanvasDataURL(url) {
+    const cap = path.join(os.tmpdir(), `proov-servedshot-${process.pid}-${Date.now()}.png`);
+    try {
+      const shot = await screenshotWebGLUrl(url, cap);
+      if (!shot.ok) { try { fs.unlinkSync(cap); } catch { /* */ } return null; }
+      const b64 = fs.readFileSync(cap).toString("base64");
+      try { fs.unlinkSync(cap); } catch { /* */ }
+      return b64 ? "data:image/png;base64," + b64 : null;
+    } catch { try { fs.unlinkSync(cap); } catch { /* */ } return null; }
+  }
+
+  async _verifyServedGame({ task, visionCheck } = {}) {
     let url = null, startedPid = null;
     const running = listServers();
     if (running.length) url = running[0].url;
@@ -485,8 +527,18 @@ export class Tools {
             if (fails.length) return { ran: true, problem: `${fails.length} of ${cert.levels} served level${cert.levels === 1 ? "" : "s"} can permanently STRAND the player (soft-lock / unsolvable). Fix the key/door economy.` };
           }
         } catch { /* skip */ }
+        // SEMANTIC FIDELITY (Block 58): the SAME vision checklist the static gate runs — a model LOOKS at
+        // the served canvas and confirms the request's concrete visual requirements are actually present.
+        // Run here (inside the live-server window) via a callback, since the provider/verifyModel live in
+        // the loop, not in Tools. Without this the served gate accepted "renders fine but basic" games.
+        if (typeof visionCheck === "function") {
+          try {
+            const dataUrl = await this._servedCanvasDataURL(url);
+            if (dataUrl) { const vp = await visionCheck(dataUrl); if (vp) return { ran: true, problem: vp, url }; }
+          } catch { /* no browser/key → skip */ }
+        }
       }
-      return { ran: true, problem: null };
+      return { ran: true, problem: null, url };
     } finally {
       if (startedPid) stopServer(startedPid);
     }
@@ -828,8 +880,20 @@ export class Tools {
   // games. The game must expose window.proovSim={reset,step,input,state}; this resets it, applies a
   // scripted input timeline, steps N frames, and returns the game STATE over time + a final-frame
   // screenshot, so you can verify it actually plays (moves, scores, ends) and fix what doesn't.
-  play_game({ path: rel, steps, dt, inputs, seed } = {}) {
-    if (!rel) return { ok: false, error: "NO_PATH", hint: 'pass {"path":"index.html","inputs":[{"at":0,"key":"ArrowRight","down":true}],"steps":120}' };
+  async play_game({ path: rel, url, steps, dt, inputs, seed } = {}) {
+    // SERVED GAME: a URL (in `url`, or mistakenly in `path`) drives the running server over HTTP — NOT a
+    // local file. Without this, a URL fell through to _resolve+existsSync → FILE_NOT_FOUND, which the agent
+    // misread as a broken server and "fixed" server.js in an endless loop (Block 58).
+    const u = pickUrl(url, rel);
+    if (u) {
+      let r; try { r = await playGameUrl(u, { steps, dt, inputs, seed }); } catch (e) { r = { ok: false, error: String(e.message || e) }; }
+      if (!r.ok) return { ok: false, error: r.error, hint: "couldn't drive the SERVED game over the URL — is the server up (start_server) and the route returning the game HTML? Don't edit the server on a drive failure; check the page renders with see_page {url} first." };
+      const res = r.result || {};
+      if (res.error) return { ok: true, played: false, note: `could not drive the served game: ${res.error}. Expose window.proovSim={reset,step,input,state} to make it playtestable.` };
+      const snaps = res.snapshots || [];
+      return { ok: true, played: true, snapshots: snaps, note: `played the SERVED game (${u}) ${res.steps} steps · ${snaps.length} state snapshots:\n${JSON.stringify(snaps).slice(0, 2200)}` };
+    }
+    if (!rel) return { ok: false, error: "NO_PATH", hint: 'pass {"path":"index.html",...} for a file, or {"url":"http://localhost:PORT"} for a running server' };
     let abs; try { abs = this._resolve(rel); } catch (e) { return { ok: false, error: e.message }; }
     if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
     const r = playGame(abs, { steps, dt, inputs, seed });
@@ -846,11 +910,19 @@ export class Tools {
   // window.proovSim contract — and the agent can stub that with a no-op input), this drives the game's OWN
   // keydown/click handlers, so a frozen/dead game is caught even when the contract lies. Returns whether it
   // RESPONDS to input, the per-input screen-change %, console errors, and a contact sheet you SEE.
-  autoplay({ path: rel, keys, clicks, holdMs } = {}) {
-    if (!rel) return { ok: false, error: "NO_PATH", hint: 'pass {"path":"index.html"} — drives real arrow/space/click input' };
-    let abs; try { abs = this._resolve(rel); } catch (e) { return { ok: false, error: e.message }; }
-    if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
-    const r = autoPlay(abs, { keys, clicks, holdMs });
+  async autoplay({ path: rel, url, keys, clicks, holdMs } = {}) {
+    const u = pickUrl(url, rel);
+    let r;
+    if (u) {
+      // SERVED GAME over HTTP (Block 58) — same real-input drive via the injecting proxy.
+      try { r = await autoPlayUrl(u, { keys, clicks, holdMs }); } catch (e) { r = { ok: false, error: String(e.message || e) }; }
+      if (!r.ok) return { ok: false, error: r.error, hint: "couldn't autoplay the SERVED game — is the server up (start_server)? Don't edit the server on a drive failure; check see_page {url} renders first." };
+    } else {
+      if (!rel) return { ok: false, error: "NO_PATH", hint: 'pass {"path":"index.html"} for a file, or {"url":"http://localhost:PORT"} for a running server' };
+      let abs; try { abs = this._resolve(rel); } catch (e) { return { ok: false, error: e.message }; }
+      if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
+      r = autoPlay(abs, { keys, clicks, holdMs });
+    }
     if (!r.ok) return { ok: false, error: r.error, hint: "couldn't autoplay — is Chrome installed?" };
     const errs = r.errors && r.errors.length ? ` Console errors: ${r.errors.slice(0, 4).join("; ")}.` : "";
     const verdict = r.responds
@@ -866,11 +938,19 @@ export class Tools {
   // loads, is DISTINCT (not a clone of level 1 — the usual failure), plays, and (if state exposes a win
   // flag) is completable, plus a contact sheet of every level's initial frame. The game must extend the
   // Simulacrum contract with window.proovSim.levels (count or array) + load(i) (or reset(i)).
-  play_levels({ path: rel, steps, dt, inputs, cap } = {}) {
-    if (!rel) return { ok: false, error: "NO_PATH", hint: 'pass {"path":"index.html"} — the multi-level game' };
-    let abs; try { abs = this._resolve(rel); } catch (e) { return { ok: false, error: e.message }; }
-    if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
-    const r = playLevels(abs, { steps, dt, inputs, cap });
+  async play_levels({ path: rel, url, steps, dt, inputs, cap } = {}) {
+    const u = pickUrl(url, rel);
+    let r;
+    if (u) {
+      // SERVED multi-level game over HTTP (Block 58).
+      try { r = await playLevelsUrl(u, { steps, dt, inputs, cap }); } catch (e) { r = { ok: false, error: String(e.message || e) }; }
+      if (!r.ok) return { ok: false, error: r.error, hint: r.hint || "couldn't drive levels on the SERVED game — is the server up (start_server)? expose proovSim.levels + load(i). Don't edit the server on a drive failure." };
+    } else {
+      if (!rel) return { ok: false, error: "NO_PATH", hint: 'pass {"path":"index.html"} for a file, or {"url":"http://localhost:PORT"} for a running server' };
+      let abs; try { abs = this._resolve(rel); } catch (e) { return { ok: false, error: e.message }; }
+      if (!fs.existsSync(abs)) return { ok: false, error: "FILE_NOT_FOUND", path: rel };
+      r = playLevels(abs, { steps, dt, inputs, cap });
+    }
     if (!r.ok) return { ok: false, error: r.error, hint: r.hint || "couldn't drive levels — is Chrome installed? expose proovSim.levels + load(i)" };
     const broken = r.levels.filter((l) => !l.loads || !l.plays).map((l) => l.level);
     const clonesNote = r.clones.length ? ` CLONES: levels ${r.clones.join(",")} are identical to another level — make them meaningfully different (layout/enemies/goal).` : "";

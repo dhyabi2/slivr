@@ -1378,7 +1378,7 @@ console.log("== 35. play_game — drive + observe a running game (Block 15, keys
   } else {
     ok("play_game: (no browser installed — live drive skipped)", true);
   }
-  ok("play_game: requires a path", new Tools(tmp).play_game({}).ok === false);
+  ok("play_game: requires a path", (await new Tools(tmp).play_game({})).ok === false);
 }
 
 console.log("== 36. see_asset — the Asset Studio: generate → SEE → refine (Block 16) ==");
@@ -1669,7 +1669,7 @@ console.log("== 43. play_levels — multi-level: load, distinct (anti-clone), pl
   const h = buildLevelsHarness("<html><body><canvas></canvas></body></html>", { steps: 30 });
   ok("levels harness: injects the level driver reading proovSim.levels + load(i)", /proovSim/.test(h) && /__proov_levels/.test(h) && /STEPS=30/.test(h));
 
-  ok("play_levels: requires a path", new Tools(tmp).play_levels({}).error === "NO_PATH");
+  ok("play_levels: requires a path", (await new Tools(tmp).play_levels({})).error === "NO_PATH");
 
   if (findBrowser()) {
     const d = fs.mkdtempSync(path.join(os.tmpdir(), "levels-"));
@@ -1882,7 +1882,7 @@ console.log("== 49. autoplay — play the REAL game with real input (Block 28) =
 {
   const { findBrowser } = await import("./src/eye.mjs");
   const t = new Tools(tmp);
-  ok("autoplay: requires a path", t.autoplay({}).error === "NO_PATH");
+  ok("autoplay: requires a path", (await t.autoplay({})).error === "NO_PATH");
   if (findBrowser()) {
     const d = fs.mkdtempSync(path.join(os.tmpdir(), "autoplay-"));
     fs.writeFileSync(path.join(d, "good.html"),
@@ -2477,6 +2477,63 @@ console.log("== 68. runUntilDone supervisor — drive a session to completion, n
   // continuous mode is ON BY DEFAULT in config.
   const { DEFAULTS } = await import("./src/config.mjs");
   ok("supervisor: untilDone is ON by default (continuous mode)", DEFAULTS.untilDone === true && DEFAULTS.untilDoneMaxRounds === 12);
+
+  // costCap:0 means NO cap (matches the REPL's untilDoneCostCap semantics) — must NOT stop after round 1.
+  // Regression for the eval-harness bug: a bare `costCap ?? Infinity` treated 0 as a literal $0 cap.
+  const s0 = mk([(t) => { t.length = 0; t.push({ status: "in_progress", subject: "A" }); return { done: false, stopped: "ran out", trace: [] }; }, (t) => { t[0].status = "completed"; return { done: true, verified: null, trace: [] }; }]);
+  const r0 = await runUntilDone(s0, "build", { maxRounds: 10, costCap: 0, noProgressStop: 99 });
+  ok("supervisor: costCap:0 means NO cap (does not stop after round 1)", r0.outcome === "success" && r0.rounds === 2);
+}
+
+console.log("== 68b. task-fidelity gate — did the code USE what the prompt named? (Block 58) ==");
+{
+  const { extractNamedRequirements, taskFidelityMisses } = await import("./src/fidelity.mjs");
+
+  // Extraction: a github repo URL is the canonical "use this" signal → the repo slug, with sub-stems.
+  const named = extractNamedRequirements("make a puzzle with this: https://github.com/dhyabi2/esg-coreach");
+  ok("fidelity: extracts the github repo slug + stems", named.length === 1 && named[0].entity === "esg-coreach" && named[0].stems.includes("coreach") && !named[0].stems.includes("esg"));
+  // "use the X certifier/library/..." (kind-noun) is caught; bare "use this"/generic prompts are NOT (precision).
+  ok("fidelity: 'use the X certifier' is caught", extractNamedRequirements("use the esg-coreach certifier").some((n) => n.entity === "esg-coreach"));
+  ok("fidelity: generic prompts name nothing (no false nags)", extractNamedRequirements("build a tetris game with smooth animation").length === 0 && extractNamedRequirements("make a todo app").length === 0);
+
+  // The grep: a named requirement found NOWHERE in code MISSES; present anywhere PASSES.
+  const prompt = "puzzle using https://github.com/dhyabi2/esg-coreach";
+  const miss = taskFidelityMisses(prompt, { text: "const x = drawgenericgame();", files: ["index.html"] });
+  ok("fidelity: a prompt-named lib referenced nowhere → MISS (the real eval failure)", miss.misses.length === 1 && miss.misses[0].entity === "esg-coreach");
+  const pass = taskFidelityMisses(prompt, { text: 'import {certify} from "./vendor/coreach.mjs";', files: ["game.js"] });
+  ok("fidelity: the same lib referenced (vendored) → PASS", pass.misses.length === 0);
+  // Empty/absent code never gates (nothing built yet → not a fidelity failure).
+  ok("fidelity: no files → no misses (don't gate empty workspace)", taskFidelityMisses(prompt, { text: "", files: [] }).misses.length === 0);
+
+  // Wiring: the tool method exists and returns null when nothing is named (no false gate).
+  const { Tools } = await import("./src/tools.mjs");
+  const tf = new Tools(os.tmpdir());
+  ok("fidelity: Tools._verifyTaskFidelity is wired", typeof tf._verifyTaskFidelity === "function" && tf._verifyTaskFidelity("make a todo app") === null);
+}
+
+console.log("== 68c. served-game URL routing — a URL never becomes FILE_NOT_FOUND (Block 58) ==");
+{
+  const { Tools, pickUrl } = await import("./src/tools.mjs");
+  // pickUrl accepts a URL in EITHER slot (the agent often puts the served URL in `path` by mistake).
+  ok("url-route: pickUrl reads a url arg", pickUrl("http://127.0.0.1:5000", undefined) === "http://127.0.0.1:5000");
+  ok("url-route: pickUrl rescues a URL passed as path", pickUrl(undefined, "http://127.0.0.1:5000") === "http://127.0.0.1:5000");
+  ok("url-route: pickUrl ignores a real file path", pickUrl(undefined, "index.html") === "");
+
+  // _resolve REJECTS a URL with direction (instead of mangling it into a junk path → FILE_NOT_FOUND, the bug
+  // that trapped the agent into editing server.js forever).
+  const t = new Tools(os.tmpdir());
+  let threw = "";
+  try { t._resolve("http://127.0.0.1:58422"); } catch (e) { threw = e.message; }
+  ok("url-route: _resolve rejects a URL-as-path with a directional error (not FILE_NOT_FOUND)", /is a URL/.test(threw) && /do NOT edit the server/i.test(threw));
+
+  // The three drive tools accept a `url` and are async (route to the HTTP harness). With no browser they
+  // return a DRIVE error — crucially NOT FILE_NOT_FOUND / NO_PATH (so the agent won't blame the server).
+  const noFileErr = async (p) => { const r = await t.play_game(p); return r.error !== "FILE_NOT_FOUND" && r.error !== "NO_PATH"; };
+  ok("url-route: play_game {url} does NOT return FILE_NOT_FOUND/NO_PATH", await noFileErr({ url: "http://127.0.0.1:9" }));
+  ok("url-route: play_game {path:'http://...'} is rescued (not FILE_NOT_FOUND)", await noFileErr({ path: "http://127.0.0.1:9" }));
+  ok("url-route: play_game/play_levels/autoplay are async (return promises)", typeof t.play_game({}).then === "function" && typeof t.play_levels({}).then === "function" && typeof t.autoplay({}).then === "function");
+  // served vision-checklist parity wiring exists.
+  ok("url-route: _servedCanvasDataURL + _verifyServedGame(visionCheck) wired (served vision parity)", typeof t._servedCanvasDataURL === "function" && typeof t._verifyServedGame === "function");
 }
 
 console.log("== 69. animation-driver gate — a static 3D character is rejected (Block 48) ==");

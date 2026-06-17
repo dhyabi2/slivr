@@ -202,6 +202,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
   let denials = 0; const DENIAL_STOP = 6;   // bail out of a denial storm (every edit refused → no progress)
   let doneTaskNudged = false;   // push back ONCE when done is called with incomplete checklist tasks
   let gameGateDone = false;     // push back ONCE when done is called on a game that doesn't actually play
+  let taskFidelityDone = false; // Block 58: push back ONCE when done is called but a prompt-named requirement is unreferenced
   let replanNudged = false;   // Block 5: nudge to re-plan once per failure streak (when a plan exists)
 
   let aborted = false;
@@ -276,6 +277,23 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
         messages.push({ role: "user", content: `You called done, but ${openTasks.length} task${openTasks.length === 1 ? " is" : "s are"} still NOT completed on your checklist:\n${openTasks.slice(0, 8).map((t) => "  ☐ " + t.subject).join("\n")}\nDo NOT declare done with unfinished tasks. FINISH each one for real and VERIFY it (a game: see_page/play_levels/autoplay), then mark it completed with task_write — only THEN call done. If a listed task is genuinely already done, mark it completed first.` });
         trace.push({ step, doneTaskNudge: openTasks.length });
         continue;
+      }
+      // TASK-FIDELITY GATE (Block 58): the other gates prove the artifact WORKS; this proves it did what was
+      // ASKED. If the prompt explicitly NAMED something to use (a github repo, a quoted library) and that name
+      // appears NOWHERE in the produced code, the central requirement was almost certainly skipped. One-shot,
+      // advisory (never a hard block): nudge once, then let the agent stop on the next done. Pure mechanical
+      // grep — no model call, near-zero false-rejection risk for the "named thing entirely absent" case.
+      if (!taskFidelityDone && tools && typeof tools._verifyTaskFidelity === "function" && tools.workdir) {
+        taskFidelityDone = true;   // checked once — clean or not, don't re-run every done
+        let tf = null;
+        try { tf = tools._verifyTaskFidelity(task); } catch { tf = null; }
+        if (tf && tf.misses && tf.misses.length) {
+          noProgress = 0;
+          const punch = tf.misses.slice(0, 6).map((m) => `  ✗ "${m.entity}" — searched for ${m.stems.slice(0, 3).map((s) => "`" + s + "`").join(", ")}; found in NO code file`).join("\n");
+          messages.push({ role: "user", content: `You called done, but the prompt explicitly asked you to USE something your code never references:\n${punch}\n(checked ${tf.files} code file${tf.files === 1 ? "" : "s"}, excluding docs + .proov metadata.)\nThis usually means you built a generic solution and skipped the actual requirement. Go ACTUALLY use it — import or vendor it, call its API, wire it into the program — then verify and call done. If you addressed it under a different name, make that reference explicit in the code (an import or a comment naming it) so it's verifiable.` });
+          trace.push({ step, taskFidelity: { misses: tf.misses.map((m) => m.entity), files: tf.files } });
+          continue;
+        }
       }
       // PLAYABILITY GATE (games): if a web game was built, don't accept done until it actually PLAYS — the
       // page must not be broken AND it must respond to REAL input (autoplay). The agent can't pass by just
@@ -360,12 +378,25 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
             continue;
           }
         } else if (typeof tools._verifyServedGame === "function") {
-          // SERVED GAME (Block 41): no static index.html, but the project may SERVE a game over HTTP (a
-          // Node app). Start it, fetch the entry HTML, and verify it over the URL (broken check + the
-          // production-structure contract). Opt-in by being a startable server → never blocks non-server
-          // projects; the harness-only checks (autoplay/level-cert/WebGL capture) stay file-only for now.
+          // SERVED GAME (Block 41): no static index.html, but the project may SERVE a game over HTTP (a Node
+          // app). Start it, fetch the entry HTML, and verify it over the URL at FULL parity with the static
+          // gate — broken, FROZEN (autoplay), flat-boxes art, structure, asset-source, animation, level-cert,
+          // AND the semantic vision checklist (Block 58, via the visionCheck callback below, since the
+          // provider/verifyModel live here in the loop). Opt-in by being a startable server.
+          // The vision judge runs INSIDE _verifyServedGame while the server is alive; gated on a real key so
+          // offline/selftest runs skip it (identical to the static branch at the visionChecklistGame call).
+          const visionCheck = (verifyModel && provider && typeof provider.hasKey === "function" && provider.hasKey())
+            ? async (dataUrl) => {
+                const crit = await visionChecklistGame(provider, verifyModel, task, dataUrl, signal);
+                if (crit && crit.total >= 4 && crit.missing.length) {
+                  trace.push({ step, visionChecklist: { present: crit.present, total: crit.total, missing: crit.missing.slice(0, 8), served: true } });
+                  return `the vision QA checklist (${String(verifyModel).split("/").pop()}) found ${crit.present}/${crit.total} required things present — these are NOT visible in your served render yet:\n${crit.missing.slice(0, 8).map((m) => "  ✗ " + m).join("\n")}\nAdd each so EVERY checklist item is present, then verify again.`;
+                }
+                return null;
+              }
+            : null;
           let sv = null;
-          try { sv = await tools._verifyServedGame({ task }); } catch { sv = null; }
+          try { sv = await tools._verifyServedGame({ task, visionCheck }); } catch { sv = null; }
           if (sv && sv.ran) {
             gameGateDone = true;
             if (sv.problem) {

@@ -66,7 +66,10 @@ function report(outcome, rounds, res, open, totals, detail) {
 // normal stop). opts: { maxRounds, costCap, noProgressStop, turnOpts, onRound }.
 export async function runUntilDone(session, task, opts = {}) {
   const maxRounds = opts.maxRounds ?? 12;
-  const costCap = opts.costCap ?? Infinity;
+  // 0 (or any non-positive) means NO cap — matches the REPL's untilDoneCostCap semantics. A bare
+  // `?? Infinity` is wrong here because `0 ?? Infinity === 0`, which would stop after the first round
+  // (any cost >= $0). Only a positive number is treated as a real ceiling.
+  const costCap = opts.costCap > 0 ? opts.costCap : Infinity;
   const noProgressStop = opts.noProgressStop ?? 3;
   const turnOpts = opts.turnOpts || {};
   const onRound = typeof opts.onRound === "function" ? opts.onRound : () => {};

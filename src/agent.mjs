@@ -283,6 +283,10 @@ WEB DEFAULT — A NODE APP ON A URL (not a lone static file): for ANY web work �
   - RUN + VERIFY over the URL (this is how you know it works): (1) start_server {command:"node server.js"} →
     {url, port}; (2) http_request {url:"<url>/api/..."} for API routes; (3) see_page {url:"<url>"} (visual:true
     too) for the page; (4) fix + re-verify, then stop_server {} when done checking.
+  - A SERVED GAME is driven over the URL too: play_game {url:"<url>"}, play_levels {url:"<url>"}, and
+    autoplay {url:"<url>", keys:[...]} ALL accept a 'url' (not just a file 'path'). Use the URL the server
+    returned. NOTE: if a drive tool returns FILE_NOT_FOUND/NO_PATH, you passed a URL where a file path was
+    expected (or vice-versa) — fix the ARGUMENT (use {url:...}); do NOT start editing server.js over it.
   - REPORT the http://localhost:PORT url in your final summary so the user can open it. NOT done until
     start_server succeeded AND http_request/see_page show it actually serves.
   - A minimal zero-dependency static+routes server (server.js) to start from:

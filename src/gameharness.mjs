@@ -104,6 +104,20 @@ export function playGame(htmlAbs, plan = {}) {
   } finally { try { fs.unlinkSync(tmp); } catch { /* */ } }
 }
 
+// playGame over HTTP: drive a SERVED game (Block 58) — inject the same Simulacrum driver via the proxy and
+// read the result back, so play_game works on a Node-served game (no static file to point at). async.
+export async function playGameUrl(url, plan = {}) {
+  const proxy = await startInjectProxy(url, (html) => buildHarness(html, plan));
+  try {
+    const dom = await renderDomUrl(proxy.url);
+    if (!dom.ok) return { ok: false, error: dom.error };
+    const m = dom.dom.match(/<pre id="__proov_out"[^>]*>([\s\S]*?)<\/pre>/);
+    let result = null;
+    if (m) { try { result = JSON.parse(decodeEntities(m[1])); } catch { /* leave null */ } }
+    return { ok: true, result };
+  } finally { await proxy.close(); }
+}
+
 // --- Multi-level (Block 23 "Levels"): drive EVERY level and verify each loads, is DISTINCT (not a clone
 // of level 1), plays, and — where the state exposes it — is completable. Extends the Simulacrum contract:
 //   window.proovSim.levels      // number of levels (or an array of level data)
@@ -182,6 +196,26 @@ export function playLevels(htmlAbs, plan = {}) {
     } catch { /* */ } finally { try { fs.unlinkSync(png); } catch { /* */ } try { fs.unlinkSync(sheet); } catch { /* */ } }
     return { ok: true, count: res.count, declared: res.declared, uniqueLevels: uniqueSigs, clones, levels, dataUrl };
   } finally { try { fs.unlinkSync(tmp); } catch { /* */ } }
+}
+
+// playLevels over HTTP: drive every level of a SERVED game (Block 58) via the injecting proxy. Same
+// per-level loads/distinct/plays/won verdict as the file version (minus the local contact sheet). async.
+export async function playLevelsUrl(url, plan = {}) {
+  const proxy = await startInjectProxy(url, (html) => buildLevelsHarness(html, plan));
+  try {
+    const dom = await renderDomUrl(proxy.url);
+    if (!dom.ok) return { ok: false, error: dom.error };
+    const m = dom.dom.match(/<pre id="__proov_levels"[^>]*>([\s\S]*?)<\/pre>/);
+    let res = null;
+    if (m) { try { res = JSON.parse(decodeEntities(m[1])); } catch { /* */ } }
+    if (!res) return { ok: false, error: "LEVELS_PARSE_FAILED" };
+    if (res.error) return { ok: false, error: res.error, hint: res.hint };
+    const counts = {};
+    for (const l of res.levels) counts[l.sig] = (counts[l.sig] || 0) + 1;
+    const clones = res.levels.filter((l) => counts[l.sig] > 1).map((l) => l.index + 1);
+    const levels = res.levels.map((l) => ({ level: l.index + 1, loads: l.loaded, plays: l.changed, distinct: counts[l.sig] === 1, completable: l.won }));
+    return { ok: true, count: res.count, declared: res.declared, uniqueLevels: Object.keys(counts).length, clones, levels, dataUrl: null };
+  } finally { await proxy.close(); }
 }
 
 // --- Autoplay (Block 28): PLAY THE REAL GAME — dispatch real KeyboardEvent/MouseEvent into the running
