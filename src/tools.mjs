@@ -22,7 +22,7 @@ import { detectStyle, styleBrief } from "./style.mjs";
 import { playGame, playLevels, autoPlay, extractLevels, autoPlayUrl, extractLevelsUrl, playGameUrl, playLevelsUrl } from "./gameharness.mjs";
 import { parse as parseLevel, certify as certifyLevel, recheck as recheckLevel } from "./levelcert.mjs";
 import { startServer, stopServer, listServers } from "./server.mjs";
-import { analyzeStructure, wantsMinimal, assetSourceViolation, animationDriverViolation } from "./structure.mjs";
+import { analyzeStructure, wantsMinimal, assetSourceViolation, animationDriverViolation, bundleGameSource } from "./structure.mjs";
 import { collectWorkspaceCode, taskFidelityMisses } from "./fidelity.mjs";
 import { isDestructive } from "./safety.mjs";
 import { renderAsset } from "./asset.mjs";
@@ -535,17 +535,19 @@ export class Tools {
           const rich = await this._servedCanvasRichness(url);
           if (rich != null && rich < 18) return { ran: true, problem: `the served game's ART is flat PROGRAMMER ART (canvas richness ${rich}/100) — coloured boxes, not a real themed game.` };
         } catch { /* skip */ }
-        // STRUCTURE contract on the served HTML
-        const st = analyzeStructure(html, task);
+        // STRUCTURE contract — bundle the served HTML with the project's client .js (Block 61), so a
+        // split-file game (logic in engine.js/game.js the server serves) is mapped, not just the HTML shell.
+        const srcBundle = bundleGameSource(html, this.workdir, fs, path);
+        const st = analyzeStructure(srcBundle, task);
         if (!st.pass) {
           const punch = st.missing.slice(0, 9).map((m) => "  ✗ " + m.label + (m.anti ? " (placeholder / wrong primitive)" : "")).join("\n");
           return { ran: true, problem: `the SERVED game's STRUCTURE is only ~${st.requiredScore}% of a production game — ${st.zeroCategories.length} whole layer${st.zeroCategories.length === 1 ? "" : "s"} missing (${st.zeroCategories.join(", ") || "—"}):\n${punch}` };
         }
         // 3D ASSET SOURCE (Block 43): served 3D game must load vgsds GLBs, not hand-rolled primitives.
-        const av = assetSourceViolation(html, task);
+        const av = assetSourceViolation(srcBundle, task);
         if (av) return { ran: true, problem: av };
         // ANIMATION (Block 48): a served 3D character must animate its parts, not just translate.
-        const anv = animationDriverViolation(html, task);
+        const anv = animationDriverViolation(srcBundle, task);
         if (anv) return { ran: true, problem: anv };
         // LOCK-AND-KEY solvability — certify window.proovLevels exposed over HTTP
         try {

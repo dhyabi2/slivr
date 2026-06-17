@@ -13,7 +13,7 @@ import { buildMultimodalContent } from "./multimodal.mjs";
 import { applyControl, controlToMessage } from "./bridge.mjs";
 import { compressContext } from "./compress.mjs";
 import { isWebGLPage } from "./webcheck.mjs";
-import { analyzeStructure, wantsMinimal, assetSourceViolation, animationDriverViolation } from "./structure.mjs";
+import { analyzeStructure, wantsMinimal, assetSourceViolation, animationDriverViolation, bundleGameSource } from "./structure.mjs";
 
 // Detect a built WEB GAME in the workdir (a canvas + an animation loop / control contract), so the
 // done-gate can verify it actually PLAYS before accepting done. Returns the html path or null.
@@ -331,7 +331,9 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
                   // the genre's required layers; an egregious skeleton (whole layers empty) is pushed back with
                   // the concrete missing list. Deterministic + offline (no key) — the cheap first channel.
                   try {
-                    const html = fs.readFileSync(path.join(tools.workdir, gameFile), "utf8");
+                    // Bundle index.html + the project's client .js so a split-file game (logic in engine.js/
+                    // game.js) is mapped against the standard, not just its HTML shell (Block 61).
+                    const html = bundleGameSource(fs.readFileSync(path.join(tools.workdir, gameFile), "utf8"), tools.workdir, fs, path);
                     const st = analyzeStructure(html, task);
                     if (!st.pass) {
                       const punch = st.missing.slice(0, 9).map((m) => "  ✗ " + m.label + (m.anti ? " (placeholder / wrong primitive)" : "")).join("\n");
@@ -343,7 +345,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
                   // textured GLB) — hand-rolled THREE primitives are not allowed. One-shot push-back.
                   if (!problem) {
                     try {
-                      const html = fs.readFileSync(path.join(tools.workdir, gameFile), "utf8");
+                      const html = bundleGameSource(fs.readFileSync(path.join(tools.workdir, gameFile), "utf8"), tools.workdir, fs, path);
                       const av = assetSourceViolation(html, task);
                       if (av) { problem = av; trace.push({ step, assetGate: clip(av, 80) }); }
                       // ANIMATION (Block 48): a 3D character must animate its parts, not just translate

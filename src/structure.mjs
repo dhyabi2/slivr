@@ -148,8 +148,40 @@ function detectNode(node, html) {
   return { present: count >= (node.min || 1), count, anti: false };
 }
 
+// Bundle the FULL client source for structure/asset/animation analysis: the entry HTML PLUS every local
+// client-side .js/.mjs in the project. Modern games (and the served Node-app default) split logic into
+// engine.js / game.js / levels.js — analyzing only index.html misses all of it, so a basic split-file game
+// FALSELY PASSES the standard. Reading the project's JS alongside the HTML maps the real game. Reads from
+// disk (the served files ARE the workdir files); bounded; skips deps, the Node server, and vendored libs.
+// fsMod/pathMod injected for testability. Returns a single concatenated source string.
+export function bundleGameSource(entryHtml, workdir, fsMod, pathMod, { maxBytes = 1_500_000 } = {}) {
+  let src = String(entryHtml || "");
+  if (!workdir || !fsMod || !pathMod) return src;
+  const JS = new Set([".js", ".mjs", ".cjs"]);
+  const SKIP = new Set(["node_modules", ".git", ".proov", ".slivr", "dist", "build", "out", "vendor", "coverage"]);
+  let total = src.length;
+  const walk = (dir) => {
+    if (total >= maxBytes) return;
+    let ents;
+    try { ents = fsMod.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      if (total >= maxBytes) return;
+      const full = pathMod.join(dir, e.name);
+      if (e.isDirectory()) { if (!SKIP.has(e.name) && !e.name.startsWith(".")) walk(full); continue; }
+      if (!JS.has(pathMod.extname(e.name).toLowerCase())) continue;
+      if (/^server\.[mc]?js$/i.test(e.name)) continue;   // the Node http server is not client game code
+      let buf;
+      try { buf = fsMod.readFileSync(full, "utf8"); } catch { continue; }
+      src += "\n" + buf; total += buf.length;
+    }
+  };
+  walk(workdir);
+  return src;
+}
+
 // Score a built game's HTML/JS against the structure contract for its genre. STATIC channel only —
 // deterministic, no network, no browser. Returns the scorecard + the actionable missing-list.
+// Pass the BUNDLED source (bundleGameSource) when the game splits logic into external .js files.
 export function analyzeStructure(html, task = "") {
   const src = String(html || "");
   const genre = classifyGenre(task);

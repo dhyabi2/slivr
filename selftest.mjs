@@ -2574,6 +2574,24 @@ console.log("== 68e. served-app run-offer gate — verify before offering to sta
   ok("served-gate: a server that won't start → ran:true + problem (offer blocked)", r2 && r2.ran === true && typeof r2.problem === "string" && r2.problem.length > 0);
 }
 
+console.log("== 68f. structure source-bundle — map split-file games, not just index.html (Block 61) ==");
+{
+  const { bundleGameSource } = await import("./src/structure.mjs");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-bundle-"));
+  fs.writeFileSync(path.join(dir, "index.html"), '<canvas id="g"></canvas><script src="engine.js"></script>');
+  fs.writeFileSync(path.join(dir, "engine.js"), 'const ENEMY_PATROL = true; class Player{} function drawHUD(){} const levels=[1,2,3];');
+  fs.writeFileSync(path.join(dir, "server.js"), 'require("http").createServer().listen(process.env.PORT);');
+  const raw = fs.readFileSync(path.join(dir, "index.html"), "utf8");
+  const bundled = bundleGameSource(raw, dir, fs, path);
+  // the real game logic lives in engine.js — the HTML shell alone misses it; the bundle pulls it in.
+  ok("bundle: pulls in the external engine.js the HTML only links", !/ENEMY_PATROL/.test(raw) && /ENEMY_PATROL/.test(bundled) && /drawHUD/.test(bundled));
+  ok("bundle: excludes the Node server file (not client game code)", !/createServer/.test(bundled));
+  fs.mkdirSync(path.join(dir, "node_modules", "x"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "node_modules", "x", "dep.js"), "const VENDOR_TOKEN=1;");
+  ok("bundle: skips node_modules", !/VENDOR_TOKEN/.test(bundleGameSource(raw, dir, fs, path)));
+  ok("bundle: no workdir → html unchanged (safe fallback)", bundleGameSource(raw, null, fs, path) === raw);
+}
+
 console.log("== 69. animation-driver gate — a static 3D character is rejected (Block 48) ==");
 {
   const { animationDriverViolation } = await import("./src/structure.mjs");
@@ -2593,7 +2611,7 @@ console.log("== 69. animation-driver gate — a static 3D character is rejected 
   // the rule is exported + wired into the gate the same way assetSourceViolation is (loop.mjs + tools).
   const loopSrc = fs.readFileSync(path.join(process.cwd(), "src", "loop.mjs"), "utf8");
   const toolsSrc = fs.readFileSync(path.join(process.cwd(), "src", "tools.mjs"), "utf8");
-  ok("anim gate: animationDriverViolation is wired into the static + served done-gates", /animationDriverViolation\(html, task\)/.test(loopSrc) && /animationDriverViolation\(html, task\)/.test(toolsSrc));
+  ok("anim gate: animationDriverViolation is wired into the static + served done-gates (over the bundled source)", /animationDriverViolation\(html, task\)/.test(loopSrc) && /animationDriverViolation\(srcBundle, task\)/.test(toolsSrc) && /bundleGameSource\(/.test(loopSrc) && /bundleGameSource\(/.test(toolsSrc));
 
   // Block 49: Node-on-a-URL is the DEFAULT web deliverable (not a lone static index.html).
   const { Session } = await import("./src/agent.mjs");
