@@ -428,7 +428,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
             }
             if (okToOpen && hint.kind === "open" && /\.html?$/i.test(hint.target || "")) {
               try {
-                const chk = session.tools.see_page({ path: hint.target });
+                const chk = await session.tools.see_page({ path: hint.target });
                 if (chk && chk.broken) {
                   okToOpen = false;
                   process.stdout.write(p.yellow(`  ⚠ not opening — ${hint.target} has errors (it won't display right):\n`) + (chk.errors || []).slice(0, 4).map((e) => p.dim("    - " + e)).join("\n") + "\n" + p.dim("    fix these, then it'll offer to open.\n"));

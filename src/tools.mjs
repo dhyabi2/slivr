@@ -50,6 +50,28 @@ export function pickUrl(url, rel) {
   return "";
 }
 
+// Vision INSPECTION for see_page {visual} (Block 69): a strong vision model DESCRIBES what's actually rendered
+// in detail and — if a goal is given — judges whether it MATCHES, listing what's missing/wrong. So see_page
+// (visual) actively VERIFIES instead of passively attaching a screenshot. Returns {seen,matches,missing}|null.
+async function visionInspect(provider, model, dataUrl, goal) {
+  if (!provider || typeof provider.chat !== "function" || !model || !dataUrl) return null;
+  const goalLine = goal
+    ? `\n\nThe INTENDED result (the goal) is:\n"${String(goal).slice(0, 500)}"\nJudge whether the screenshot MATCHES that goal, and list everything the goal requires that is MISSING, wrong, or only a placeholder.`
+    : "\n\nNo explicit goal was given — describe what's visible and flag anything blank/broken/placeholder.";
+  const prompt = `You are a STRICT visual QA inspector. LOOK at this screenshot of a rendered page and:\n1) Describe in DETAIL what is ACTUALLY visible — layout, main elements, on-screen text, colours, characters/sprites, and any blank/broken/placeholder areas. Be concrete; a plain rectangle is NOT a character, flat colour is NOT texture.${goalLine}\nReply with ONLY this JSON, no prose:\n{"seen":"<detailed description>","matches":true|false,"missing":["<required but absent/wrong>", ...]}`;
+  try {
+    const r = await provider.chat([{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: dataUrl } }] }], { model, temperature: 0 });
+    const m = String(r?.text || "").match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    const o = JSON.parse(m[0]);
+    const seen = typeof o.seen === "string" ? o.seen : (typeof o.description === "string" ? o.description : "");
+    if (!seen) return null;
+    const missing = Array.isArray(o.missing) ? o.missing.filter((x) => typeof x === "string" && x.trim()).map((x) => x.slice(0, 120)) : [];
+    const matches = goal ? (o.matches === true || /^(yes|true)$/i.test(String(o.matches))) : null;
+    return { seen: seen.slice(0, 1600), matches, missing };
+  } catch { return null; }
+}
+
 // Re-indent a replacement block to a target base indent (strip its own common indent, prepend target).
 function reindentBlock(block, indent) {
   const lines = block.split("\n");
@@ -596,7 +618,7 @@ export class Tools {
       const res = await this.http_request({ url, timeoutMs: 8000 });
       if (!res || !res.ok || (res.status && res.status >= 400)) return { ran: true, problem: `the entry route ${url} returned ${res && res.status ? "HTTP " + res.status : "no response"} — the server doesn't serve the page.`, url };
       let sp = null;
-      try { sp = this.see_page({ url }); } catch { sp = null; }
+      try { sp = await this.see_page({ url }); } catch { sp = null; }
       if (sp && sp.broken) return { ran: true, problem: `the served page at ${url} is BROKEN: ${(sp.errors || []).slice(0, 3).join("; ")}`, url };
       if (sp && sp.blank) return { ran: true, problem: `the served page at ${url} renders BLANK (no visible content) — likely a runtime JS error.`, url };
       return { ran: true, problem: null, url };
@@ -621,7 +643,7 @@ export class Tools {
       const html = res && res.ok ? res.body : "";
       const isGame = /<canvas/i.test(html) && /(requestAnimationFrame|proovSim|slivrSim|getContext\s*\()/i.test(html);
       if (!html || !isGame) return { ran: false };
-      const sp = this.see_page({ url });
+      const sp = await this.see_page({ url });
       if (sp && sp.broken) return { ran: true, problem: `the served page at ${url} is BROKEN: ${(sp.errors || []).slice(0, 3).join("; ")}` };
       if (!wantsMinimal(task)) {
         // FROZEN — drive it with real input over HTTP
@@ -947,7 +969,26 @@ export class Tools {
   // system browser. DEFAULT is text-first + cheap: returns the post-JS RENDERED visible text (catches a
   // literal "\n" on screen, a blank page, wrong text) with no vision-token cost. Pass visual:true for a
   // SCREENSHOT (attached to the model) when you need to judge layout/visual appearance.
-  see_page({ path: rel, url, visual } = {}) {
+  // Build the see_page {visual} result: attach the screenshot AND (when a vision verifyModel + key are
+  // available) a written WHAT'S-VISIBLE description + goal-match verdict (Block 69). extra carries path/url.
+  async _inspectShot(label, dataUrl, browser, goal, extra = {}) {
+    const mm = { kind: "image", path: `${label} (rendered)`, mime: "image/png", dataUrl };
+    const vm = this.opts && this.opts.verifyModel;
+    let insp = null;
+    if (this.provider && typeof this.provider.hasKey === "function" && this.provider.hasKey() && vm && vm !== "none") {
+      try { insp = await visionInspect(this.provider, vm, dataUrl, goal); } catch { insp = null; }
+    }
+    if (insp) {
+      const verdict = (goal != null && insp.matches != null)
+        ? `\nGOAL: ${String(goal).slice(0, 240)}\nMATCH: ${insp.matches ? "YES ✓" : "NO ✗"}${insp.missing.length ? `\nMISSING / WRONG vs goal:\n${insp.missing.slice(0, 8).map((m) => "  ✗ " + m).join("\n")}` : ""}`
+        : (insp.missing.length ? `\nNOTABLE GAPS:\n${insp.missing.slice(0, 8).map((m) => "  • " + m).join("\n")}` : "");
+      const tip = goal == null ? `\n(Pass goal:"…" so I verify the render against what it SHOULD show.)` : "";
+      return { ok: true, ...extra, seen: insp.seen, matches: insp.matches, missing: insp.missing, multimodal: mm, note: `rendered ${label} (${browser}).\nWHAT'S VISIBLE: ${insp.seen}${verdict}${tip}` };
+    }
+    return { ok: true, ...extra, multimodal: mm, note: `rendered ${label} (${browser}) — screenshot shown to you${vm && vm !== "none" ? "" : " (set verifyModel to also get a written what's-visible + goal-match check)"}${goal ? ` · goal: ${String(goal).slice(0, 120)}` : ""}` };
+  }
+
+  async see_page({ path: rel, url, visual, goal } = {}) {
     // SERVED PAGE: a running Node app (start_server) is checked over http://localhost:PORT, not file://.
     // The static JS-syntax / file checks don't apply to a served route, so this renders the URL and
     // reports the post-JS visible text (or a screenshot with visual:true) + a blank-page check.
@@ -958,7 +999,7 @@ export class Tools {
         if (!r.ok) return { ok: false, error: r.error, hint: "couldn't screenshot the URL — is the server running? try see_page (text mode) or http_request" };
         let b64; try { b64 = fs.readFileSync(out).toString("base64"); } catch (e) { return { ok: false, error: String(e.message || e) }; }
         try { fs.unlinkSync(out); } catch { /* */ }
-        return { ok: true, url, multimodal: { kind: "image", path: `${url} (rendered)`, mime: "image/png", dataUrl: `data:image/png;base64,${b64}` }, note: `rendered ${url} (${r.browser}) — screenshot shown to you` };
+        return await this._inspectShot(`${url}`, `data:image/png;base64,${b64}`, r.browser, goal, url ? { url } : {});
       }
       const d = renderDom(url);
       if (!d.ok) return { ok: false, error: d.error, hint: "couldn't load the URL — is the server up? (start_server returns the url + port)" };
@@ -976,7 +1017,7 @@ export class Tools {
       if (!r.ok) return { ok: false, error: r.error, hint: "couldn't get a visual — use see_page (text mode) or reason about the code" };
       let b64; try { b64 = fs.readFileSync(out).toString("base64"); } catch (e) { return { ok: false, error: String(e.message || e) }; }
       try { fs.unlinkSync(out); } catch { /* ignore */ }
-      return { ok: true, path: rel, multimodal: { kind: "image", path: `${rel} (rendered)`, mime: "image/png", dataUrl: `data:image/png;base64,${b64}` }, note: `rendered ${rel} (${r.browser}) — screenshot shown to you` };
+      return await this._inspectShot(rel, `data:image/png;base64,${b64}`, r.browser, goal, { path: rel });
     }
     // CATCH BROKEN PAGES (Block 27): static JS syntax check + runtime console-error capture. A SyntaxError
     // leaves the DOM intact (so it "looks fine") but nothing runs → blank page. Surface these FIRST.

@@ -439,7 +439,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
           gameGateDone = true;
           let problem = null;
           try {
-            const sp = tools.see_page ? tools.see_page({ path: gameFile }) : null;
+            const sp = tools.see_page ? await tools.see_page({ path: gameFile }) : null;
             if (sp && sp.broken) problem = `${gameFile} is BROKEN: ${(sp.errors || []).slice(0, 3).join("; ")}`;
             else {
               const ap = tools.autoplay({ path: gameFile, keys: ["ArrowRight", "ArrowUp", "Space"], holdMs: 400 });

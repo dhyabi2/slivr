@@ -1231,13 +1231,13 @@ console.log("== 31. see_page — the agent's eye (Block 11) ==");
 
   // tool wiring + graceful errors (no real browser needed)
   const t = new Tools(tmp);
-  ok("see_page: requires a path", t.see_page({}).ok === false);
-  ok("see_page: missing file → FILE_NOT_FOUND", t.see_page({ path: "nope.html" }).error === "FILE_NOT_FOUND");
+  ok("see_page: requires a path", (await t.see_page({})).ok === false);
+  ok("see_page: missing file → FILE_NOT_FOUND", (await t.see_page({ path: "nope.html" })).error === "FILE_NOT_FOUND");
 
   // REAL render — only if a headless browser is installed (skipped cleanly otherwise).
   if (findBrowser()) {
     fs.writeFileSync(path.join(tmp, "buggy.html"), "<!doctype html><html><body><div id=o></div><script>document.getElementById('o').textContent='You won!\\nGuesses: 3';</script></body></html>");
-    const r = t.see_page({ path: "buggy.html" });
+    const r = await t.see_page({ path: "buggy.html" });
     ok("see_page: renders + exposes the literal-newline bug as text", r.ok && /You won!/.test(r.rendered) && r.rendered.includes("\n"));
   } else {
     ok("see_page: (no browser installed — real-render test skipped)", true);
@@ -1868,12 +1868,12 @@ console.log("== 48. web verification — catch a JS-broken / blank page before d
 
   // see_page now reports broken:true with the errors (the verification gap, closed)
   const t = new Tools(d);
-  const sp = t.see_page({ path: "index.html" });
+  const sp = await t.see_page({ path: "index.html" });
   ok("see_page: flags a JS-broken page as broken with the syntax error surfaced", sp.broken === true && sp.errors.some((e) => /SyntaxError/.test(e)) && /NOT declare done|NOT working|BROKEN/.test(sp.note));
 
   // a clean page is NOT flagged
   fs.writeFileSync(path.join(d, "game.js"), "let s=0;\nfunction t(){ if(s>10){s=0;} else { s++; } }\nt();\n");
-  const ok2 = t.see_page({ path: "index.html" });
+  const ok2 = await t.see_page({ path: "index.html" });
   ok("see_page: a syntactically clean page is not flagged broken", !ok2.broken);
   fs.rmSync(d, { recursive: true, force: true });
 }
@@ -1978,7 +1978,7 @@ console.log("== 53. see_page for WebGL/3D — real runtime error + blank-canvas,
       "var gl=document.getElementById('c').getContext('webgl',{preserveDrawingBuffer:true});var player;" +
       "function loop(){gl.clear(gl.COLOR_BUFFER_BIT);player.x+=1;requestAnimationFrame(loop);}" +  // player undefined → throws
       "loop();</script></body></html>");
-    const b = t.see_page({ path: "broken3d.html" });
+    const b = await t.see_page({ path: "broken3d.html" });
     ok("see_page (WebGL): catches the REAL runtime TypeError, not a false WebGL-context error", b.broken === true && b.errors.some((e) => /TypeError|undefined/.test(e)) && !b.errors.some((e) => /Error creating WebGL context/.test(e)));
 
     // a WebGL game that loads but draws NOTHING (clears to a flat colour, no geometry) → blank, no error.
@@ -1986,7 +1986,7 @@ console.log("== 53. see_page for WebGL/3D — real runtime error + blank-canvas,
       "<!doctype html><html><body><canvas id=c width=200 height=150></canvas><script>" +
       "var gl=document.getElementById('c').getContext('webgl',{preserveDrawingBuffer:true});gl.clearColor(0.1,0.1,0.1,1);" +
       "function loop(){gl.clear(gl.COLOR_BUFFER_BIT);requestAnimationFrame(loop);}loop();</script></body></html>");
-    const bl = t.see_page({ path: "blank3d.html" });
+    const bl = await t.see_page({ path: "blank3d.html" });
     ok("see_page (WebGL): flags a blank canvas (drew nothing) even with no JS error", bl.broken === true && bl.blank === true);
     fs.rmSync(d, { recursive: true, force: true });
   } else {
@@ -2224,7 +2224,7 @@ console.log("== 62. node servers — run a generated app on a URL:port, verify o
     ok("http_request: hits a route → status + parsed json", api.ok === true && api.status === 200 && api.json && api.json.ok === true && /json/.test(api.contentType));
     const { findBrowser } = await import("./src/eye.mjs");
     if (findBrowser()) {
-      const page = t.see_page({ url: s.url });
+      const page = await t.see_page({ url: s.url });
       ok("see_page {url}: renders a served page (post-JS visible text)", page.ok === true && /Hello from Node/.test(page.rendered || ""));
     } else { ok("see_page {url}: (no browser — live skipped)", true); }
     const stopped = t.stop_server({});
@@ -2424,7 +2424,7 @@ console.log("== 67. syntax-error LOCATION — map to the file line + show node's
   const jc = checkPageJs(path.join(d, "index.html"));
   ok("syntax: checkPageJs reports the FILE line (9) + a code frame", jc.ok === false && jc.errors[0].line === 9 && /width: 800/.test(jc.errors[0].frame || ""));
   // see_page surfaces "around <file> line N" + the frame so the model can locate + fix it.
-  const sp = t.see_page({ path: "index.html" });
+  const sp = await t.see_page({ path: "index.html" });
   ok("see_page: a broken page surfaces the line number + the offending source frame", sp.broken === true && sp.errors.some((e) => /around index\.html line 9/.test(e) && /width: 800/.test(e) && /\^/.test(e)));
   fs.rmSync(d, { recursive: true, force: true });
 }
@@ -2790,6 +2790,29 @@ console.log("== 68m. per-task acceptance checks — never stack work on an unmet
   ok("taskcheck gate: done blocked while a task check fails (bounded 3)", rFail.trace.filter((s) => s.taskCheckGate).length === 3);
   const rPass = await run([{ id: "1", subject: "ok", status: "completed", check: "true" }], 1);
   ok("taskcheck gate: a passing check → done accepted", rPass.done && !rPass.trace.some((s) => s.taskCheckGate));
+}
+
+console.log("== 68n. see_page verifies — describes what's seen + goal match, not a passive shot (Block 69) ==");
+{
+  const { Tools } = await import("./src/tools.mjs");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proov-sp-"));
+  // with a vision verifyModel + goal → a written WHAT'S-VISIBLE + MATCH verdict + missing list.
+  const visionProvider = { hasKey: () => true, chat: async () => ({ text: '{"seen":"a red box on a white page, no HUD or characters","matches":false,"missing":["a HUD","enemies","a themed background"]}' }) };
+  const tv = new Tools(dir, { verifyModel: "stub-vm", provider: visionProvider });
+  const rv = await tv._inspectShot("index.html", "data:image/png;base64,AAAA", "chrome", "a platformer with a HUD and enemies", { path: "index.html" });
+  ok("see_page verify: outputs WHAT'S VISIBLE + goal MATCH + missing", /WHAT'S VISIBLE/.test(rv.note) && /MATCH: NO/.test(rv.note) && rv.matches === false && rv.missing.includes("a HUD") && !!rv.seen);
+  // a passing match → MATCH: YES.
+  const okProvider = { hasKey: () => true, chat: async () => ({ text: '{"seen":"hero with a hat, two enemies, a score HUD, parallax bg","matches":true,"missing":[]}' }) };
+  const tv2 = new Tools(dir, { verifyModel: "stub-vm", provider: okProvider });
+  const rv2 = await tv2._inspectShot("index.html", "data:image/png;base64,AAAA", "chrome", "a platformer with a HUD and enemies", {});
+  ok("see_page verify: a matching render → MATCH: YES", /MATCH: YES/.test(rv2.note) && rv2.matches === true);
+  // no vision model / key → degrades to a plain screenshot (still works), with a tip.
+  const tplain = new Tools(dir, {});
+  const rp = await tplain._inspectShot("index.html", "data:image/png;base64,AAAA", "chrome", "a goal", {});
+  ok("see_page verify: degrades to screenshot-only without a vision model", !rp.seen && /screenshot shown to you/.test(rp.note) && !!rp.multimodal);
+  // see_page is async now and the broken-check (non-visual) still works.
+  const t = new Tools(dir);
+  ok("see_page: still flags a missing file (FILE_NOT_FOUND), now async", (await t.see_page({ path: "nope.html" })).error === "FILE_NOT_FOUND");
 }
 
 console.log("== 69. animation-driver gate — a static 3D character is rejected (Block 48) ==");

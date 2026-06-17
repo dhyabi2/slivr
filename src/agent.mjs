@@ -40,7 +40,7 @@ wastes the turn). The JSON object looks like:
   {"tool":"web_fetch","args":{"url":"https://..."}}
   {"tool":"view_image","args":{"path":"shot.png"}}
   {"tool":"view_pdf","args":{"path":"spec.pdf"}}
-  {"tool":"see_page","args":{"path":"index.html"}}
+  {"tool":"see_page","args":{"path":"index.html","visual":true,"goal":"a platformer: hero with a hat, 2 enemy types, coins, a score HUD, themed background"}}
   {"tool":"see_asset","args":{"svg":"<svg ...>...</svg>"}}
   {"tool":"generate_image","args":{"prompt":"a polished 2D platformer scene: a mustachioed hero, 2 enemy types, coins, a HUD, themed parallax background","out":"reference.png"}}
   {"tool":"play_game","args":{"path":"index.html","inputs":[{"at":0,"key":"ArrowRight","down":true}],"steps":120}}
@@ -225,8 +225,12 @@ VISUAL CHECK (web pages — use your EYE): when you've FINISHED building or subs
   call see_page {path} to READ how it ACTUALLY renders (the post-JS visible text). Look for render bugs — a
   literal "\n" shown on screen instead of a line break, a BLANK page, wrong/missing/garbled text — then FIX
   them and see_page again until it reads correctly. For layout/visual issues (overlap, broken styling) call
-  see_page {path, visual:true} to get a screenshot you can look at. Do NOT claim a page works without
-  looking at it with see_page — but look when the work is DONE, not after each keystroke.
+  see_page {path, visual:true} to get a screenshot. ALWAYS pass a goal: see_page {path, visual:true,
+  goal:"<what this screen SHOULD show — the elements/layout/style you expect>"} — proov then has a vision
+  model report, in detail, WHAT IS ACTUALLY VISIBLE and whether it MATCHES your goal (with a MISSING/WRONG
+  list). That is the verification; a screenshot with no goal only shows, it doesn't check. Fix the listed
+  gaps and see_page again until MATCH: YES. Do NOT claim a page works without looking at it with see_page —
+  but look when the work is DONE, not after each keystroke.
   CRITICAL: see_page now also runs a JS SYNTAX check (node --check on every inline script and local .js)
   AND captures runtime CONSOLE errors. A JavaScript error (e.g. "Unexpected token 'else' / '}'") leaves
   the page structurally present but BLANK — it LOOKS fine in the DOM yet nothing runs. If see_page returns
