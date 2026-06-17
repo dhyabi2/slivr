@@ -113,7 +113,7 @@ console.log("== 4. config resolution / merge precedence ==");
 {
   // defaults only
   const d = resolveConfig({});
-  ok("defaults applied", d.config.model === DEFAULTS.model && d.config.approval === "edits");
+  ok("defaults applied", d.config.model === DEFAULTS.model && d.config.approval === "auto");
 
   // precedence: flags > local > home > env > defaults
   const r = resolveConfig({
@@ -130,7 +130,7 @@ console.log("== 4. config resolution / merge precedence ==");
 
   // sanitization: junk + bad approval dropped, empty string ignored
   const s = resolveConfig({ local: { approval: "bogus", maxSteps: -3, model: "", junk: 1 } });
-  ok("bad approval rejected -> default", s.config.approval === "edits");
+  ok("bad approval rejected -> default", s.config.approval === "auto");
   ok("bad maxSteps rejected -> default", s.config.maxSteps === DEFAULTS.maxSteps);
   ok("empty model ignored -> default", s.config.model === DEFAULTS.model);
   ok("unknown key dropped", s.config.junk === undefined);

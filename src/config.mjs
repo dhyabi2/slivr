@@ -15,7 +15,10 @@ export const DEFAULTS = {
   model: "google/gemini-2.5-flash",
   apiKey: "",
   baseUrl: "https://openrouter.ai/api/v1",
-  approval: "edits",
+  // Approval mode. DEFAULT 'auto' = apply edits + run commands WITHOUT prompting (no "apply? [Y/n/a/s]"),
+  // so the agent works end-to-end uninterrupted. The destructive-command blocklist and the workdir sandbox
+  // still apply in every mode. Set 'edits' to confirm edits-to-existing-files + commands, or 'all' for everything.
+  approval: "auto",
   // Rolling context compression (Block 34): elide old reconstructable tool results. true = on (saves tokens).
   compress: true,
   // Prompt-cache TTL for the stable system prefix (Anthropic/Claude models). "" / "5m" = ephemeral 5-min
@@ -181,9 +184,10 @@ function readDotenvKey(cwd) {
 export const STARTER_CONFIG = {
   model: "google/gemini-2.5-flash",
   baseUrl: "https://openrouter.ai/api/v1",
-  approval: "edits",
+  approval: "auto",
   maxSteps: "unlimited",
   maxTokensPerTurn: 4000,
+  "//approval": "auto = apply edits + run commands without prompting (destructive blocklist + sandbox still apply); use 'edits' or 'all' to confirm more",
   "//maxSteps": 'no step cap by default; set a positive number to cap turns per run (or "unlimited")',
   "//apiKey": "prefer the OPENROUTER_API_KEY env var over storing the key here",
   "//model": "any OpenRouter model id works: anthropic/claude-sonnet-4, openai/gpt-4o, google/gemini-2.5-flash",
