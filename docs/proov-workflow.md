@@ -2,7 +2,10 @@
 
 A deep map of how proov turns a task into a verified deliverable: every phase, action, gate, check and loop.
 Rendered as BPMN-style **Mermaid** diagrams (events = circles, tasks = rectangles, gateways = diamonds).
-A formal **BPMN 2.0** file (openable in [bpmn.io](https://bpmn.io)) is at [`proov-workflow.bpmn`](./proov-workflow.bpmn).
+Formal **BPMN 2.0** files (openable in [bpmn.io](https://bpmn.io)): [`proov-workflow.bpmn`](./proov-workflow.bpmn)
+(pre-audit) and [`proov-workflow-v2.bpmn`](./proov-workflow-v2.bpmn) (post-audit, Blocks 70–75). An interactive
+**before/after comparison page** that renders both is [`workflow-diagrams.html`](./workflow-diagrams.html).
+The 100-issue audit is [`audit-100-critical-issues.md`](./audit-100-critical-issues.md).
 
 Legend: `(( ))` start/end event · `[ ]` task/action · `{ }` exclusive gateway (decision) · `[[ ]]` sub-process.
 

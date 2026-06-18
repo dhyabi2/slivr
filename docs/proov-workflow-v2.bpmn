@@ -13,22 +13,24 @@
       <bpmn:outgoing>f2</bpmn:outgoing>
       <bpmn:outgoing>f3</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:task id="genRef" name="DESIGN-FIRST: generate_image → reference.png">
+    <bpmn:task id="genRef" name="DESIGN-FIRST: generate_image → reference.png (67)">
       <bpmn:incoming>f2</bpmn:incoming>
       <bpmn:outgoing>f4</bpmn:outgoing>
     </bpmn:task>
-    <bpmn:task id="model" name="Model call → extractJSON + normalizeCall → tool call">
+    <bpmn:task id="model" name="Model call → normalizeCall → tool call (57)">
       <bpmn:incoming>f3</bpmn:incoming>
       <bpmn:incoming>f4</bpmn:incoming>
       <bpmn:incoming>f8</bpmn:incoming>
       <bpmn:incoming>f13</bpmn:incoming>
-      <bpmn:incoming>f15</bpmn:incoming>
-      <bpmn:incoming>f19</bpmn:incoming>
+      <bpmn:incoming>f16</bpmn:incoming>
+      <bpmn:incoming>f18</bpmn:incoming>
       <bpmn:incoming>f22</bpmn:incoming>
       <bpmn:incoming>f25</bpmn:incoming>
       <bpmn:incoming>f28</bpmn:incoming>
       <bpmn:incoming>f31</bpmn:incoming>
       <bpmn:incoming>f34</bpmn:incoming>
+      <bpmn:incoming>f37</bpmn:incoming>
+      <bpmn:incoming>f44</bpmn:incoming>
       <bpmn:outgoing>f5</bpmn:outgoing>
     </bpmn:task>
     <bpmn:exclusiveGateway id="gwValid" name="Valid tool call?">
@@ -45,88 +47,118 @@
       <bpmn:outgoing>f9</bpmn:outgoing>
       <bpmn:outgoing>f10</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:exclusiveGateway id="appr" name="Approval / safety gate OK? (blocklist + mode)">
+    <bpmn:exclusiveGateway id="gwPlan" name="NEW Substantial task, NO plan, first edit? (73)">
       <bpmn:incoming>f9</bpmn:incoming>
       <bpmn:outgoing>f11</bpmn:outgoing>
       <bpmn:outgoing>f12</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:task id="nDeny" name="Denial nudge / denial-storm → stop">
+    <bpmn:task id="nPlan" name="NEW Nudge: task_write a plan first — decompose (73)">
       <bpmn:incoming>f11</bpmn:incoming>
       <bpmn:outgoing>f13</bpmn:outgoing>
     </bpmn:task>
-    <bpmn:task id="exec" name="Execute tool (toolMap)">
+    <bpmn:exclusiveGateway id="appr" name="Approval / safety gate OK? (blocklist + mode)">
       <bpmn:incoming>f12</bpmn:incoming>
       <bpmn:outgoing>f14</bpmn:outgoing>
+      <bpmn:outgoing>f15</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="nDeny" name="Denial nudge / denial-storm → stop">
+      <bpmn:incoming>f14</bpmn:incoming>
+      <bpmn:outgoing>f16</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="exec" name="Execute tool (toolMap)">
+      <bpmn:incoming>f15</bpmn:incoming>
+      <bpmn:outgoing>f17</bpmn:outgoing>
     </bpmn:task>
     <bpmn:exclusiveGateway id="guards" name="Post-tool guards: thrash(59) / replan / anti-stuck">
-      <bpmn:incoming>f14</bpmn:incoming>
-      <bpmn:outgoing>f15</bpmn:outgoing>
-      <bpmn:outgoing>f16</bpmn:outgoing>
+      <bpmn:incoming>f17</bpmn:incoming>
+      <bpmn:outgoing>f18</bpmn:outgoing>
+      <bpmn:outgoing>f19</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:endEvent id="stopE" name="Stopped: budget / dead-end / aborted / error">
-      <bpmn:incoming>f16</bpmn:incoming>
+    <bpmn:endEvent id="stopE" name="Stopped: budget / dead-end">
+      <bpmn:incoming>f19</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:exclusiveGateway id="g1" name="Open checklist tasks remain?">
       <bpmn:incoming>f10</bpmn:incoming>
-      <bpmn:outgoing>f17</bpmn:outgoing>
-      <bpmn:outgoing>f18</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
-    <bpmn:task id="nTasks" name="Nudge: finish &amp; verify each task">
-      <bpmn:incoming>f17</bpmn:incoming>
-      <bpmn:outgoing>f19</bpmn:outgoing>
-    </bpmn:task>
-    <bpmn:exclusiveGateway id="g2" name="Per-task acceptance check fails? (68)">
-      <bpmn:incoming>f18</bpmn:incoming>
       <bpmn:outgoing>f20</bpmn:outgoing>
       <bpmn:outgoing>f21</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:task id="nChecks" name="Run task.check (exit0); report failing">
+    <bpmn:task id="nTasks" name="Nudge: finish &amp; verify each task">
       <bpmn:incoming>f20</bpmn:incoming>
       <bpmn:outgoing>f22</bpmn:outgoing>
     </bpmn:task>
-    <bpmn:exclusiveGateway id="g3" name="Task-fidelity: prompt-named lib used nowhere? (58)">
+    <bpmn:exclusiveGateway id="g2" name="Per-task acceptance check fails? (68)">
       <bpmn:incoming>f21</bpmn:incoming>
       <bpmn:outgoing>f23</bpmn:outgoing>
       <bpmn:outgoing>f24</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:task id="nFidel" name="Nudge: actually USE the named repo/lib">
+    <bpmn:task id="nChecks" name="Run task.check (exit0); report failing">
       <bpmn:incoming>f23</bpmn:incoming>
       <bpmn:outgoing>f25</bpmn:outgoing>
     </bpmn:task>
-    <bpmn:exclusiveGateway id="g4" name="Visual-match &lt;95% / beyond-frame? (64/66)">
+    <bpmn:exclusiveGateway id="g3" name="Task-fidelity: prompt-named lib used nowhere? (58)">
       <bpmn:incoming>f24</bpmn:incoming>
       <bpmn:outgoing>f26</bpmn:outgoing>
       <bpmn:outgoing>f27</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:task id="nVisual" name="compare_regions &gt;=95% vs reference; build full game">
+    <bpmn:task id="nFidel" name="Nudge: actually USE the named repo/lib">
       <bpmn:incoming>f26</bpmn:incoming>
       <bpmn:outgoing>f28</bpmn:outgoing>
     </bpmn:task>
-    <bpmn:exclusiveGateway id="g5" name="GAME gate problem? served(62) or static(37-61)">
+    <bpmn:exclusiveGateway id="g4" name="Visual-match &lt;95% / beyond-frame? (64/66/72)">
       <bpmn:incoming>f27</bpmn:incoming>
       <bpmn:outgoing>f29</bpmn:outgoing>
       <bpmn:outgoing>f30</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:task id="nGame" name="Fix to the bar: broken/frozen/art/structure/asset/anim/level/vision">
+    <bpmn:task id="nVisual" name="compare_regions &gt;=95% vs reference; build full game">
       <bpmn:incoming>f29</bpmn:incoming>
       <bpmn:outgoing>f31</bpmn:outgoing>
     </bpmn:task>
-    <bpmn:exclusiveGateway id="g6" name="Project-checks fail? typecheck/lint/build/test">
+    <bpmn:exclusiveGateway id="g5" name="GAME gate problem? served(62)/static(37-61)">
       <bpmn:incoming>f30</bpmn:incoming>
       <bpmn:outgoing>f32</bpmn:outgoing>
       <bpmn:outgoing>f33</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:task id="nProj" name="Feed failure back → repair (bounded)">
+    <bpmn:task id="nGame" name="Fix to the bar: broken/frozen/art/structure/asset/anim/level/vision">
       <bpmn:incoming>f32</bpmn:incoming>
       <bpmn:outgoing>f34</bpmn:outgoing>
     </bpmn:task>
-    <bpmn:task id="accept" name="Accept done — verified">
+    <bpmn:exclusiveGateway id="g6" name="Project-checks fail? typecheck/lint/build/test">
       <bpmn:incoming>f33</bpmn:incoming>
       <bpmn:outgoing>f35</bpmn:outgoing>
-    </bpmn:task>
-    <bpmn:endEvent id="succ" name="SUCCESS (→ REPL: verify-run-offer + next-step suggester 63)">
+      <bpmn:outgoing>f36</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="nProj" name="Feed failure back → repair (bounded)">
       <bpmn:incoming>f35</bpmn:incoming>
+      <bpmn:outgoing>f37</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="accept" name="Accept done (inner gates passed)">
+      <bpmn:incoming>f36</bpmn:incoming>
+      <bpmn:outgoing>f38</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="fv" name="NEW FINAL VERIFY on exit: task + project checks — every exit (70)">
+      <bpmn:incoming>f38</bpmn:incoming>
+      <bpmn:outgoing>f39</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="gwV" name="NEW verifiedStatus? (70/75)">
+      <bpmn:incoming>f39</bpmn:incoming>
+      <bpmn:outgoing>f40</bpmn:outgoing>
+      <bpmn:outgoing>f41</bpmn:outgoing>
+      <bpmn:outgoing>f42</bpmn:outgoing>
+      <bpmn:outgoing>f43</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="succ" name="SUCCESS — verified PASS (hard check)">
+      <bpmn:incoming>f40</bpmn:incoming>
     </bpmn:endEvent>
+    <bpmn:endEvent id="softEnd" name="NEW DONE — SOFT verified by gates only (70/75)">
+      <bpmn:incoming>f41</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="unvEnd" name="NEW DONE — UNVERIFIED, no hard check (70)">
+      <bpmn:incoming>f42</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:task id="escalate" name="NEW Checks FAILED → escalate strongModel + continue (71)">
+      <bpmn:incoming>f43</bpmn:incoming>
+      <bpmn:outgoing>f44</bpmn:outgoing>
+    </bpmn:task>
     <bpmn:sequenceFlow id="f0" sourceRef="start" targetRef="sess" />
     <bpmn:sequenceFlow id="f1" sourceRef="sess" targetRef="gwPF" />
     <bpmn:sequenceFlow id="f2" sourceRef="gwPF" targetRef="genRef" name="yes" />
@@ -136,33 +168,42 @@
     <bpmn:sequenceFlow id="f6" sourceRef="gwValid" targetRef="nValid" name="no" />
     <bpmn:sequenceFlow id="f7" sourceRef="gwValid" targetRef="gwDone" name="yes" />
     <bpmn:sequenceFlow id="f8" sourceRef="nValid" targetRef="model" />
-    <bpmn:sequenceFlow id="f9" sourceRef="gwDone" targetRef="appr" name="no" />
+    <bpmn:sequenceFlow id="f9" sourceRef="gwDone" targetRef="gwPlan" name="no" />
     <bpmn:sequenceFlow id="f10" sourceRef="gwDone" targetRef="g1" name="yes (DONE-GATE)" />
-    <bpmn:sequenceFlow id="f11" sourceRef="appr" targetRef="nDeny" name="deny" />
-    <bpmn:sequenceFlow id="f12" sourceRef="appr" targetRef="exec" name="allow" />
-    <bpmn:sequenceFlow id="f13" sourceRef="nDeny" targetRef="model" />
-    <bpmn:sequenceFlow id="f14" sourceRef="exec" targetRef="guards" />
-    <bpmn:sequenceFlow id="f15" sourceRef="guards" targetRef="model" name="continue" />
-    <bpmn:sequenceFlow id="f16" sourceRef="guards" targetRef="stopE" name="stuck/spin" />
-    <bpmn:sequenceFlow id="f17" sourceRef="g1" targetRef="nTasks" name="yes" />
-    <bpmn:sequenceFlow id="f18" sourceRef="g1" targetRef="g2" name="no" />
-    <bpmn:sequenceFlow id="f19" sourceRef="nTasks" targetRef="model" />
-    <bpmn:sequenceFlow id="f20" sourceRef="g2" targetRef="nChecks" name="fail" />
-    <bpmn:sequenceFlow id="f21" sourceRef="g2" targetRef="g3" name="pass" />
-    <bpmn:sequenceFlow id="f22" sourceRef="nChecks" targetRef="model" />
-    <bpmn:sequenceFlow id="f23" sourceRef="g3" targetRef="nFidel" name="miss" />
-    <bpmn:sequenceFlow id="f24" sourceRef="g3" targetRef="g4" name="ok" />
-    <bpmn:sequenceFlow id="f25" sourceRef="nFidel" targetRef="model" />
-    <bpmn:sequenceFlow id="f26" sourceRef="g4" targetRef="nVisual" name="fail" />
-    <bpmn:sequenceFlow id="f27" sourceRef="g4" targetRef="g5" name="pass" />
-    <bpmn:sequenceFlow id="f28" sourceRef="nVisual" targetRef="model" />
-    <bpmn:sequenceFlow id="f29" sourceRef="g5" targetRef="nGame" name="problem" />
-    <bpmn:sequenceFlow id="f30" sourceRef="g5" targetRef="g6" name="ok" />
-    <bpmn:sequenceFlow id="f31" sourceRef="nGame" targetRef="model" />
-    <bpmn:sequenceFlow id="f32" sourceRef="g6" targetRef="nProj" name="fail" />
-    <bpmn:sequenceFlow id="f33" sourceRef="g6" targetRef="accept" name="pass/none" />
-    <bpmn:sequenceFlow id="f34" sourceRef="nProj" targetRef="model" />
-    <bpmn:sequenceFlow id="f35" sourceRef="accept" targetRef="succ" />
+    <bpmn:sequenceFlow id="f11" sourceRef="gwPlan" targetRef="nPlan" name="plan first" />
+    <bpmn:sequenceFlow id="f12" sourceRef="gwPlan" targetRef="appr" name="ok" />
+    <bpmn:sequenceFlow id="f13" sourceRef="nPlan" targetRef="model" />
+    <bpmn:sequenceFlow id="f14" sourceRef="appr" targetRef="nDeny" name="deny" />
+    <bpmn:sequenceFlow id="f15" sourceRef="appr" targetRef="exec" name="allow" />
+    <bpmn:sequenceFlow id="f16" sourceRef="nDeny" targetRef="model" />
+    <bpmn:sequenceFlow id="f17" sourceRef="exec" targetRef="guards" />
+    <bpmn:sequenceFlow id="f18" sourceRef="guards" targetRef="model" name="continue" />
+    <bpmn:sequenceFlow id="f19" sourceRef="guards" targetRef="stopE" name="stuck/spin" />
+    <bpmn:sequenceFlow id="f20" sourceRef="g1" targetRef="nTasks" name="yes" />
+    <bpmn:sequenceFlow id="f21" sourceRef="g1" targetRef="g2" name="no" />
+    <bpmn:sequenceFlow id="f22" sourceRef="nTasks" targetRef="model" />
+    <bpmn:sequenceFlow id="f23" sourceRef="g2" targetRef="nChecks" name="fail" />
+    <bpmn:sequenceFlow id="f24" sourceRef="g2" targetRef="g3" name="pass" />
+    <bpmn:sequenceFlow id="f25" sourceRef="nChecks" targetRef="model" />
+    <bpmn:sequenceFlow id="f26" sourceRef="g3" targetRef="nFidel" name="miss" />
+    <bpmn:sequenceFlow id="f27" sourceRef="g3" targetRef="g4" name="ok" />
+    <bpmn:sequenceFlow id="f28" sourceRef="nFidel" targetRef="model" />
+    <bpmn:sequenceFlow id="f29" sourceRef="g4" targetRef="nVisual" name="fail" />
+    <bpmn:sequenceFlow id="f30" sourceRef="g4" targetRef="g5" name="pass" />
+    <bpmn:sequenceFlow id="f31" sourceRef="nVisual" targetRef="model" />
+    <bpmn:sequenceFlow id="f32" sourceRef="g5" targetRef="nGame" name="problem" />
+    <bpmn:sequenceFlow id="f33" sourceRef="g5" targetRef="g6" name="ok" />
+    <bpmn:sequenceFlow id="f34" sourceRef="nGame" targetRef="model" />
+    <bpmn:sequenceFlow id="f35" sourceRef="g6" targetRef="nProj" name="fail" />
+    <bpmn:sequenceFlow id="f36" sourceRef="g6" targetRef="accept" name="pass/none" />
+    <bpmn:sequenceFlow id="f37" sourceRef="nProj" targetRef="model" />
+    <bpmn:sequenceFlow id="f38" sourceRef="accept" targetRef="fv" />
+    <bpmn:sequenceFlow id="f39" sourceRef="fv" targetRef="gwV" />
+    <bpmn:sequenceFlow id="f40" sourceRef="gwV" targetRef="succ" name="pass" />
+    <bpmn:sequenceFlow id="f41" sourceRef="gwV" targetRef="softEnd" name="soft" />
+    <bpmn:sequenceFlow id="f42" sourceRef="gwV" targetRef="unvEnd" name="unverified" />
+    <bpmn:sequenceFlow id="f43" sourceRef="gwV" targetRef="escalate" name="fail" />
+    <bpmn:sequenceFlow id="f44" sourceRef="escalate" targetRef="model" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id="diagram">
     <bpmndi:BPMNPlane id="plane" bpmnElement="proov_agent">
@@ -190,20 +231,26 @@
       <bpmndi:BPMNShape id="di_gwDone" bpmnElement="gwDone" isMarkerVisible="true">
         <dc:Bounds x="225" y="621" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="di_appr" bpmnElement="appr" isMarkerVisible="true">
+      <bpmndi:BPMNShape id="di_gwPlan" bpmnElement="gwPlan" isMarkerVisible="true">
         <dc:Bounds x="895" y="731" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="di_nDeny" bpmnElement="nDeny">
+      <bpmndi:BPMNShape id="di_nPlan" bpmnElement="nPlan">
         <dc:Bounds x="820" y="610" width="200" height="72" />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="di_appr" bpmnElement="appr" isMarkerVisible="true">
+        <dc:Bounds x="895" y="841" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="di_nDeny" bpmnElement="nDeny">
+        <dc:Bounds x="1160" y="720" width="200" height="72" />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="di_exec" bpmnElement="exec">
-        <dc:Bounds x="820" y="830" width="200" height="72" />
+        <dc:Bounds x="820" y="940" width="200" height="72" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="di_guards" bpmnElement="guards" isMarkerVisible="true">
-        <dc:Bounds x="895" y="951" width="50" height="50" />
+        <dc:Bounds x="895" y="1061" width="50" height="50" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="di_stopE" bpmnElement="stopE">
-        <dc:Bounds x="902" y="1068" width="36" height="36" />
+        <dc:Bounds x="902" y="1178" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="di_g1" bpmnElement="g1" isMarkerVisible="true">
         <dc:Bounds x="225" y="731" width="50" height="50" />
@@ -244,8 +291,23 @@
       <bpmndi:BPMNShape id="di_accept" bpmnElement="accept">
         <dc:Bounds x="150" y="1380" width="200" height="72" />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="di_fv" bpmnElement="fv">
+        <dc:Bounds x="150" y="1490" width="200" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="di_gwV" bpmnElement="gwV" isMarkerVisible="true">
+        <dc:Bounds x="225" y="1611" width="50" height="50" />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="di_succ" bpmnElement="succ">
-        <dc:Bounds x="232" y="1508" width="36" height="36" />
+        <dc:Bounds x="232" y="1728" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="di_softEnd" bpmnElement="softEnd">
+        <dc:Bounds x="562" y="1728" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="di_unvEnd" bpmnElement="unvEnd">
+        <dc:Bounds x="902" y="1728" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="di_escalate" bpmnElement="escalate">
+        <dc:Bounds x="1160" y="1600" width="200" height="72" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="di_f0" bpmnElement="f0">
         <di:waypoint x="250" y="114" />
@@ -297,99 +359,135 @@
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="di_f12" bpmnElement="f12">
         <di:waypoint x="920" y="781" />
-        <di:waypoint x="920" y="830" />
+        <di:waypoint x="920" y="841" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="di_f13" bpmnElement="f13">
         <di:waypoint x="920" y="610" />
         <di:waypoint x="250" y="462" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="di_f14" bpmnElement="f14">
-        <di:waypoint x="920" y="902" />
-        <di:waypoint x="920" y="951" />
+        <di:waypoint x="920" y="841" />
+        <di:waypoint x="1260" y="792" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="di_f15" bpmnElement="f15">
-        <di:waypoint x="920" y="951" />
-        <di:waypoint x="250" y="462" />
+        <di:waypoint x="920" y="891" />
+        <di:waypoint x="920" y="940" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="di_f16" bpmnElement="f16">
-        <di:waypoint x="920" y="1001" />
-        <di:waypoint x="920" y="1068" />
+        <di:waypoint x="1260" y="720" />
+        <di:waypoint x="250" y="462" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="di_f17" bpmnElement="f17">
+        <di:waypoint x="920" y="1012" />
+        <di:waypoint x="920" y="1061" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="di_f18" bpmnElement="f18">
+        <di:waypoint x="920" y="1061" />
+        <di:waypoint x="250" y="462" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="di_f19" bpmnElement="f19">
+        <di:waypoint x="920" y="1111" />
+        <di:waypoint x="920" y="1178" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="di_f20" bpmnElement="f20">
         <di:waypoint x="275" y="756" />
         <di:waypoint x="480" y="756" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f18" bpmnElement="f18">
+      <bpmndi:BPMNEdge id="di_f21" bpmnElement="f21">
         <di:waypoint x="250" y="781" />
         <di:waypoint x="250" y="841" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f19" bpmnElement="f19">
+      <bpmndi:BPMNEdge id="di_f22" bpmnElement="f22">
         <di:waypoint x="580" y="720" />
         <di:waypoint x="250" y="462" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f20" bpmnElement="f20">
+      <bpmndi:BPMNEdge id="di_f23" bpmnElement="f23">
         <di:waypoint x="275" y="866" />
         <di:waypoint x="480" y="866" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f21" bpmnElement="f21">
+      <bpmndi:BPMNEdge id="di_f24" bpmnElement="f24">
         <di:waypoint x="250" y="891" />
         <di:waypoint x="250" y="951" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f22" bpmnElement="f22">
+      <bpmndi:BPMNEdge id="di_f25" bpmnElement="f25">
         <di:waypoint x="580" y="830" />
         <di:waypoint x="250" y="462" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f23" bpmnElement="f23">
+      <bpmndi:BPMNEdge id="di_f26" bpmnElement="f26">
         <di:waypoint x="275" y="976" />
         <di:waypoint x="480" y="976" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f24" bpmnElement="f24">
+      <bpmndi:BPMNEdge id="di_f27" bpmnElement="f27">
         <di:waypoint x="250" y="1001" />
         <di:waypoint x="250" y="1061" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f25" bpmnElement="f25">
+      <bpmndi:BPMNEdge id="di_f28" bpmnElement="f28">
         <di:waypoint x="580" y="940" />
         <di:waypoint x="250" y="462" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f26" bpmnElement="f26">
+      <bpmndi:BPMNEdge id="di_f29" bpmnElement="f29">
         <di:waypoint x="275" y="1086" />
         <di:waypoint x="480" y="1086" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f27" bpmnElement="f27">
+      <bpmndi:BPMNEdge id="di_f30" bpmnElement="f30">
         <di:waypoint x="250" y="1111" />
         <di:waypoint x="250" y="1171" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f28" bpmnElement="f28">
+      <bpmndi:BPMNEdge id="di_f31" bpmnElement="f31">
         <di:waypoint x="580" y="1050" />
         <di:waypoint x="250" y="462" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f29" bpmnElement="f29">
+      <bpmndi:BPMNEdge id="di_f32" bpmnElement="f32">
         <di:waypoint x="275" y="1196" />
         <di:waypoint x="480" y="1196" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f30" bpmnElement="f30">
+      <bpmndi:BPMNEdge id="di_f33" bpmnElement="f33">
         <di:waypoint x="250" y="1221" />
         <di:waypoint x="250" y="1281" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f31" bpmnElement="f31">
+      <bpmndi:BPMNEdge id="di_f34" bpmnElement="f34">
         <di:waypoint x="580" y="1160" />
         <di:waypoint x="250" y="462" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f32" bpmnElement="f32">
+      <bpmndi:BPMNEdge id="di_f35" bpmnElement="f35">
         <di:waypoint x="275" y="1306" />
         <di:waypoint x="480" y="1306" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f33" bpmnElement="f33">
+      <bpmndi:BPMNEdge id="di_f36" bpmnElement="f36">
         <di:waypoint x="250" y="1331" />
         <di:waypoint x="250" y="1380" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f34" bpmnElement="f34">
+      <bpmndi:BPMNEdge id="di_f37" bpmnElement="f37">
         <di:waypoint x="580" y="1270" />
         <di:waypoint x="250" y="462" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f35" bpmnElement="f35">
+      <bpmndi:BPMNEdge id="di_f38" bpmnElement="f38">
         <di:waypoint x="250" y="1452" />
-        <di:waypoint x="250" y="1508" />
+        <di:waypoint x="250" y="1490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="di_f39" bpmnElement="f39">
+        <di:waypoint x="250" y="1562" />
+        <di:waypoint x="250" y="1611" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="di_f40" bpmnElement="f40">
+        <di:waypoint x="250" y="1661" />
+        <di:waypoint x="250" y="1728" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="di_f41" bpmnElement="f41">
+        <di:waypoint x="250" y="1661" />
+        <di:waypoint x="580" y="1728" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="di_f42" bpmnElement="f42">
+        <di:waypoint x="250" y="1661" />
+        <di:waypoint x="920" y="1728" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="di_f43" bpmnElement="f43">
+        <di:waypoint x="275" y="1636" />
+        <di:waypoint x="1160" y="1636" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="di_f44" bpmnElement="f44">
+        <di:waypoint x="1260" y="1600" />
+        <di:waypoint x="250" y="462" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
