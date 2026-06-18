@@ -26,6 +26,11 @@ const ENH = [
   ["73", "Plan-first gate", "A substantial multi-part task must be decomposed (task_write) before the first edit.", true],
   ["74", "Durable tests as a deliverable", "Prompt directive: write a committed regression test the user keeps, not just ephemeral gates.", true],
   ["75", "Re-audit fixes", "No tests run on abort/error; in-loop gate passes reported as 'soft' (not 'unverified').", true],
+  ["77", "Remediation, not escalation", "A failed verification feeds back detailed failures + a NEW checklist of fixes, on the SAME model (no model escalation). Binary pass/fail.", true],
+  ["78", "Verifier fail-closed + iterate-until-verified", "A crash / 'nothing ran' / timeout / missing-deps is a FAILURE not a pass; keeps the real error output; runs once per round and only succeeds when truly verified.", true],
+  ["79", "Autonomous self-improve", "On a clean done, auto-applies the next structure gap as a fresh checklist (no y/N), and removed the open-the-browser step between turns.", true],
+  ["80", "Deterministic visual lint + running capture", "Instruments the canvas to catch OFF-CANVAS / ZERO-size / invisible-on-background draws; the vision capture drives input (running frame) at legible resolution.", true],
+  ["81", "Vision majority-vote + DOM lint", "The vision judge confirms a failure across 3 votes (no one-off false-fails); a DOM lint flags zero-size/off-screen/low-contrast/overflow for non-game web UIs.", true],
 ];
 
 const rows = ENH.map(([b, t, d, nu]) => `      <tr class="${nu ? "nu" : ""}"><td class="b">${b}${nu ? ' <span class="tag">NEW</span>' : ""}</td><td class="t">${t}</td><td class="d">${d}</td></tr>`).join("\n");

@@ -45,7 +45,7 @@
   </aside>
 </main>
 <script>
-  const STEP_NAME = { start:"Task submitted", sess:"Session created", genRef:"Design-first: draw reference", model:"Model call → tool", gwValid:"Valid tool call?", gwDone:"done?", gwPlan:"Plan-first gate", nPlan:"Nudge: plan first", appr:"Approval gate", exec:"Execute tool", guards:"Post-tool guards", g1:"Open tasks?", g2:"Per-task checks", g3:"Task-fidelity", g4:"Visual-match / beyond-frame", g5:"Game gate", g6:"Project-checks", accept:"Accept done", fv:"FINAL VERIFY", gwV:"verification passed?", succ:"SUCCESS — verified", stopE:"Stopped", remediate:"FAIL → new checklist of fixes" };
+  const STEP_NAME = { start:"Task submitted", sess:"Session created", genRef:"Design-first: draw reference", model:"Model call → tool", gwValid:"Valid tool call?", gwDone:"done?", gwPlan:"Plan-first gate", nPlan:"Nudge: plan first", appr:"Approval gate", exec:"Execute tool", guards:"Post-tool guards", g1:"Open tasks?", g2:"Per-task checks", g3:"Task-fidelity", g4:"Visual-match / beyond-frame", g5:"Game gate", g6:"Project-checks", accept:"Accept done", fv:"FINAL VERIFY (fail-closed)", gwV:"verified?", gwImprove:"another gap to auto-improve?", nextIdea:"AUTO: next gap → new checklist", succ:"DONE — verified, no gaps left", stopE:"Stopped", remediate:"FAIL → new checklist, iterate same model" };
   let viewer, canvasApi, active = null, count = 0, curRun = null;
 
   async function boot(){

@@ -31,6 +31,7 @@
       <bpmn:incoming>f34</bpmn:incoming>
       <bpmn:incoming>f37</bpmn:incoming>
       <bpmn:incoming>f42</bpmn:incoming>
+      <bpmn:incoming>f45</bpmn:incoming>
       <bpmn:outgoing>f5</bpmn:outgoing>
     </bpmn:task>
     <bpmn:exclusiveGateway id="gwValid" name="Valid tool call?">
@@ -113,12 +114,12 @@
       <bpmn:incoming>f29</bpmn:incoming>
       <bpmn:outgoing>f31</bpmn:outgoing>
     </bpmn:task>
-    <bpmn:exclusiveGateway id="g5" name="GAME gate problem? served(62)/static(37-61)">
+    <bpmn:exclusiveGateway id="g5" name="GAME gate? play/frozen/art/structure/asset/anim/level + VISUAL-LINT off-canvas/zero/invisible (80) + vision MAJORITY-VOTE (81)">
       <bpmn:incoming>f30</bpmn:incoming>
       <bpmn:outgoing>f32</bpmn:outgoing>
       <bpmn:outgoing>f33</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:task id="nGame" name="Fix to the bar: broken/frozen/art/structure/asset/anim/level/vision">
+    <bpmn:task id="nGame" name="Fix to the bar: real character/enemies/HUD; every element on-screen, sized, contrasting">
       <bpmn:incoming>f32</bpmn:incoming>
       <bpmn:outgoing>f34</bpmn:outgoing>
     </bpmn:task>
@@ -135,19 +136,28 @@
       <bpmn:incoming>f36</bpmn:incoming>
       <bpmn:outgoing>f38</bpmn:outgoing>
     </bpmn:task>
-    <bpmn:task id="fv" name="NEW FINAL VERIFY (task + project checks)">
+    <bpmn:task id="fv" name="NEW FINAL VERIFY (task + project checks) — fail-closed, once/round (78)">
       <bpmn:incoming>f38</bpmn:incoming>
       <bpmn:outgoing>f39</bpmn:outgoing>
     </bpmn:task>
-    <bpmn:exclusiveGateway id="gwV" name="NEW verification passed?">
+    <bpmn:exclusiveGateway id="gwV" name="NEW verified? (a real check passed)">
       <bpmn:incoming>f39</bpmn:incoming>
       <bpmn:outgoing>f40</bpmn:outgoing>
       <bpmn:outgoing>f41</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:endEvent id="succ" name="SUCCESS — verified">
+    <bpmn:exclusiveGateway id="gwImprove" name="NEW another structure gap to improve? (auto, 79)">
       <bpmn:incoming>f40</bpmn:incoming>
+      <bpmn:outgoing>f43</bpmn:outgoing>
+      <bpmn:outgoing>f44</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="nextIdea" name="NEW AUTO self-improve: next gap → fresh CHECKLIST, no prompt (79)">
+      <bpmn:incoming>f43</bpmn:incoming>
+      <bpmn:outgoing>f45</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="succ" name="DONE — verified, no gaps left">
+      <bpmn:incoming>f44</bpmn:incoming>
     </bpmn:endEvent>
-    <bpmn:task id="remediate" name="NEW FAIL → detailed failures + GENERATE NEW CHECKLIST of fixes, same model (77)">
+    <bpmn:task id="remediate" name="NEW FAIL → detailed failures + GENERATE NEW CHECKLIST, iterate SAME model (77/78)">
       <bpmn:incoming>f41</bpmn:incoming>
       <bpmn:outgoing>f42</bpmn:outgoing>
     </bpmn:task>
@@ -191,9 +201,12 @@
     <bpmn:sequenceFlow id="f37" sourceRef="nProj" targetRef="model" />
     <bpmn:sequenceFlow id="f38" sourceRef="accept" targetRef="fv" />
     <bpmn:sequenceFlow id="f39" sourceRef="fv" targetRef="gwV" />
-    <bpmn:sequenceFlow id="f40" sourceRef="gwV" targetRef="succ" name="pass" />
+    <bpmn:sequenceFlow id="f40" sourceRef="gwV" targetRef="gwImprove" name="verified" />
     <bpmn:sequenceFlow id="f41" sourceRef="gwV" targetRef="remediate" name="FAIL" />
-    <bpmn:sequenceFlow id="f42" sourceRef="remediate" targetRef="model" name="next iteration" />
+    <bpmn:sequenceFlow id="f42" sourceRef="remediate" targetRef="model" name="iterate until verified" />
+    <bpmn:sequenceFlow id="f43" sourceRef="gwImprove" targetRef="nextIdea" name="yes (auto)" />
+    <bpmn:sequenceFlow id="f44" sourceRef="gwImprove" targetRef="succ" name="no" />
+    <bpmn:sequenceFlow id="f45" sourceRef="nextIdea" targetRef="model" name="next improvement" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id="diagram">
     <bpmndi:BPMNPlane id="plane" bpmnElement="proov_agent">
@@ -287,8 +300,14 @@
       <bpmndi:BPMNShape id="di_gwV" bpmnElement="gwV" isMarkerVisible="true">
         <dc:Bounds x="225" y="1611" width="50" height="50" />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="di_gwImprove" bpmnElement="gwImprove" isMarkerVisible="true">
+        <dc:Bounds x="225" y="1721" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="di_nextIdea" bpmnElement="nextIdea">
+        <dc:Bounds x="480" y="1820" width="200" height="72" />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="di_succ" bpmnElement="succ">
-        <dc:Bounds x="232" y="1728" width="36" height="36" />
+        <dc:Bounds x="232" y="1838" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="di_remediate" bpmnElement="remediate">
         <dc:Bounds x="1160" y="1600" width="200" height="72" />
@@ -455,7 +474,7 @@
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="di_f40" bpmnElement="f40">
         <di:waypoint x="250" y="1661" />
-        <di:waypoint x="250" y="1728" />
+        <di:waypoint x="250" y="1721" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="di_f41" bpmnElement="f41">
         <di:waypoint x="275" y="1636" />
@@ -463,6 +482,18 @@
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="di_f42" bpmnElement="f42">
         <di:waypoint x="1260" y="1600" />
+        <di:waypoint x="250" y="462" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="di_f43" bpmnElement="f43">
+        <di:waypoint x="250" y="1771" />
+        <di:waypoint x="580" y="1820" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="di_f44" bpmnElement="f44">
+        <di:waypoint x="250" y="1771" />
+        <di:waypoint x="250" y="1838" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="di_f45" bpmnElement="f45">
+        <di:waypoint x="580" y="1820" />
         <di:waypoint x="250" y="462" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>

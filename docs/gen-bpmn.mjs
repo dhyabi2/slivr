@@ -82,15 +82,17 @@ const N2 = [
   ["nFidel", "task", "Nudge: actually USE the named repo/lib", 8, 1],
   ["g4", "gw", "Visual-match <95% / beyond-frame? (64/66/72)", 9, 0],
   ["nVisual", "task", "compare_regions >=95% vs reference; build full game", 9, 1],
-  ["g5", "gw", "GAME gate problem? served(62)/static(37-61)", 10, 0],
-  ["nGame", "task", "Fix to the bar: broken/frozen/art/structure/asset/anim/level/vision", 10, 1],
+  ["g5", "gw", "GAME gate? play/frozen/art/structure/asset/anim/level + VISUAL-LINT off-canvas/zero/invisible (80) + vision MAJORITY-VOTE (81)", 10, 0],
+  ["nGame", "task", "Fix to the bar: real character/enemies/HUD; every element on-screen, sized, contrasting", 10, 1],
   ["g6", "gw", "Project-checks fail? typecheck/lint/build/test", 11, 0],
   ["nProj", "task", "Feed failure back → repair (bounded)", 11, 1],
   ["accept", "task", "Accept done (inner gates passed)", 12, 0],
-  ["fv", "task", "NEW FINAL VERIFY (task + project checks)", 13, 0],
-  ["gwV", "gw", "NEW verification passed?", 14, 0],
-  ["succ", "end", "SUCCESS — verified", 15, 0],
-  ["remediate", "task", "NEW FAIL → detailed failures + GENERATE NEW CHECKLIST of fixes, same model (77)", 14, 3],
+  ["fv", "task", "NEW FINAL VERIFY (task + project checks) — fail-closed, once/round (78)", 13, 0],
+  ["gwV", "gw", "NEW verified? (a real check passed)", 14, 0],
+  ["gwImprove", "gw", "NEW another structure gap to improve? (auto, 79)", 15, 0],
+  ["nextIdea", "task", "NEW AUTO self-improve: next gap → fresh CHECKLIST, no prompt (79)", 16, 1],
+  ["succ", "end", "DONE — verified, no gaps left", 16, 0],
+  ["remediate", "task", "NEW FAIL → detailed failures + GENERATE NEW CHECKLIST, iterate SAME model (77/78)", 14, 3],
 ];
 const F2 = [
   ["start", "sess"], ["sess", "gwPF"],
@@ -108,7 +110,8 @@ const F2 = [
   ["g5", "nGame", "problem"], ["g5", "g6", "ok"], ["nGame", "model"],
   ["g6", "nProj", "fail"], ["g6", "accept", "pass/none"], ["nProj", "model"],
   ["accept", "fv"], ["fv", "gwV"],
-  ["gwV", "succ", "pass"], ["gwV", "remediate", "FAIL"], ["remediate", "model", "next iteration"],
+  ["gwV", "gwImprove", "verified"], ["gwV", "remediate", "FAIL"], ["remediate", "model", "iterate until verified"],
+  ["gwImprove", "nextIdea", "yes (auto)"], ["gwImprove", "succ", "no"], ["nextIdea", "model", "next improvement"],
 ];
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
