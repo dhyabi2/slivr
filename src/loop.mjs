@@ -432,7 +432,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
           const visionCheck = (verifyModel && provider && typeof provider.hasKey === "function" && provider.hasKey())
             ? async (dataUrl) => {
                 const crit = await visionChecklistGame(provider, verifyModel, task, dataUrl, signal);
-                if (crit && crit.total >= 4 && crit.missing.length) {
+                if (crit && crit.total >= 3 && crit.missing.length) {
                   trace.push({ step, visionChecklist: { present: crit.present, total: crit.total, missing: crit.missing.slice(0, 8), served: true } });
                   return `the vision QA checklist (${String(verifyModel).split("/").pop()}) found ${crit.present}/${crit.total} required things present — these are NOT visible in your served render yet:\n${crit.missing.slice(0, 8).map((m) => "  ✗ " + m).join("\n")}\nAdd each so EVERY checklist item is present, then verify again.`;
                 }
@@ -508,6 +508,17 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
                       trace.push({ step, levelCert: { checked: lc.checked, failures: lc.failures } });
                     }
                   }
+                  // DETERMINISTIC VISUAL LINT (Block 80): render-level look bugs the LLM judge misses — a HUD or
+                  // sprite the code DEFINES but draws OFF-CANVAS, at ZERO size, or in the SAME colour as the
+                  // background (invisible). The canvas is instrumented while the game RUNS. No model needed, so
+                  // it verifies visuals even when the vision judge can't run (fail-closed coverage).
+                  if (!problem && typeof tools._visualLint === "function") {
+                    const vl = tools._visualLint(gameFile);
+                    if (vl && vl.issues && vl.issues.length) {
+                      problem = `the render has VISUAL bugs the player would SEE:\n${vl.issues.slice(0, 5).map((i) => "  ✗ " + i).join("\n")}\nFix so every element is ON-screen, has a real size, and contrasts with its background.`;
+                      trace.push({ step, visualLint: vl.issues.length });
+                    }
+                  }
                   // SEMANTIC FIDELITY (Block 37): pixel-richness + static structure can't tell "looks like
                   // Mario" from "colourful blobs". If structure passed and a vision judge is configured, have it
                   // derive a yes/no CHECKLIST of what the request requires and answer each by LOOKING at the
@@ -515,7 +526,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
                   if (!problem && verifyModel && provider && typeof provider.hasKey === "function" && provider.hasKey() && typeof tools._gameCanvasDataURL === "function") {
                     const dataUrl = tools._gameCanvasDataURL(gameFile);
                     const crit = await visionChecklistGame(provider, verifyModel, task, dataUrl, signal);
-                    if (crit && crit.total >= 4 && crit.missing.length) {
+                    if (crit && crit.total >= 3 && crit.missing.length) {
                       const punch = crit.missing.slice(0, 8).map((m) => "  ✗ " + m).join("\n");
                       problem = `the vision QA checklist (${String(verifyModel).split("/").pop()}) found ${crit.present}/${crit.total} required things present — these are NOT visible in your render yet:\n${punch}\nAdd each so EVERY checklist item is present, then verify again.`;
                       trace.push({ step, visionChecklist: { present: crit.present, total: crit.total, missing: crit.missing.slice(0, 8) } });

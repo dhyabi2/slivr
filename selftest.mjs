@@ -2893,6 +2893,21 @@ console.log("== 68p. workflow events — emit BPMN-step-tagged events to a sink 
   ok("events: file sink appends NDJSON with runId/seq/step", lines.length === 3 && lines[0].runId === "t1" && lines[0].seq === 0 && lines[1].step === "exec" && lines[2].step === "succ");
 }
 
+console.log("== 68q. visual verification — deterministic lint + running/legible capture (Block 80) ==");
+{
+  const { lintInject, parseLint, lintIssues } = await import("./src/visuallint.mjs");
+  const inj = lintInject(9000);
+  ok("vlint: instruments getContext + fillRect/drawImage/fillText + fires input", /getContext/.test(inj) && /fillRect/.test(inj) && /drawImage/.test(inj) && /fillText/.test(inj) && /KeyboardEvent/.test(inj) && /__proov_lint/.test(inj));
+  const o = parseLint('<pre id="__proov_lint">{"off":2,"zero":1,"invis":3,"total":10,"bg":"#000"}</pre>');
+  ok("vlint: parses the lint tally", o && o.off === 2 && o.zero === 1 && o.invis === 3);
+  const issues = lintIssues(o);
+  ok("vlint: reports off-canvas / zero-size / invisible issues", issues.some((i) => /OFF-CANVAS/.test(i)) && issues.some((i) => /ZERO/.test(i)) && issues.some((i) => /SAME colour/.test(i)));
+  ok("vlint: a clean tally → no issues", lintIssues({ off: 0, zero: 0, invis: 0, total: 50 }).length === 0);
+  ok("vlint: 'almost nothing visible' is flagged", lintIssues({ off: 0, zero: 0, invis: 0, total: 2 }).some((i) => /almost nothing/.test(i)));
+  const { Tools } = await import("./src/tools.mjs");
+  ok("vlint: _visualLint is wired on Tools", typeof new Tools(os.tmpdir())._visualLint === "function");
+}
+
 console.log("== 69. animation-driver gate — a static 3D character is rejected (Block 48) ==");
 {
   const { animationDriverViolation } = await import("./src/structure.mjs");

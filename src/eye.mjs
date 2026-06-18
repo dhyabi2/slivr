@@ -98,8 +98,19 @@ export function renderDomGL(htmlAbs, budget = 9000) {
 // Capture the canvas, DOWNSCALED to MAXDIM (long edge) before toDataURL — a big game canvas (800-1200px)
 // shrinks to ~768px so the base64 sent to the vision model is far smaller (≈ pixel-count ratio), with no
 // fidelity loss that matters for richness/vision. PNG kept (no MIME change for any caller). 0 = no downscale.
-const glCaptureInject = (budget, maxDim = 768) => `<script>window.addEventListener('load',function(){var n=0;function grab(){var cv=document.querySelector('canvas');if(!cv)return '';try{var w=cv.width||cv.clientWidth||0,h=cv.height||cv.clientHeight||0,MX=${maxDim};var s=(MX>0&&Math.max(w,h)>MX)?MX/Math.max(w,h):1;if(s<1){var t=document.createElement('canvas');t.width=Math.max(1,Math.round(w*s));t.height=Math.max(1,Math.round(h*s));t.getContext('2d').drawImage(cv,0,0,t.width,t.height);return t.toDataURL('image/png');}return cv.toDataURL('image/png');}catch(e){return '';}}(function poll(){var u=grab();n+=200;if((u.length>800)||(n>=${budget - 1500})){var p=document.createElement('pre');p.id='__proov_shot';p.style.display='none';p.textContent=u;document.body.appendChild(p);return;}setTimeout(poll,200);})();});</script>`;
-const glCapInject = (html, budget) => (/<\/body>/i.test(html) ? html.replace(/<\/body>/i, glCaptureInject(budget) + "</body>") : html + glCaptureInject(budget));
+// Capture the canvas, downscaled to MAXDIM (long edge). RUNNING mode (Block 80): when `keys` is given, dispatch
+// real keyboard input each poll so the game actually PLAYS, and capture a LATE frame (after motion) instead of
+// the cold start frame — so the vision judge sees the game running, not its empty first frame. Higher maxDim
+// (e.g. 1024) keeps on-screen TEXT legible for the judge. 0 = no downscale.
+const glCaptureInject = (budget, maxDim = 768, keys = null) => {
+  const fire = keys
+    ? `try{${JSON.stringify(keys)}.forEach(function(k){var c=(k==='Space')?' ':k,kc=(k==='ArrowRight')?39:(k==='ArrowUp')?38:(k==='ArrowLeft')?37:(k==='ArrowDown')?40:32;[document,window].forEach(function(tg){try{tg.dispatchEvent(new KeyboardEvent('keydown',{key:c,code:k,keyCode:kc,which:kc,bubbles:true}));}catch(e){}});});}catch(e){}`
+    : "";
+  // running mode: keep firing input + only capture near the end of the budget (a late, in-motion frame).
+  const settle = keys ? `n>=${Math.max(2000, budget - 1500)}` : `(u.length>800)||(n>=${budget - 1500})`;
+  return `<script>window.addEventListener('load',function(){var n=0;function grab(){var cv=document.querySelector('canvas');if(!cv)return '';try{var w=cv.width||cv.clientWidth||0,h=cv.height||cv.clientHeight||0,MX=${maxDim};var s=(MX>0&&Math.max(w,h)>MX)?MX/Math.max(w,h):1;if(s<1){var t=document.createElement('canvas');t.width=Math.max(1,Math.round(w*s));t.height=Math.max(1,Math.round(h*s));t.getContext('2d').drawImage(cv,0,0,t.width,t.height);return t.toDataURL('image/png');}return cv.toDataURL('image/png');}catch(e){return '';}}(function poll(){${fire}var u=grab();n+=200;if(${settle}){var p=document.createElement('pre');p.id='__proov_shot';p.style.display='none';p.textContent=u;document.body.appendChild(p);return;}setTimeout(poll,200);})();});</script>`;
+};
+const glCapInject = (html, budget, maxDim = 768, keys = null) => (/<\/body>/i.test(html) ? html.replace(/<\/body>/i, glCaptureInject(budget, maxDim, keys) + "</body>") : html + glCaptureInject(budget, maxDim, keys));
 function writeGlShot(dom, outPng) {
   if (!dom.ok) return { ok: false, error: dom.error };
   const m = dom.dom.match(/<pre id="__proov_shot"[^>]*>([\s\S]*?)<\/pre>/);
@@ -109,12 +120,12 @@ function writeGlShot(dom, outPng) {
   catch (e) { return { ok: false, error: String(e.message || e) }; }
 }
 
-export function screenshotWebGL(htmlAbs, outPng, { budget = 11000 } = {}) {
+export function screenshotWebGL(htmlAbs, outPng, { budget = 11000, maxDim = 768, keys = null } = {}) {
   let html = ""; try { html = fs.readFileSync(htmlAbs, "utf8"); } catch { return { ok: false, error: "read failed" }; }
   const dir = path.dirname(htmlAbs);
   const tmp = path.join(dir, `.proov-glshot-${process.pid}-${Date.now()}.html`);
   try {
-    fs.writeFileSync(tmp, glCapInject(html, budget));
+    fs.writeFileSync(tmp, glCapInject(html, budget, maxDim, keys));
     return writeGlShot(renderDomGL(tmp, budget), outPng);
   } catch (e) { return { ok: false, error: String(e.message || e) }; }
   finally { try { fs.unlinkSync(tmp); } catch { /* */ } }
@@ -122,9 +133,9 @@ export function screenshotWebGL(htmlAbs, outPng, { budget = 11000 } = {}) {
 
 // Capture a SERVED game's canvas over HTTP (Block 42): inject the toDataURL capture via the proxy, render
 // on the GL backend, write the PNG. Lets the served done-gate measure canvas richness like a static file. async.
-export async function screenshotWebGLUrl(url, outPng, { budget = 11000 } = {}) {
+export async function screenshotWebGLUrl(url, outPng, { budget = 11000, maxDim = 768, keys = null } = {}) {
   const { startInjectProxy } = await import("./proxy.mjs");
-  const proxy = await startInjectProxy(url, (html) => glCapInject(html, budget));
+  const proxy = await startInjectProxy(url, (html) => glCapInject(html, budget, maxDim, keys));
   try { return writeGlShot(await renderDomGLUrl(proxy.url, budget), outPng); }
   finally { await proxy.close(); }
 }

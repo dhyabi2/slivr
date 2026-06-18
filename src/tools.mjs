@@ -24,6 +24,7 @@ import { parse as parseLevel, certify as certifyLevel, recheck as recheckLevel }
 import { startServer, stopServer, listServers } from "./server.mjs";
 import { analyzeStructure, wantsMinimal, assetSourceViolation, animationDriverViolation, bundleGameSource } from "./structure.mjs";
 import { collectWorkspaceCode, taskFidelityMisses } from "./fidelity.mjs";
+import { visualLint } from "./visuallint.mjs";
 import { isDestructive } from "./safety.mjs";
 import { renderAsset } from "./asset.mjs";
 import * as bp from "./blueprint.mjs";
@@ -227,11 +228,19 @@ export class Tools {
 
   // Capture a game's CANVAS (2D + WebGL, via toDataURL) as a base64 PNG data-url, for a vision judge to
   // critique fidelity-to-request. Returns "data:image/png;base64,…" or null if it couldn't render.
+  // DETERMINISTIC visual lint (Block 80): off-canvas / zero-size / invisible-on-background draws — render-level
+  // look bugs the LLM judge misses. Returns { ran, issues } or null. Browser-gated (no Chrome → null).
+  _visualLint(rel) {
+    try { const r = visualLint(this._resolve(rel)); return (r && r.ran) ? r : null; } catch { return null; }
+  }
+
   _gameCanvasDataURL(rel) {
     try {
       const abs = this._resolve(rel);
       const cap = path.join(os.tmpdir(), `proov-gameshot-${process.pid}-${Date.now()}.png`);
-      const shot = screenshotWebGL(abs, cap);
+      // RUNNING capture at LEGIBLE resolution (Block 80): drive real input first so the vision judge sees the
+      // game PLAYING (not the cold start frame), and keep maxDim high so on-screen TEXT stays readable.
+      const shot = screenshotWebGL(abs, cap, { maxDim: 1024, keys: ["ArrowRight", "ArrowUp", "Space"] });
       if (!shot.ok) { try { fs.unlinkSync(cap); } catch { /* */ } return null; }
       const b64 = fs.readFileSync(cap).toString("base64");
       try { fs.unlinkSync(cap); } catch { /* */ }
@@ -595,7 +604,7 @@ export class Tools {
   async _servedCanvasDataURL(url) {
     const cap = path.join(os.tmpdir(), `proov-servedshot-${process.pid}-${Date.now()}.png`);
     try {
-      const shot = await screenshotWebGLUrl(url, cap);
+      const shot = await screenshotWebGLUrl(url, cap, { maxDim: 1024, keys: ["ArrowRight", "ArrowUp", "Space"] });
       if (!shot.ok) { try { fs.unlinkSync(cap); } catch { /* */ } return null; }
       const b64 = fs.readFileSync(cap).toString("base64");
       try { fs.unlinkSync(cap); } catch { /* */ }
