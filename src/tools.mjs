@@ -440,12 +440,17 @@ export class Tools {
         execSync(c.cmd, { cwd: this.workdir, timeout: timeoutMs, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], shell: "/bin/bash" });
       } catch (e) {
         const blob = `${e.stdout || ""}\n${e.stderr || ""}\n${e.message || ""}`;
-        // graceful skip: toolchain/script absent or the check timed out → NOT a code failure
-        if (e.status === 127 || e.code === "ETIMEDOUT" || /command not found|missing script|: not found|no such file|ENOENT|cannot find module/i.test(blob)) {
-          skipped.push({ check: c.check, cmd: c.cmd, why: e.code === "ETIMEDOUT" ? "timed out" : "not runnable" });
+        // FAIL-CLOSED (Block 78): SKIP only when the TOOL or npm SCRIPT itself is genuinely absent (exit 127 /
+        // "command not found" / "missing script") — that's not the code's fault and can't be verified here.
+        // EVERYTHING else is a real FAILURE we must surface: a TIMEOUT is a hang (a bug), "cannot find module"
+        // means deps aren't installed (run install_deps), and "ENOENT / no such file" inside a non-127 run is
+        // a genuine test failure. Previously these were swallowed as skips → false "pass".
+        if (e.status === 127 || /command not found|missing script|^\s*\/bin\/(ba)?sh:.*not found/im.test(blob)) {
+          skipped.push({ check: c.check, cmd: c.cmd, why: "toolchain/script absent" });
           continue;
         }
-        failures.push({ check: c.check, cmd: c.cmd, output: `${e.stdout || ""}\n${e.stderr || ""}`.trim().slice(-1800) });
+        const why = e.code === "ETIMEDOUT" ? `TIMED OUT after ${Math.round(timeoutMs / 1000)}s (a hang is a failure, not a skip)\n` : "";
+        failures.push({ check: c.check, cmd: c.cmd, output: (why + `${e.stdout || ""}\n${e.stderr || ""}`).trim().slice(-1800) });
       }
     }
     return { ran: true, failures, skipped, checked: checks.map((c) => c.check) };

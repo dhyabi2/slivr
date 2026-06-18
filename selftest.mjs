@@ -2505,6 +2505,19 @@ console.log("== 68. runUntilDone supervisor — drive a session to completion, n
   await runUntilDone(sRem, "build", { maxRounds: 3, noProgressStop: 9, strongModel: "strong/x" });
   ok("remediation: the model is NEVER swapped to the strong model (escalation removed)", swapped === false);
 
+  // ALWAYS ITERATE IF NOT VERIFIED (Block 78): a run that BUILT code but has NO passing verification must not
+  // silently succeed — it iterates and asks for a real test.
+  const prompts = [];
+  const sBuilt = { tools: { tasks: [] }, totals: () => ({ cost: 0 }), runTurn: async (tk) => { prompts.push(tk); return { done: true, verified: null, trace: [{ tool: "create_file", ok: true }] }; } };
+  const rBuilt = await runUntilDone(sBuilt, "build a thing", { maxRounds: 3, noProgressStop: 9 });
+  ok("verify: built-but-unverified ITERATES (no silent success) + asks for a real test", rBuilt.outcome !== "success" && rBuilt.verifiedStatus === "fail" && prompts.some((p) => /NOTHING verifies it/i.test(p)));
+  // a build that's NEVER verified can't reach 'pass' even at a brake.
+  ok("verify: an unverified build never reports verifiedStatus 'pass'", rBuilt.verifiedStatus === "fail");
+  // FAIL-CLOSED: an error INSIDE the verifier is a FAILURE, never a silent pass.
+  const sErr = { tools: { tasks: [], _verifyTaskChecks: () => { throw new Error("boom"); } }, totals: () => ({ cost: 0 }), runTurn: async () => ({ done: true, verified: null, trace: [] }) };
+  const rErr = await runUntilDone(sErr, "x", { maxRounds: 2, noProgressStop: 9 });
+  ok("verify: a verifier ERROR is a FAILURE, never a silent pass (fail-closed)", rErr.verifiedStatus === "fail" && rErr.outcome !== "success");
+
   // costCap:0 means NO cap (matches the REPL's untilDoneCostCap semantics) — must NOT stop after round 1.
   // Regression for the eval-harness bug: a bare `costCap ?? Infinity` treated 0 as a literal $0 cap.
   const s0 = mk([(t) => { t.length = 0; t.push({ status: "in_progress", subject: "A" }); return { done: false, stopped: "ran out", trace: [] }; }, (t) => { t[0].status = "completed"; return { done: true, verified: null, trace: [] }; }]);
@@ -3007,6 +3020,11 @@ console.log("== 73. project-checks done-gate — gate ALL code on its own tests/
   pj(d, "some-nonexistent-tool-xyz-12345");
   const sk = t._verifyProjectChecks();
   ok("project-checks: a missing toolchain is SKIPPED, not failed (degrade gracefully)", sk.failures.length === 0 && sk.skipped.length === 1);
+  // FAIL-CLOSED (Block 78): a non-127 error that merely MENTIONS 'cannot find module' is a real FAILURE now
+  // (deps not installed → run install_deps), not a swallowed skip.
+  pj(d, 'node -e "throw new Error(\'Cannot find module foo\')"');
+  const cf = t._verifyProjectChecks();
+  ok("project-checks: 'cannot find module' is a FAILURE, not a graceful skip (Block 78)", cf.ran && cf.failures.length === 1 && cf.skipped.length === 0 && /find module/i.test(cf.failures[0].output || ""));
 
   // makeProjectVerify → the verify shape the done-gate consumes.
   pj(d, 'node -e "process.exit(1)"');
