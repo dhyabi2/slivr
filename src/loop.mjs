@@ -652,6 +652,11 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     if (onStep) onStep({ step, tool: call.tool, args: call.args, result, elapsedMs, reasoning });
     if (bridge) bridge.emit("result", { tool: call.tool, ok: result?.ok !== false, note: clip(result?.note || result?.error || "", 300), ms: elapsedMs });
     emit({ type: "tool_result", tool: call.tool, ok: result?.ok !== false, step: undefined, note: clip(result?.note || result?.error || "", 140), turn: turns, ms: elapsedMs });
+    // Stream the live task TREE whenever it changes (Block 82) — the monitor's bottom box shows it + the
+    // current in-progress task.
+    if (call.tool === "task_write" && tools && Array.isArray(tools.tasks)) {
+      emit({ type: "tasks", tasks: tools.tasks.map((t) => ({ subject: t.subject, status: t.status })) });
+    }
 
     // SCREENSHOT-THRASH guard (Block 59): completing a task = real progress → reset the counter. A visual
     // check (a screenshot / art_review / compare) with NO task completed since the last one accumulates; past

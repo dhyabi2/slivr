@@ -2884,6 +2884,7 @@ console.log("== 68p. workflow events — emit BPMN-step-tagged events to a sink 
 {
   const { stepFor, makeEmitter } = await import("./src/events.mjs");
   ok("events: stepFor maps tool→exec, done→gwDone, gate→g*, verify→fv, fail→remediate, pass→succ", stepFor({ type: "tool_result", tool: "edit_file" }) === "exec" && stepFor({ type: "tool_start", tool: "done" }) === "gwDone" && stepFor({ type: "gate", gate: "task-check" }) === "g2" && stepFor({ type: "gate", gate: "plan" }) === "gwPlan" && stepFor({ type: "verify" }) === "fv" && stepFor({ type: "done", status: "fail" }) === "remediate" && stepFor({ type: "done", status: "pass" }) === "succ");
+  ok("events: a tasks event has NO step (does not move the highlight)", stepFor({ type: "tasks", tasks: [] }) === null);
   ok("events: no sink → disabled no-op", makeEmitter({}).enabled === false);
   const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "proov-ev-")), "ev.ndjson");
   const em = makeEmitter({ eventsFile: f, runId: "t1" });

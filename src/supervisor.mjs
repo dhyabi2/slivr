@@ -165,6 +165,7 @@ export async function runUntilDone(session, task, opts = {}) {
     const totals = totalsOf();
     onRound({ round: rounds, res, open: open.length, cost: totals.cost, noProgress });
     emit({ type: "round", n: rounds, open: open.length, cost: totals.cost });
+    emit({ type: "tasks", tasks: (session.tools && Array.isArray(session.tools.tasks) ? session.tools.tasks : []).map((t) => ({ subject: t.subject, status: t.status })) });
 
     if (res.aborted) return finish("aborted", rounds, res, open, totals, null, lastVerify);
     if (res.error) return finish("error", rounds, res, open, totals, res.error, lastVerify);

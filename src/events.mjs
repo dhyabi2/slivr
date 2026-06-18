@@ -15,6 +15,7 @@ export function stepFor(evt = {}) {
     case "preflight": return "genRef";
     case "round": return "model";
     case "model": return "model";
+    case "tasks": return null;   // metadata for the monitor's task-tree box — does NOT move the step highlight
     case "tool_start":
     case "tool_result":
       if (tool === "done") return "gwDone";
