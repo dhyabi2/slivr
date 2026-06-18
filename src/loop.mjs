@@ -9,10 +9,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { execSync } from "node:child_process";
 import { buildMultimodalContent } from "./multimodal.mjs";
 import { applyControl, controlToMessage } from "./bridge.mjs";
 import { compressContext } from "./compress.mjs";
-import { isWebGLPage } from "./webcheck.mjs";
+import { isWebGLPage, checkPageJs } from "./webcheck.mjs";
 import { analyzeStructure, wantsMinimal, assetSourceViolation, animationDriverViolation, bundleGameSource, beyondFrameViolation } from "./structure.mjs";
 
 // Detect a built WEB GAME in the workdir (a canvas + an animation loop / control contract), so the
@@ -47,6 +48,57 @@ export function isSubstantialTask(task) {
   if (s.length < 30) return false;                 // truly trivial one-liners never trip it
   const clauses = (s.match(/\b(and|then|also|plus|with|including|as well as)\b|[,;]|\b\d[.)]/gi) || []).length;
   return clauses >= 2 || s.length > 180;
+}
+
+// A FAILURE fingerprint for a verification tool's result — same fingerprint recurring means the agent is
+// thrashing on the SAME failure (Block 84). Returns a stable key or null (success / not a check).
+export function verdictFingerprint(tool, result) {
+  if (!result || typeof result !== "object") return null;
+  const err = result.error ? String(result.error) : "";
+  if (tool === "play_levels") {
+    if (err) return "play_levels:" + err;
+    if (Array.isArray(result.clones) && result.clones.length) return "play_levels:clones";
+    if (result.allDistinct === false) return "play_levels:clones";
+    return null;
+  }
+  if (tool === "play_game") { if (err) return "play_game:" + err; if (result.played === false) return "play_game:notplayable"; return null; }
+  if (tool === "see_page") { if (result.broken) return "see_page:broken"; if (result.blank) return "see_page:blank"; if (err) return "see_page:" + err; return null; }
+  if (tool === "autoplay") { if (result.responds === false) return "autoplay:frozen"; if (err) return "autoplay:" + err; return null; }
+  if (tool === "compare_regions" || tool === "compare_image") { if (result.allPass === false || (typeof result.similarity === "number" && result.similarity < 90)) return tool + ":mismatch"; return null; }
+  if (tool === "certify_level") { if (Array.isArray(result.results) && result.results.some((r) => !r.ok)) return "certify_level:unsolvable"; return null; }
+  if (result.ok === false && err) return tool + ":" + err;   // generic failing tool
+  return null;
+}
+// Targeted diagnosis for a recurring failure: explain what the CHECK actually compares + how to fix the root
+// cause — so the agent stops blindly mutating and pray-re-running (the headline thrash in the eval).
+export function diagnoseFor(key) {
+  const k = String(key || "");
+  if (/^play_levels:clones/.test(k)) return `play_levels marks two levels CLONES when their window.proovSim.state() SNAPSHOT is identical — it HASHES the state() object (IGNORING any level/index/stage field), NOT your tile map. So different MAPS don't help if state() returns the same {x,y,score,…} for each level. FIX the right thing: make state() include data that genuinely DIFFERS per level (player start x/y, enemy count, a layout hash, goal position), or load() must change those. Stop rewriting the maps — change what state() reports.`;
+  if (/^play_levels:.*PARSE_FAILED|^see_page:.*broken|^play_game:.*PARSE|parse/i.test(k)) return `this is a JS SYNTAX/RUNTIME error in your last edit — the page threw before exposing window.proovSim. STOP rewriting the whole file. Call see_page {path} to get the EXACT file:line of the error, open that line, fix ONLY it, and retry. A missing semicolon/brace between statements (e.g. init();loop()window.proovSim=…) breaks the parse.`;
+  if (/^autoplay:frozen/.test(k)) return `autoplay says FROZEN because the screen doesn't change on real key input — your keydown handler or update loop isn't wired to the game state. Fix the input→state→render path; don't rewrite the art.`;
+  if (/mismatch/.test(k)) return `the per-asset visual compare keeps failing on the SAME regions — re-run compare_regions, read WHICH assets are red, and fix those exact positions/colours; don't regenerate the whole scene.`;
+  return `you've hit the SAME failure repeatedly. STOP making the same kind of change. Re-read the tool's output carefully and fix the ROOT cause; if you don't understand WHY it fails, inspect exactly what the check compares before editing again.`;
+}
+// Throwaway "regenerate the whole file" scratch files — the anti-pattern that blew up cost in the eval.
+export function isScratchFile(p) {
+  const b = String(p || "").split("/").pop() || "";
+  return /^(write|gen|make|build|create)[_-].*\.(m?js|cjs)$/i.test(b)
+    || /[_-](v\d+|fresh|clean|simple|final|new|distinct|done|copy|temp|tmp|old|fix|fixed|complete|working)\.(html?|m?js|cjs)$/i.test(b)
+    || /^index[_-](new|v\d+|simple|distinct|done|fixed|clean|final).*\.html?$/i.test(b);
+}
+
+// Quick syntax check of a file the agent just wrote (Block 84): node --check for JS, the inline-script check
+// for HTML. Returns an array of error strings (empty = clean / not a code file).
+export function quickSyntaxErrors(abs) {
+  const ext = path.extname(abs).toLowerCase();
+  if (/^\.html?$/.test(ext)) {
+    try { const jc = checkPageJs(abs); return (jc.errors || []).map((e) => `${e.where || "script"}${e.line ? ` (line ${e.line})` : ""}: ${e.message}`); } catch { return []; }
+  }
+  if (/^\.(m?js|cjs)$/.test(ext)) {
+    try { execSync(`node --check ${JSON.stringify(abs)}`, { stdio: ["ignore", "ignore", "pipe"], timeout: 8000 }); return []; }
+    catch (e) { return String(e.stderr || e.message || "").split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 3); }
+  }
+  return [];
 }
 
 export function isVisualBuild(task) {
@@ -271,6 +323,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
   let gameGateDone = false;     // push back ONCE when done is called on a game that doesn't actually play
   let taskFidelityDone = false; // Block 58: push back ONCE when done is called but a prompt-named requirement is unreferenced
   let planNudged = false;       // Block 73: push back ONCE to decompose a substantial task before the first edit
+  const verdictCount = new Map(); const diagnosed = new Set(); let scratchNudged = false;   // Block 84: diagnose-on-repeat + anti-regenerate
   let visualMatchTries = 0;     // Block 64: block done until the render matches a reference image per-asset ≥95% (capped)
   let taskCheckTries = 0;       // Block 68: block done while any task's executable acceptance check fails (capped)
   let replanNudged = false;   // Block 5: nudge to re-plan once per failure streak (when a plan exists)
@@ -656,6 +709,47 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     // current in-progress task.
     if (call.tool === "task_write" && tools && Array.isArray(tools.tasks)) {
       emit({ type: "tasks", tasks: tools.tasks.map((t) => ({ subject: t.subject, status: t.status })) });
+    }
+
+    // DIAGNOSE-ON-REPEAT (Block 84): the SAME verification failure ≥3× means the agent is thrashing on one
+    // problem it doesn't understand (the headline eval failure: rewriting maps 20× to beat a CLONE verdict it
+    // never investigated). Inject a targeted diagnosis of WHAT THE CHECK COMPARES + the real fix — once per key.
+    {
+      const vk = verdictFingerprint(call.tool, result);
+      if (vk) {
+        const n = (verdictCount.get(vk) || 0) + 1; verdictCount.set(vk, n);
+        if (n >= 3 && !diagnosed.has(vk)) {
+          diagnosed.add(vk); noProgress = 0;
+          messages.push({ role: "user", content: `You've hit the SAME failure ("${vk}") ${n} times now — STOP making the same kind of change and re-running. DIAGNOSE the check first:\n${diagnoseFor(vk)}\nDo NOT rewrite the whole file again; make the one correct change.` });
+          trace.push({ step, diagnoseRepeat: vk });
+          continue;
+        }
+      }
+    }
+    // EDIT, DON'T REGENERATE (Block 84): scratch "rewrite the whole file" generators (write_*.js, index_v3.html)
+    // burn tokens and ship syntax errors. Nudge ONCE to edit the real file in place.
+    if (!scratchNudged && (call.tool === "create_file" || call.tool === "write_file") && call.args && isScratchFile(call.args.path) && result && result.ok !== false) {
+      scratchNudged = true; noProgress = 0;
+      messages.push({ role: "user", content: `Don't create throwaway "${call.args.path}" generators / versioned copies — re-emitting the whole file each time burns tokens and is how the syntax errors creep in. EDIT the real deliverable in place with edit_file (small anchored changes — they're auto syntax-checked). Work on the ONE real file, not scratch copies.` });
+      trace.push({ step, scratchNudge: call.args.path });
+      continue;
+    }
+    // AUTO SYNTAX-CHECK (Block 84): catch a syntax error the agent just introduced IMMEDIATELY (it shipped
+    // missing-semicolon / typo'd-loop bugs and discovered them rounds later). One-shot-ish per fix.
+    if (MUTATING_TOOLS.has(call.tool) && result && result.ok !== false && tools && tools.workdir) {
+      const fpath = (call.args && call.args.path) || (Array.isArray(result.files) ? result.files[0] : null);
+      if (fpath && /\.(m?js|cjs|html?)$/i.test(fpath)) {
+        try {
+          const abs = path.join(tools.workdir, fpath);
+          const errs = fs.existsSync(abs) ? quickSyntaxErrors(abs) : [];
+          if (errs.length) {
+            noProgress = 0;
+            messages.push({ role: "user", content: `⚠ Your edit to ${fpath} introduced a SYNTAX ERROR — fix THAT line now, do not rewrite the file:\n${errs.join("\n")}` });
+            trace.push({ step, syntaxError: fpath });
+            continue;
+          }
+        } catch { /* */ }
+      }
     }
 
     // SCREENSHOT-THRASH guard (Block 59): completing a task = real progress → reset the counter. A visual

@@ -2947,6 +2947,30 @@ console.log("== 68q. visual verification — deterministic lint + running/legibl
   ok("vision-vote: a clean first pass accepts with ONE call (cost-efficient)", v3 && v3.votes === 1 && c3 === 1);
 }
 
+console.log("== 68r. diagnose-on-repeat + edit-don't-regenerate (Block 84, from the Mario post-mortem) ==");
+{
+  const { verdictFingerprint, diagnoseFor, isScratchFile, quickSyntaxErrors } = await import("./src/loop.mjs");
+  ok("diag: verdictFingerprint detects play_levels clones + parse failure", verdictFingerprint("play_levels", { clones: [2, 3], allDistinct: false }) === "play_levels:clones" && verdictFingerprint("play_levels", { error: "LEVELS_PARSE_FAILED" }) === "play_levels:LEVELS_PARSE_FAILED" && verdictFingerprint("play_levels", { ok: true, allDistinct: true }) === null);
+  ok("diag: diagnoseFor(clones) explains the state() snapshot (not the map)", /state\(\) SNAPSHOT/.test(diagnoseFor("play_levels:clones")) && /NOT your tile map/i.test(diagnoseFor("play_levels:clones")));
+  ok("diag: isScratchFile catches generators/versions, not real files", isScratchFile("write_v3.js") && isScratchFile("index_distinct.html") && isScratchFile("game_final.js") && !isScratchFile("index.html") && !isScratchFile("engine.js"));
+  const sd = fs.mkdtempSync(path.join(os.tmpdir(), "sx-")); fs.writeFileSync(path.join(sd, "bad.js"), "function f(){ return 1"); fs.writeFileSync(path.join(sd, "ok.js"), "const x=1;");
+  ok("diag: quickSyntaxErrors flags a broken JS file, passes a clean one", quickSyntaxErrors(path.join(sd, "bad.js")).length > 0 && quickSyntaxErrors(path.join(sd, "ok.js")).length === 0);
+
+  const run = async (tools, script) => { let i = 0; const provider = { chat: async () => ({ text: script[i++] ?? '{"tool":"done","args":{}}', usage: {}, raw: {} }), totals: () => ({ cost: 0 }) }; const toolMap = {}; for (const k of Object.keys(tools)) if (typeof tools[k] === "function") toolMap[k] = (a) => tools[k](a); return runLoop({ provider, tools, toolMap, systemPrompt: "s", task: "make a mario game with levels", maxSteps: 8, designFirst: false }); };
+  // 3× the same CLONE failure → a targeted diagnosis is injected (not another blind rewrite).
+  const d1 = fs.mkdtempSync(path.join(os.tmpdir(), "dr-"));
+  const r1 = await run({ workdir: d1, tasks: [], play_levels: () => ({ ok: true, clones: [2, 3], allDistinct: false }) }, Array(4).fill('{"tool":"play_levels","args":{"path":"i.html"}}'));
+  ok("diagnose-on-repeat: 3× same failure → injects the checker diagnosis", r1.trace.some((s) => s.diagnoseRepeat === "play_levels:clones") && r1.messages.some((m) => typeof m.content === "string" && /state\(\) SNAPSHOT/.test(m.content)));
+  // a scratch generator file → nudge to edit in place.
+  const d2 = fs.mkdtempSync(path.join(os.tmpdir(), "dr-"));
+  const r2 = await run({ workdir: d2, tasks: [], create_file: () => ({ ok: true }) }, ['{"tool":"create_file","args":{"path":"write_v3.js","content":"x"}}', '{"tool":"done","args":{}}']);
+  ok("anti-regenerate: a scratch generator file → nudge to edit in place", r2.trace.some((s) => s.scratchNudge === "write_v3.js"));
+  // a broken JS edit is syntax-checked IMMEDIATELY.
+  const d3 = fs.mkdtempSync(path.join(os.tmpdir(), "dr-"));
+  const r3 = await run({ workdir: d3, tasks: [], create_file: ({ path: pth, content }) => { fs.writeFileSync(path.join(d3, pth), content); return { ok: true }; } }, ['{"tool":"create_file","args":{"path":"g.js","content":"function f(){return 1"}}', '{"tool":"done","args":{}}']);
+  ok("auto syntax-check: a broken JS edit is flagged immediately", r3.trace.some((s) => s.syntaxError === "g.js") && r3.messages.some((m) => typeof m.content === "string" && /SYNTAX ERROR/.test(m.content)));
+}
+
 console.log("== 69. animation-driver gate — a static 3D character is rejected (Block 48) ==");
 {
   const { animationDriverViolation } = await import("./src/structure.mjs");
