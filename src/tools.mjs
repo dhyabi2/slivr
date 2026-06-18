@@ -24,7 +24,7 @@ import { parse as parseLevel, certify as certifyLevel, recheck as recheckLevel }
 import { startServer, stopServer, listServers } from "./server.mjs";
 import { analyzeStructure, wantsMinimal, assetSourceViolation, animationDriverViolation, bundleGameSource } from "./structure.mjs";
 import { collectWorkspaceCode, taskFidelityMisses } from "./fidelity.mjs";
-import { visualLint } from "./visuallint.mjs";
+import { visualLint, domLint } from "./visuallint.mjs";
 import { isDestructive } from "./safety.mjs";
 import { renderAsset } from "./asset.mjs";
 import * as bp from "./blueprint.mjs";
@@ -232,6 +232,12 @@ export class Tools {
   // look bugs the LLM judge misses. Returns { ran, issues } or null. Browser-gated (no Chrome → null).
   _visualLint(rel) {
     try { const r = visualLint(this._resolve(rel)); return (r && r.ran) ? r : null; } catch { return null; }
+  }
+
+  // DOM visual lint (Block 81): zero-size/off-screen text, low-contrast, overflow — for a normal web UI (not a
+  // canvas game). Returns { ran, issues } or null. Browser-gated.
+  _domLint(rel) {
+    try { const r = domLint(this._resolve(rel)); return (r && r.ran) ? r : null; } catch { return null; }
   }
 
   _gameCanvasDataURL(rel) {
@@ -635,6 +641,15 @@ export class Tools {
       try { sp = await this.see_page({ url }); } catch { sp = null; }
       if (sp && sp.broken) return { ran: true, problem: `the served page at ${url} is BROKEN: ${(sp.errors || []).slice(0, 3).join("; ")}`, url };
       if (sp && sp.blank) return { ran: true, problem: `the served page at ${url} renders BLANK (no visible content) — likely a runtime JS error.`, url };
+      // DOM VISUAL LINT (Block 81): catch render-level look bugs in a web UI — zero-size/off-screen text, low
+      // contrast, overflow. Run on the local entry (the served files ARE the workdir files). A canvas game has
+      // little DOM text, so this is a no-op for games and only bites real UI bugs.
+      try {
+        for (const name of ["index.html", "public/index.html", "dist/index.html"]) {
+          const abs = path.join(this.workdir, name);
+          if (fs.existsSync(abs)) { const dl = domLint(abs); if (dl && dl.ran && dl.issues.length) return { ran: true, problem: `the page has VISUAL bugs the user would SEE:\n${dl.issues.slice(0, 4).map((i) => "  ✗ " + i).join("\n")}`, url }; break; }
+        }
+      } catch { /* lint must never break the gate */ }
       return { ran: true, problem: null, url };
     } finally {
       if (startedPid) stopServer(startedPid);

@@ -86,26 +86,43 @@ async function designFirstPreflight({ tools, task, provider }) {
 // concrete things a real, complete version must visibly have — then answer present:yes/no for each by
 // LOOKING at the canvas. Verified ⇔ every item is present; otherwise the missing items are the punch-list.
 // Returns { items:[{item,present}], missing:[item…], total, present } or null (couldn't run / unparseable).
-async function visionChecklistGame(provider, model, task, dataUrl, signal) {
+export async function visionChecklistGame(provider, model, task, dataUrl, signal, votes = 3) {
   if (!provider || typeof provider.chat !== "function" || !model || !dataUrl) return null;
-  const prompt = `You are a STRICT visual QA inspector. The user asked for this:\n"${String(task || "").slice(0, 400)}"\n\nThink about what a REAL, complete, polished version MUST visibly contain — the concrete, checkable things (e.g. for a platformer: a recognizable themed CHARACTER that is clearly NOT a plain coloured box; enemies; collectibles/coins; a score/HUD; textured ground or platforms; a themed background; etc. — tailor the list to THIS request). Write 5-9 such items.\nNow LOOK at this screenshot of the actual rendered output and answer, for EACH item, whether it is genuinely visible. Be strict: a plain rectangle is NOT a character; flat colour is NOT texture.\nReply with ONLY this JSON, no prose:\n{"checklist":[{"item":"<short concrete requirement>","present":true|false}, ...]}`;
-  try {
-    const r = await provider.chat(
-      [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: dataUrl } }] }],
-      { model, temperature: 0, signal },
-    );
-    const m = String(r?.text || "").match(/\{[\s\S]*\}/);
-    if (!m) return null;
-    const o = JSON.parse(m[0]);
-    const raw = Array.isArray(o.checklist) ? o.checklist : (Array.isArray(o.items) ? o.items : null);
-    if (!raw || !raw.length) return null;
-    const items = raw
-      .filter((x) => x && typeof (x.item ?? x.requirement ?? x.q) === "string")
-      .map((x) => ({ item: String(x.item ?? x.requirement ?? x.q).slice(0, 80), present: x.present === true || /^(yes|true)$/i.test(String(x.present)) }));
-    if (!items.length) return null;
-    const missing = items.filter((i) => !i.present).map((i) => i.item);
-    return { items, missing, total: items.length, present: items.length - missing.length };
-  } catch { return null; }
+  // One vision call → [{item, present}] (or null). Parses the model's JSON checklist.
+  const ask = async (prompt) => {
+    try {
+      const r = await provider.chat([{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: dataUrl } }] }], { model, temperature: 0, signal });
+      const m = String(r?.text || "").match(/\{[\s\S]*\}/);
+      if (!m) return null;
+      const o = JSON.parse(m[0]);
+      const raw = Array.isArray(o.checklist) ? o.checklist : (Array.isArray(o.items) ? o.items : null);
+      if (!raw) return null;
+      return raw.filter((x) => x && typeof (x.item ?? x.requirement ?? x.q) === "string")
+        .map((x) => ({ item: String(x.item ?? x.requirement ?? x.q).slice(0, 80), present: x.present === true || /^(yes|true)$/i.test(String(x.present)) }));
+    } catch { return null; }
+  };
+  const derive = `You are a STRICT visual QA inspector. The user asked for this:\n"${String(task || "").slice(0, 400)}"\n\nThink about what a REAL, complete, polished version MUST visibly contain — the concrete, checkable things (e.g. for a platformer: a recognizable themed CHARACTER that is clearly NOT a plain coloured box; enemies; collectibles/coins; a score/HUD; textured ground or platforms; a themed background; etc. — tailor the list to THIS request). Write 5-9 such items.\nNow LOOK at this screenshot and answer, for EACH item, whether it is genuinely visible. Be strict: a plain rectangle is NOT a character; flat colour is NOT texture.\nReply with ONLY this JSON, no prose:\n{"checklist":[{"item":"<short concrete requirement>","present":true|false}, ...]}`;
+  const first = await ask(derive);
+  if (!first || !first.length) return null;
+  const items = first.map((i) => i.item);
+  // If the FIRST strict pass found nothing missing, accept (don't spend more calls). The vote only kicks in to
+  // CONFIRM a potential FAILURE — so one flaky "missing" verdict can't false-fail the build (MAJORITY VOTE,
+  // audit #1/#2): re-judge the SAME fixed item list and an item is missing only if MOST judges agree.
+  const presentCount = new Map(first.map((i) => [i.item, i.present ? 1 : 0]));
+  if (![...presentCount.values()].some((v) => v === 0)) return { items: first, missing: [], total: items.length, present: items.length, votes: 1 };
+  const reJudge = `You are a STRICT visual QA inspector. LOOK at this screenshot and, for EACH required item below, answer whether it is GENUINELY visible (strict: a plain rectangle is NOT a character; flat colour is NOT texture):\n${items.map((t, i) => `${i + 1}. ${t}`).join("\n")}\nReply with ONLY this JSON, copying each item text: {"checklist":[{"item":"<item>","present":true|false}, ...]}`;
+  let rounds = 1;
+  for (let k = 1; k < votes; k++) {
+    const v = await ask(reJudge);
+    if (!v) continue;
+    rounds++;
+    for (const it of v) {
+      const key = items.includes(it.item) ? it.item : items.find((t) => t.includes(it.item) || it.item.includes(t));
+      if (key) presentCount.set(key, (presentCount.get(key) || 0) + (it.present ? 1 : 0));
+    }
+  }
+  const missing = items.filter((t) => (presentCount.get(t) || 0) <= rounds / 2);   // not a majority "present"
+  return { items: items.map((t) => ({ item: t, present: !missing.includes(t) })), missing, total: items.length, present: items.length - missing.length, votes: rounds };
 }
 
 // Find the balanced {...} block starting at index `s`, or -1. (string/escape aware)

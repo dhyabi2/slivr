@@ -2906,6 +2906,29 @@ console.log("== 68q. visual verification — deterministic lint + running/legibl
   ok("vlint: 'almost nothing visible' is flagged", lintIssues({ off: 0, zero: 0, invis: 0, total: 2 }).some((i) => /almost nothing/.test(i)));
   const { Tools } = await import("./src/tools.mjs");
   ok("vlint: _visualLint is wired on Tools", typeof new Tools(os.tmpdir())._visualLint === "function");
+
+  // DOM lint (Block 81): non-game web UI — zero-size/off-screen block; low-contrast/overflow need a higher count.
+  const { domLintInject, parseDomLint, domLintIssues } = await import("./src/visuallint.mjs");
+  ok("vlint: domLintInject checks contrast/size/offscreen/overflow", /getComputedStyle/.test(domLintInject()) && /getBoundingClientRect/.test(domLintInject()) && /__proov_domlint/.test(domLintInject()));
+  ok("vlint: parseDomLint reads the tally", parseDomLint('<pre id="__proov_domlint">{"zero":1,"off":2,"lowContrast":5,"overflowX":0}</pre>').off === 2);
+  ok("vlint: domLintIssues blocks zero-size + off-screen, flags many low-contrast", domLintIssues({ zero: 1, off: 2, lowContrast: 5, overflowX: 0 }).some((i) => /ZERO size/.test(i)) && domLintIssues({ zero: 1, off: 2, lowContrast: 5 }).some((i) => /OFF-SCREEN/.test(i)) && domLintIssues({ lowContrast: 5 }).some((i) => /LOW CONTRAST/.test(i)));
+  ok("vlint: domLintIssues does NOT flag a single low-contrast (conservative)", domLintIssues({ zero: 0, off: 0, lowContrast: 1, overflowX: 1 }).length === 0);
+  ok("vlint: _domLint is wired on Tools", typeof new Tools(os.tmpdir())._domLint === "function");
+
+  // MAJORITY VOTE (Block 81): a one-off "missing" verdict is overruled; a consistent one stays missing.
+  const { visionChecklistGame } = await import("./src/loop.mjs");
+  let c1 = 0;
+  const pFlaky = { chat: async () => { c1++; return { text: JSON.stringify({ checklist: c1 === 1 ? [{ item: "a hero", present: true }, { item: "a HUD", present: false }] : [{ item: "a hero", present: true }, { item: "a HUD", present: true }] }) }; } };
+  const v1 = await visionChecklistGame(pFlaky, "vm", "platformer", "data:image/png;base64,AAAA", null, 3);
+  ok("vision-vote: a one-off 'missing' is OVERRULED by majority (no false-fail)", v1 && v1.votes === 3 && v1.missing.length === 0);
+  const pConsistent = { chat: async () => ({ text: JSON.stringify({ checklist: [{ item: "a hero", present: true }, { item: "a HUD", present: false }] }) }) };
+  const v2 = await visionChecklistGame(pConsistent, "vm", "platformer", "data:image/png;base64,AAAA", null, 3);
+  ok("vision-vote: a consistently-missing item STAYS missing (majority)", v2 && v2.missing.includes("a HUD"));
+  // when nothing's missing on the first strict pass, accept with ONE call (no wasted votes).
+  let c3 = 0;
+  const pClean = { chat: async () => { c3++; return { text: JSON.stringify({ checklist: [{ item: "a hero", present: true }, { item: "a HUD", present: true }] }) }; } };
+  const v3 = await visionChecklistGame(pClean, "vm", "platformer", "data:image/png;base64,AAAA", null, 3);
+  ok("vision-vote: a clean first pass accepts with ONE call (cost-efficient)", v3 && v3.votes === 1 && c3 === 1);
 }
 
 console.log("== 69. animation-driver gate — a static 3D character is rejected (Block 48) ==");
