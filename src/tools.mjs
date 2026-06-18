@@ -521,13 +521,54 @@ export class Tools {
   }
 
   // Sandboxed shell: runs inside workdir, short timeout, no network assumptions.
+  // Blast-radius guard (Block 85, Mario post-mortem #4): an in-place stream edit (`sed -i` / `perl -pi`) can
+  // SILENTLY balloon or gut a file when its pattern matches far more than intended — the Mario run's sed
+  // duplicated the level data into "24 levels · 24 clones". Extract the in-place TARGET files from a command so
+  // run_command can measure their line count before/after and flag a wild change. Best-effort, low-false-positive.
+  _inPlaceTargets(command) {
+    const out = [];
+    for (const seg of String(command || "").split(/&&|\|\||;|\|/)) {
+      const toks = seg.trim().split(/\s+/).filter(Boolean);
+      if (!toks.length) continue;
+      const bin = (toks[0] || "").split("/").pop();
+      const flags = toks.filter((t) => t.startsWith("-"));
+      const sedInPlace = bin === "sed" && flags.some((f) => /^-[a-z]*i/i.test(f) || f === "--in-place" || f.startsWith("--in-place"));
+      const perlInPlace = bin === "perl" && flags.some((f) => /^-[a-zA-Z]*i/.test(f)) && flags.some((f) => /^-[a-zA-Z]*[pn]/.test(f));
+      if (!sedInPlace && !perlInPlace) continue;
+      // trailing tokens that resolve to an existing file in-sandbox are the targets (the script/suffix args
+      // like '' or s/a/b/ don't exist as files, so they're filtered out).
+      for (const t of toks.slice(1)) {
+        if (t.startsWith("-")) continue;
+        let abs; try { abs = this._resolve(t); } catch { continue; }
+        try { if (fs.existsSync(abs) && fs.statSync(abs).isFile()) out.push(abs); } catch { /* */ }
+      }
+    }
+    return [...new Set(out)];
+  }
+  _measure(abs) { try { const s = fs.readFileSync(abs, "utf8"); return { lines: s.split("\n").length, bytes: s.length }; } catch { return null; } }
+  _blastRadius(before) {
+    const hits = [];
+    for (const [abs, b] of before) {
+      const a = this._measure(abs);
+      if (!a || b.lines < 8) continue;   // skip tiny files — a big proportional change there is normal/noisy
+      const ballooned = a.lines >= b.lines * 3;
+      const gutted = a.lines <= Math.max(1, Math.floor(b.lines * 0.34));
+      if (ballooned || gutted) hits.push({ file: path.relative(this.workdir, abs), before: b.lines, after: a.lines, kind: ballooned ? "ballooned" : "gutted" });
+    }
+    return hits;
+  }
+
   run_command({ command }) {
+    let before = new Map();
+    try { for (const t of this._inPlaceTargets(command)) { const m = this._measure(t); if (m) before.set(t, m); } } catch { /* */ }
     try {
       const out = execSync(command, {
         cwd: this.workdir, timeout: 20000, encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"], shell: "/bin/bash",
       });
-      return { ok: true, stdout: out.slice(-4000), exitCode: 0 };
+      const res = { ok: true, stdout: out.slice(-4000), exitCode: 0 };
+      if (before.size) { const blast = this._blastRadius(before); if (blast.length) res.blastRadius = blast; }
+      return res;
     } catch (e) {
       return {
         ok: false,

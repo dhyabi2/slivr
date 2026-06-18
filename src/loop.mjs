@@ -324,6 +324,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
   let taskFidelityDone = false; // Block 58: push back ONCE when done is called but a prompt-named requirement is unreferenced
   let planNudges = 0;           // Block 73/85: BLOCK edits until a plan exists for a substantial task (bounded)
   const verdictCount = new Map(); const diagnosed = new Set(); let scratchNudged = false;   // Block 84: diagnose-on-repeat + anti-regenerate
+  let blastWarned = 0;          // Block 85: cap the in-place-edit blast-radius warnings so they can't loop
   let visualMatchTries = 0;     // Block 64: block done until the render matches a reference image per-asset ≥95% (capped)
   let taskCheckTries = 0;       // Block 68: block done while any task's executable acceptance check fails (capped)
   let replanNudged = false;   // Block 5: nudge to re-plan once per failure streak (when a plan exists)
@@ -751,6 +752,18 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
           }
         } catch { /* */ }
       }
+    }
+
+    // BLAST-RADIUS guard (Block 85, post-mortem #4): a `sed -i` / `perl -pi` that matches more than intended
+    // silently DUPLICATES or GUTS a file — exactly how the Mario run got "24 levels · 24 clones" from one sed.
+    // run_command measured the target before/after; if it ballooned/gutted, STOP and make the agent verify the
+    // diff before building on a corrupted file. Capped so an agent that ignores it can't loop forever.
+    if (call.tool === "run_command" && result && Array.isArray(result.blastRadius) && result.blastRadius.length && blastWarned < 3) {
+      blastWarned++; noProgress = 0;
+      const lines = result.blastRadius.map((b) => `  ${b.file}: ${b.before} → ${b.after} lines (${b.kind})`).join("\n");
+      messages.push({ role: "user", content: `⚠ That command MASSIVELY changed a file's size:\n${lines}\nAn in-place stream edit (sed/perl -i) that matches more than intended silently DUPLICATES or GUTS content — this is how a "N levels · N clones" corruption happens. STOP: read the file (or git diff) and confirm the change is what you meant. If it's wrong, restore it before doing anything else — don't build on a corrupted file.` });
+      trace.push({ step, blastRadius: result.blastRadius.map((b) => b.file) });
+      continue;
     }
 
     // SCREENSHOT-THRASH guard (Block 59): completing a task = real progress → reset the counter. A visual

@@ -2995,6 +2995,40 @@ console.log("== 68r. diagnose-on-repeat + edit-don't-regenerate (Block 84, from 
   ok("auto syntax-check: a broken JS edit is flagged immediately", r3.trace.some((s) => s.syntaxError === "g.js") && r3.messages.some((m) => typeof m.content === "string" && /SYNTAX ERROR/.test(m.content)));
 }
 
+console.log("== 68s. blast-radius guard — a sed/perl -i that balloons or guts a file is flagged (Block 85, post-mortem #4) ==");
+{
+  // _inPlaceTargets parses sed -i / perl -pi targets (and ignores non-file script/suffix args).
+  const bd = fs.mkdtempSync(path.join(os.tmpdir(), "blast-"));
+  const big = Array.from({ length: 30 }, (_, i) => `line ${i}`).join("\n");
+  fs.writeFileSync(path.join(bd, "data.txt"), big);
+  fs.writeFileSync(path.join(bd, "keep.txt"), big);
+  const tt = new Tools(bd);
+  ok("blast: _inPlaceTargets finds the sed -i target file (not the script arg)", tt._inPlaceTargets("sed -i 's/line/LINE/' data.txt").some((p) => /data\.txt$/.test(p)) && !tt._inPlaceTargets("sed -i 's/line/LINE/' data.txt").some((p) => /'/.test(p)));
+  ok("blast: _inPlaceTargets handles perl -pi and macOS sed -i ''", tt._inPlaceTargets("perl -pi -e 's/a/b/' data.txt").some((p) => /data\.txt$/.test(p)) && tt._inPlaceTargets("sed -i '' 's/a/b/' data.txt").some((p) => /data\.txt$/.test(p)));
+  ok("blast: a non-in-place command has no targets", tt._inPlaceTargets("grep line data.txt").length === 0 && tt._inPlaceTargets("cat data.txt").length === 0);
+
+  // a perl -pi that DUPLICATES every line 4× trips the guard (perl is cross-platform; macOS BSD `sed -i` needs a
+  // suffix arg and would misparse, so the EXECUTION tests use perl — which the guard also detects).
+  const balloon = tt.run_command({ command: "perl -pi -e 's/.*/$&\\n$&\\n$&\\n$&/' data.txt" });
+  ok("blast: run_command flags a ballooned file (edit matched far more than intended)", balloon.ok && Array.isArray(balloon.blastRadius) && balloon.blastRadius.some((b) => /data\.txt$/.test(b.file) && b.kind === "ballooned" && b.after >= b.before * 3));
+  // a normal in-place edit (same line count) does NOT trip it.
+  const normal = tt.run_command({ command: "perl -pi -e 's/line/LINE/' keep.txt" });
+  ok("blast: a same-size in-place edit is NOT flagged (low false-positive)", normal.ok && !normal.blastRadius);
+  // gutting a file (keep only the first 2 lines) is flagged too.
+  fs.writeFileSync(path.join(bd, "gut.txt"), big);
+  const gut = tt.run_command({ command: "perl -ni -e 'print if $. <= 2' gut.txt" });
+  ok("blast: run_command flags a gutted file (mass deletion)", gut.ok && Array.isArray(gut.blastRadius) && gut.blastRadius.some((b) => b.kind === "gutted"));
+  fs.rmSync(bd, { recursive: true, force: true });
+
+  // the loop reacts to result.blastRadius: STOP and make the agent verify the diff (bounded to 3 warnings).
+  const ld = fs.mkdtempSync(path.join(os.tmpdir(), "blastloop-"));
+  const provider = { chat: (() => { let i = 0; const s = ['{"tool":"run_command","args":{"command":"sed -i x f.txt"}}', '{"tool":"done","args":{}}']; return async () => ({ text: s[i++] ?? '{"tool":"done","args":{}}', usage: {}, raw: {} }); })(), totals: () => ({ cost: 0 }) };
+  const tools = { workdir: ld, tasks: [], run_command: () => ({ ok: true, blastRadius: [{ file: "f.txt", before: 10, after: 80, kind: "ballooned" }] }) };
+  const rb = await runLoop({ provider, tools, toolMap: { run_command: (a) => tools.run_command(a) }, systemPrompt: "s", task: "fix the data", maxSteps: 5, designFirst: false });
+  ok("blast gate: the loop STOPS and asks the agent to verify a ballooned/gutted file", rb.trace.some((s) => Array.isArray(s.blastRadius) && s.blastRadius.includes("f.txt")) && rb.messages.some((m) => typeof m.content === "string" && /MASSIVELY changed|DUPLICATES or GUTS/.test(m.content)));
+  fs.rmSync(ld, { recursive: true, force: true });
+}
+
 console.log("== 69. animation-driver gate — a static 3D character is rejected (Block 48) ==");
 {
   const { animationDriverViolation } = await import("./src/structure.mjs");
