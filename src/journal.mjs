@@ -11,14 +11,26 @@ import { loadWorld, worldCoverage } from "./world.mjs";
 
 function journalPath(dir) { return path.join(dir, ".proov", "journal.md"); }
 
-// Append a session entry (a dated handoff). entry: { task, summary, next, files }.
+// Render the GROUND-TRUTH verification verdict for a handoff (Block 85, post-mortem #5). The agent's `summary`
+// is its own claim and can read "fully functional" when the verifier actually failed — so we ALSO record the
+// binary verifiedStatus from runUntilDone. entry.verified = { status:'pass'|'fail', outcome, failures[] }.
+function statusLine(v) {
+  if (!v || !v.status) return "";
+  if (v.status === "pass") return "\n- status: ✓ VERIFIED";
+  const why = Array.isArray(v.failures) && v.failures.length
+    ? `: ${v.failures.slice(0, 3).map((f) => String(f).replace(/\s+/g, " ").trim()).join("; ").slice(0, 200)}`
+    : (v.outcome ? ` (${v.outcome})` : "");
+  return `\n- status: ✗ NOT VERIFIED${why}`;
+}
+
+// Append a session entry (a dated handoff). entry: { task, summary, next, files, verified }.
 export function appendJournal(dir, entry = {}, when) {
   const p = journalPath(dir);
   try { fs.mkdirSync(path.dirname(p), { recursive: true }); } catch { /* */ }
   const ts = when || new Date().toISOString().replace("T", " ").slice(0, 16);
   const files = Array.isArray(entry.files) && entry.files.length ? `\n- files: ${[...new Set(entry.files)].slice(0, 12).join(", ")}` : "";
   const next = entry.next ? `\n- next: ${String(entry.next).replace(/\s+/g, " ").trim()}` : "";
-  const block = `\n## ${ts}\n- task: ${String(entry.task || "(session)").replace(/\s+/g, " ").trim().slice(0, 200)}\n- did: ${String(entry.summary || "").replace(/\s+/g, " ").trim().slice(0, 400)}${files}${next}\n`;
+  const block = `\n## ${ts}\n- task: ${String(entry.task || "(session)").replace(/\s+/g, " ").trim().slice(0, 200)}${statusLine(entry.verified)}\n- did: ${String(entry.summary || "").replace(/\s+/g, " ").trim().slice(0, 400)}${files}${next}\n`;
   try { fs.appendFileSync(p, block); return true; } catch { return false; }
 }
 
@@ -55,6 +67,11 @@ export function resumeSummary(dir, { git } = {}) {
 
   const out = [];
   if (journal.length) {
+    // Honest resume (Block 85, post-mortem #5): if the last session ended NOT VERIFIED, say so FIRST and loud —
+    // the "did:" line is the agent's own claim and may overstate. Don't let a resume inherit a false "it works".
+    const lastStatus = (journal[0].lines || []).find((l) => /^-?\s*status:/i.test(l)) || "";
+    const lastUnverified = /NOT VERIFIED/i.test(lastStatus);
+    if (lastUnverified) out.push("⚠ Last session ended NOT VERIFIED — its summary is an unconfirmed claim; re-verify before trusting it, then continue.");
     out.push("Last session" + (journal[0].when ? ` (${journal[0].when})` : "") + ":");
     for (const l of journal[0].lines) out.push("  " + l);
   }

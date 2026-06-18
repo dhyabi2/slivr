@@ -367,6 +367,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
       createdThisTurn = [];
       currentAbort = new AbortController();
       let res;
+      let turnVerify = null;   // ground-truth verification verdict for the journal (Block 85, post-mortem #5)
       _live.begin(taskToRun);   // pin the bottom status box (timer + task tree + current task) for this run
       try {
         if (untilDone) {
@@ -383,6 +384,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
             },
           });
           res = rep.last || {};
+          turnVerify = { status: rep.verifiedStatus, outcome: rep.outcome, failures: (rep.verification || {}).failures || [] };
           // HONEST verification verdict (Block 70): say 'verified' ONLY when a real check confirmed it; an
           // accepted-but-unchecked done reads as ⚠ UNVERIFIED, and a failing check reads ✗ — never silent.
           const v = rep.verification || {};
@@ -413,7 +415,7 @@ export async function startRepl({ workdir, config, palette } = {}) {
 
       // Session continuity (Block 25): record a journal handoff so the NEXT session can resume.
       if (res && !res.aborted && !res.error) {
-        try { appendJournal(workdir, { task: taskToRun, summary: res.summary || res.stopped || "(no summary)", files: createdThisTurn, next: res.stopped ? "resolve: " + res.stopped : "" }); } catch { /* */ }
+        try { appendJournal(workdir, { task: taskToRun, summary: res.summary || res.stopped || "(no summary)", files: createdThisTurn, next: res.stopped ? "resolve: " + res.stopped : "", verified: turnVerify }); } catch { /* */ }
       }
 
       // Surface the turn's outcome clearly: interrupted / hard error / stopped (step-limit or stuck)

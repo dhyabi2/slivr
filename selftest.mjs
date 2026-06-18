@@ -1366,14 +1366,14 @@ console.log("== 35. play_game — drive + observe a running game (Block 15, keys
       "window.proovSim={reset(s){x=10;score=0;over=false;right=false;},step(dt){if(over)return;if(right){x+=2;score++;}if(x>200)over=true;},input(k,dn){if(k==='ArrowRight')right=dn;},state(){return{x:Math.round(x),score,over};}};" +
       "</script></body></html>");
     const t = new Tools(d);
-    const r = t.play_game({ path: "g.html", inputs: [{ at: 0, key: "ArrowRight", down: true }], steps: 150 });
+    const r = await t.play_game({ path: "g.html", inputs: [{ at: 0, key: "ArrowRight", down: true }], steps: 150 });
     const snaps = r.snapshots || [];
     ok("play_game: drives the game and reads state over time", r.ok && r.played && snaps.length > 2);
     ok("play_game: the ball MOVED, SCORED, and reached game-over", snaps[snaps.length - 1].x > snaps[0].x && snaps[snaps.length - 1].score > 0 && snaps.some(s => s.over));
     ok("play_game: attaches a final-frame screenshot", !!r.multimodal && r.multimodal.kind === "image");
     // a game WITHOUT the contract reports it (still tries a screenshot)
     fs.writeFileSync(path.join(d, "nostate.html"), "<html><body><h1>no sim</h1></body></html>");
-    ok("play_game: flags a game with no proovSim contract", t.play_game({ path: "nostate.html", steps: 10 }).played === false);
+    ok("play_game: flags a game with no proovSim contract", (await t.play_game({ path: "nostate.html", steps: 10 })).played === false);
     fs.rmSync(d, { recursive: true, force: true });
   } else {
     ok("play_game: (no browser installed — live drive skipped)", true);
@@ -1688,15 +1688,15 @@ console.log("== 43. play_levels — multi-level: load, distinct (anti-clone), pl
       "window.proovSim={levels:3,load:function(i){cur=i;x=10;goal=100;won=false;right=false;draw();},step:function(dt){if(right)x+=3;if(x>=goal)won=true;draw();},input:function(k,dn){if(k==='ArrowRight')right=dn;},state:function(){return{x:Math.round(x),won:won,level:cur};}};" +
       "window.proovSim.load(0);</script></body></html>");
 
-    const good = t.play_levels({ path: "good.html", steps: 80 });
+    const good = await t.play_levels({ path: "good.html", steps: 80 });
     ok("play_levels: drives all levels + attaches a contact sheet", good.ok && good.count === 3 && !!good.multimodal);
     ok("play_levels: 3 distinct levels → all distinct, all playable, no clones", good.allDistinct && good.allPlayable && good.clones.length === 0 && good.levels.every((l) => l.loads && l.plays && l.distinct));
-    const clone = t.play_levels({ path: "clone.html", steps: 80 });
+    const clone = await t.play_levels({ path: "clone.html", steps: 80 });
     // THE KEY PROPERTY: cloned levels (identical but for the index) are caught as non-distinct.
     ok("play_levels: catches CLONED levels (the usual multi-level failure)", clone.ok && clone.count === 3 && clone.uniqueLevels === 1 && clone.clones.length === 3 && clone.allDistinct === false);
 
     fs.writeFileSync(path.join(d, "nolevels.html"), "<!doctype html><html><body><canvas></canvas><script>window.proovSim={step:function(){},state:function(){return{};}};</script></body></html>");
-    ok("play_levels: reports a game with no levels contract", t.play_levels({ path: "nolevels.html" }).error === "NO_LEVELS_CONTRACT");
+    ok("play_levels: reports a game with no levels contract", (await t.play_levels({ path: "nolevels.html" })).error === "NO_LEVELS_CONTRACT");
     fs.rmSync(d, { recursive: true, force: true });
   } else {
     ok("play_levels: (no browser installed — live skipped)", true);
@@ -1816,6 +1816,22 @@ console.log("== 45. continuity + anti-stuck — resume between sessions, escape 
     ok("resume tool: surfaces the briefing for the agent", t.resume().hasState === true && /Blueprint/.test(t.resume().summary));
     fs.rmSync(d, { recursive: true, force: true });
   }
+
+  // HONEST RESUME (Block 85, post-mortem #5): the journal records the GROUND-TRUTH verifiedStatus, not just the
+  // agent's claim, so a resume can't inherit a false "it works" from a run the verifier actually failed.
+  {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "resume-honest-"));
+    appendJournal(d, { task: "build the game", summary: "fully functional, ships it", verified: { status: "fail", outcome: "stopped", failures: ["typecheck FAILED: x is not defined"] } }, "2026-06-16 09:00");
+    const lines = readJournal(d, 1)[0].lines;
+    ok("honest-resume: a failed run is journaled as NOT VERIFIED with the real failure", lines.some((l) => /status:.*NOT VERIFIED.*typecheck FAILED/.test(l)));
+    const rs = resumeSummary(d, { git: null });
+    ok("honest-resume: resume LEADS with a caution when last session was not verified", /NOT VERIFIED.*unconfirmed claim/.test(rs.text) && rs.text.indexOf("NOT VERIFIED") < rs.text.indexOf("fully functional"));
+
+    const d2 = fs.mkdtempSync(path.join(os.tmpdir(), "resume-honest2-"));
+    appendJournal(d2, { task: "fix the bug", summary: "fixed and tested", verified: { status: "pass" } }, "2026-06-16 10:00");
+    ok("honest-resume: a verified run is journaled ✓ VERIFIED with no caution", readJournal(d2, 1)[0].lines.some((l) => /status: ✓ VERIFIED/.test(l)) && !/NOT VERIFIED/.test(resumeSummary(d2, { git: null }).text));
+    fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(d2, { recursive: true, force: true });
+  }
 }
 
 console.log("== 46. prompt caching — token efficiency with ZERO text change (Block 26) ==");
@@ -1909,9 +1925,9 @@ console.log("== 49. autoplay — play the REAL game with real input (Block 28) =
     fs.writeFileSync(path.join(d, "dead.html"),
       "<!doctype html><html><body style=\"margin:0\"><canvas id=c width=320 height=200></canvas><script>var x=document.getElementById('c').getContext('2d');x.fillStyle='#234';x.fillRect(0,0,320,200);x.fillStyle='#fa0';x.fillRect(150,90,20,20);</script></body></html>");
     const tt = new Tools(d);
-    const good = tt.autoplay({ path: "good.html", keys: ["ArrowRight", "ArrowUp"], holdMs: 400 });
+    const good = await tt.autoplay({ path: "good.html", keys: ["ArrowRight", "ArrowUp"], holdMs: 400 });
     ok("autoplay: a game that RESPONDS to real keys → responds:true + a contact sheet", good.ok && good.responds === true && good.maxChange > 3 && !!good.multimodal);
-    const dead = tt.autoplay({ path: "dead.html", keys: ["ArrowRight", "ArrowUp", "Space"], holdMs: 400 });
+    const dead = await tt.autoplay({ path: "dead.html", keys: ["ArrowRight", "ArrowUp", "Space"], holdMs: 400 });
     ok("autoplay: a FROZEN/dead game (no input handling) → responds:false (caught via REAL input)", dead.ok && dead.responds === false && dead.maxChange < 2);
     ok("autoplay: responds strictly higher for the live game than the dead one", good.maxChange > dead.maxChange);
     fs.rmSync(d, { recursive: true, force: true });
@@ -2893,6 +2909,14 @@ console.log("== 68o. plan-first gate — decompose a substantial task before bui
   ok("plan-first: with a plan already present → no nudge", !r2.trace.some((s) => s.planNudge));
   const r3 = await run("fix the typo", [], editThenDone);
   ok("plan-first: a trivial task → no nudge", !r3.trace.some((s) => s.planNudge));
+
+  // Block 85: the gate now BLOCKS repeatedly (not one-shot) — an agent that keeps editing without a plan is
+  // pushed back up to 3 times, then released so it can't deadlock.
+  const editX5 = ['{"tool":"edit_file","args":{"path":"a.js"}}', '{"tool":"edit_file","args":{"path":"a.js"}}', '{"tool":"edit_file","args":{"path":"a.js"}}', '{"tool":"edit_file","args":{"path":"a.js"}}', '{"tool":"done","args":{}}'];
+  const r4 = await run(big, [], editX5);
+  const nudges = r4.trace.filter((s) => s.planNudge);
+  ok("plan-first: keeps blocking edits with no plan — up to 3 times", nudges.length === 3);
+  ok("plan-first: bounded — after 3 blocks the edit is allowed (no deadlock)", nudges.length === 3 && r4.trace.some((s) => s.tool === "edit_file"));
 }
 
 console.log("== 68p. workflow events — emit BPMN-step-tagged events to a sink (Block 76) ==");

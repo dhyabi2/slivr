@@ -322,7 +322,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
   let doneTaskNudged = false;   // push back ONCE when done is called with incomplete checklist tasks
   let gameGateDone = false;     // push back ONCE when done is called on a game that doesn't actually play
   let taskFidelityDone = false; // Block 58: push back ONCE when done is called but a prompt-named requirement is unreferenced
-  let planNudged = false;       // Block 73: push back ONCE to decompose a substantial task before the first edit
+  let planNudges = 0;           // Block 73/85: BLOCK edits until a plan exists for a substantial task (bounded)
   const verdictCount = new Map(); const diagnosed = new Set(); let scratchNudged = false;   // Block 84: diagnose-on-repeat + anti-regenerate
   let visualMatchTries = 0;     // Block 64: block done until the render matches a reference image per-asset ≥95% (capped)
   let taskCheckTries = 0;       // Block 68: block done while any task's executable acceptance check fails (capped)
@@ -654,13 +654,14 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     }
     noProgress = 0; // a real, known tool call — making progress again
 
-    // PLAN-FIRST gate (Block 73): a SUBSTANTIAL, multi-part task should be DECOMPOSED before building. If the
-    // first mutating action happens with an EMPTY checklist, push back ONCE to lay out a task_write plan —
-    // planning first beats building blind (audit #1). One-shot; trivial/short tasks never trigger.
-    if (!planNudged && MUTATING_TOOLS.has(call.tool) && tools && Array.isArray(tools.tasks) && tools.tasks.length === 0 && isSubstantialTask(task)) {
-      planNudged = true;
-      messages.push({ role: "user", content: `Before you start building: this is a multi-part task — DECOMPOSE it first. Call task_write with a concrete checklist (one step per deliverable), give each mechanically-testable step a 'check' (a shell command that exits 0 when it's truly done), then build to the plan and mark steps completed as you verify them. Planning first prevents stacking work on the wrong foundation.` });
-      trace.push({ step, planNudge: 1 });
+    // PLAN-FIRST gate (Block 73/85): a SUBSTANTIAL, multi-part task should be DECOMPOSED before building. BLOCK
+    // the first mutating action while the checklist is EMPTY — not just once: the agent overran the one-shot
+    // nudge in the Mario run and only wrote a plan at the very end. Bounded to 3 blocks so a model that refuses
+    // to plan isn't deadlocked. Trivial/short tasks never trigger; one task_write call clears the gate forever.
+    if (planNudges < 3 && MUTATING_TOOLS.has(call.tool) && tools && Array.isArray(tools.tasks) && tools.tasks.length === 0 && isSubstantialTask(task)) {
+      planNudges++;
+      messages.push({ role: "user", content: `${planNudges > 1 ? `Still NO plan (attempt ${planNudges}/3) — ` : ""}Before building this multi-part task, DECOMPOSE it: call task_write with a concrete checklist (one step per deliverable), give each mechanically-testable step a 'check' (a shell command that exits 0 when it's truly done). I will NOT apply edits until a plan exists. Plan first, then build to it and mark steps completed as you verify them.` });
+      trace.push({ step, planNudge: planNudges });
       emit({ type: "gate", gate: "plan", ok: false });
       continue;
     }
