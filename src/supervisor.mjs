@@ -77,6 +77,15 @@ async function finalVerify(session, res) {
   return { status, ran, failures, skipped };
 }
 
+// REMEDIATION continuation (Block 77): on a verification FAILURE, don't escalate the model — give the SAME
+// model the detailed failures and have it GENERATE A FRESH CHECKLIST of fixes (each with a runnable check) for
+// the next iteration. This is the "new workflow + improvements" the failed final-verify should produce.
+export function remediationContinuation(fv, open = []) {
+  const fails = (fv.failures || []).slice(0, 10).map((f, i) => `  ${i + 1}. ${f}`).join("\n") || "  (the project's checks did not pass)";
+  const openList = open.length ? `\nStill-open tasks: ${open.slice(0, 6).map((t) => t.subject).join("; ")}` : "";
+  return `VERIFICATION FAILED — the build does NOT pass its checks yet:\n${fails}${openList}\n\nFor the NEXT iteration, GENERATE A NEW PLAN to fix exactly these (no shortcuts, no skipping checks): call task_write with a FRESH checklist where each item fixes ONE failure above and carries a 'check' (a command that exits 0 only when that fix is verified). Then implement each fix and re-run the checks. Do NOT call done until EVERY check passes.`;
+}
+
 function report(outcome, rounds, res, open, totals, detail) {
   return {
     outcome,                                   // 'success' | 'budget' | 'dead_end' | 'aborted' | 'error'
@@ -105,7 +114,7 @@ export async function runUntilDone(session, task, opts = {}) {
   const noProgressStop = opts.noProgressStop ?? 3;
   const turnOpts = opts.turnOpts || {};
   const onRound = typeof opts.onRound === "function" ? opts.onRound : () => {};
-  const strongModel = opts.strongModel || "";   // used ONLY on a stuck round (the ~1% critical case)
+  // (model escalation removed — Block 77: a failed verification REMEDIATES on the same model, never a bigger one)
   const emit = typeof opts.emit === "function" ? opts.emit : () => {};   // workflow events for a monitor (Block 76)
   emit({ type: "run_start", task: String(task).slice(0, 160) });
 
@@ -131,16 +140,10 @@ export async function runUntilDone(session, task, opts = {}) {
       try { fv = await finalVerify(session, res); } catch { fv = null; }
     }
     rep.verification = fv;
-    const soft = (res && Array.isArray(res.verifiedBy)) ? res.verifiedBy : [];
-    // 'pass' = a HARD executable check confirmed it · 'soft' = only heuristic/visual gates verified it ·
-    // 'unverified' = nothing checked it · 'fail' = a hard check failed. Never let a skip read as 'pass'.
-    rep.verifiedStatus = (fv && fv.status === "fail") ? "fail"
-      : (fv && fv.status === "pass") ? "pass"
-      : (res && res.verified === true) ? "pass"
-      : soft.length ? "soft"
-      : "unverified";
+    // BINARY status (only 'fail' or 'pass'): a hard check FAILED (or in-loop verify failed) → fail; anything
+    // else → pass. (Soft/unverified intermediate states were removed per request.)
+    rep.verifiedStatus = ((fv && fv.status === "fail") || (res && res.verified === false)) ? "fail" : "pass";
     if (rep.verifiedStatus === "fail") rep.verified = false;
-    if (soft.length) rep.verifiedBy = soft;
     emit({ type: outcome === "success" ? "done" : "stop", outcome, status: rep.verifiedStatus, rounds, detail: detail || null });
     return rep;
   };
@@ -167,21 +170,13 @@ export async function runUntilDone(session, task, opts = {}) {
     bestDone = Math.max(bestDone, doneCountOf());
     lastFp = fp;
 
-    // CRITICAL-ONLY ESCALATION: when the cheap default model is STUCK (no-progress ticking, or it just hit
-    // a fail/spin), run ONE round on the strong model to break through, then revert. This is the ~1% of
-    // turns where the expensive model earns its cost; the rest stay on the cheap default.
-    // QUALITY-TRIGGERED ESCALATION (Block 71): use the strong model not only when STUCK (liveness) but when the
-    // result is WEAK — a verification FAILED, or a gate kept pushing back this round. A confidently-wrong cheap
-    // result is exactly what the cheap model can't fix on its own.
-    const gateBounced = Array.isArray(res.trace) && res.trace.some((x) => x.gameGate || x.servedGate || x.visualMatchGate || x.taskCheckGate || x.beyondFrame);
-    const stuck = noProgress > 0 || !!stuckMarker(res) || res.verified === false || gateBounced;
-    let prevModel = null;
-    if (stuck && strongModel && session.provider && session.provider.model && session.provider.model !== strongModel) {
-      prevModel = session.provider.model; session.provider.model = strongModel;
-      onRound({ round: rounds, escalateTo: strongModel });
-    }
-    try { res = await session.runTurn(continuationFor(res, open, noProgress > 0), turnOpts); }
-    finally { if (prevModel) session.provider.model = prevModel; }
+    // REMEDIATION — NOT escalation (Block 77): keep the SAME model. When the agent declared done but the
+    // build fails its checks, run the final verification to get the DETAILED failures, then feed them back
+    // with an instruction to GENERATE A NEW CHECKLIST of fixes for the next iteration. Better plan, same model.
+    let verifyFail = null;
+    if (res.done) { try { const fv = await finalVerify(session, res); if (fv.status === "fail") { verifyFail = fv; emit({ type: "gate", gate: "project", ok: false, detail: (fv.failures || []).slice(0, 3).join("; ") }); } } catch { /* */ } }
+    const cont = verifyFail ? remediationContinuation(verifyFail, open) : continuationFor(res, open, noProgress > 0);
+    res = await session.runTurn(cont, turnOpts);
     rounds++;
   }
 }

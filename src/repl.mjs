@@ -371,9 +371,8 @@ export async function startRepl({ workdir, config, palette } = {}) {
           const rep = await session.runUntilDone(taskToRun, {
             maxRounds, costCap,
             turnOpts: { onStep, onToolStart, onThinking, beforeTool, signal: currentAbort.signal },
-            onRound: ({ round, open, cost, escalateTo }) => {
-              if (escalateTo) process.stdout.write(p.yellow(`  ⤴ stuck — escalating round ${round} to ${escalateTo}\n`));
-              else if (round > 1) process.stdout.write(p.dim(`  ↻ continuing (round ${round}) · ${open} task(s) left · $${(cost || 0).toFixed(4)}\n`));
+            onRound: ({ round, open, cost }) => {
+              if (round > 1) process.stdout.write(p.dim(`  ↻ continuing (round ${round}) · ${open} task(s) left · $${(cost || 0).toFixed(4)}\n`));
             },
           });
           res = rep.last || {};
@@ -381,11 +380,10 @@ export async function startRepl({ workdir, config, palette } = {}) {
           // accepted-but-unchecked done reads as ⚠ UNVERIFIED, and a failing check reads ✗ — never silent.
           const v = rep.verification || {};
           const vran = (v.ran || []).join(", ");
-          const vmsg = rep.verifiedStatus === "pass" ? p.green(`verified ✓${vran ? ` (${vran})` : ""}`)
-            : rep.verifiedStatus === "fail" ? p.red(`checks FAILED ✗ — ${(v.failures || []).slice(0, 3).join("; ") || vran}`)
-            : rep.verifiedStatus === "soft" ? p.cyan(`verified by ${(rep.verifiedBy || []).join(", ")} ◑ (no hard check — add a test/check to make it certain)`)
-            : p.yellow(`UNVERIFIED ⚠ — no hard check ran${(v.skipped || []).length ? ` (skipped: ${v.skipped.join(", ")})` : ""}`);
-          // quiet on a clean single-round HARD-VERIFIED finish; speak up on anything else.
+          const vmsg = rep.verifiedStatus === "fail"
+            ? p.red(`checks FAILED ✗ — ${(v.failures || []).slice(0, 3).join("; ") || vran}`)
+            : p.green(`verified ✓${vran ? ` (${vran})` : ""}`);
+          // quiet on a clean single-round verified finish; speak up on anything else.
           if (rep.outcome === "success" && rep.verifiedStatus === "pass") {
             if (explicitFinish || rep.rounds > 1) process.stdout.write(p.green(`✓ finished — all tasks done in ${rep.rounds} round(s) · $${(rep.cost || 0).toFixed(4)} · `) + vmsg + "\n");
           } else if (rep.outcome === "success") {

@@ -44,8 +44,8 @@
 
   <h2>What the audit changed <span class="c">— the six fixes that move the ceiling</span></h2>
   <div class="grid">
-    <div class="card fix"><h3>70 · Honest verification</h3><p>Real checks run on <em>every</em> exit; a skipped/absent gate never reads as success. Status is <code>pass</code> / <code>fail</code> / <code>soft</code> / <code>unverified</code>.</p></div>
-    <div class="card fix"><h3>71 · Quality escalation</h3><p>The strong model now escalates on <em>weak/failed</em> results, not only when the agent is stuck.</p></div>
+    <div class="card fix"><h3>70 · Honest verification</h3><p>Real checks run on <em>every</em> exit; a skipped/absent gate never reads as success. Status is now <strong>binary</strong>: <code>pass</code> or <code>fail</code>.</p></div>
+    <div class="card fix"><h3>77 · Remediation (no escalation)</h3><p>A <em>failed</em> verification feeds back the detailed failures and has the <em>same</em> model generate a fresh checklist of fixes for the next iteration — no jump to a bigger model.</p></div>
     <div class="card fix"><h3>72 · De-gamed gates</h3><p>Beyond-the-frame needs real structure (a level array / advance-call, ≥2 states) — a lone keyword no longer passes.</p></div>
     <div class="card fix"><h3>73 · Plan-first</h3><p>A substantial multi-part task must be decomposed with <code>task_write</code> before the first edit.</p></div>
     <div class="card fix"><h3>74 · Durable tests</h3><p>Write a committed regression test the user keeps — not just proov's ephemeral run-time gates.</p></div>
@@ -68,7 +68,7 @@
       <tr class=""><td class="b">68</td><td class="t">Per-task acceptance checks (from DTP)</td><td class="d">task_write tasks carry an executable check; done blocked while any fails.</td></tr>
       <tr class=""><td class="b">69</td><td class="t">see_page (visual) VERIFIES</td><td class="d">Vision model reports what's visible + goal match, not a passive screenshot.</td></tr>
       <tr class="nu"><td class="b">70 <span class="tag">NEW</span></td><td class="t">Honest verification + verify-on-exit</td><td class="d">Real checks on EVERY exit; verifiedStatus pass/fail/soft/unverified — a skipped gate never reads as success.</td></tr>
-      <tr class="nu"><td class="b">71 <span class="tag">NEW</span></td><td class="t">Quality-triggered escalation</td><td class="d">Strong model escalates on WEAK/failed results, not only on stuck.</td></tr>
+      <tr class="nu"><td class="b">71→77 <span class="tag">NEW</span></td><td class="t">Remediation loop (replaces model escalation)</td><td class="d">A FAILED verification feeds back the detailed failures + an instruction to GENERATE A NEW CHECKLIST of fixes for the next iteration — on the SAME model (no escalation).</td></tr>
       <tr class="nu"><td class="b">72 <span class="tag">NEW</span></td><td class="t">De-game beyond-the-frame</td><td class="d">Requires structural evidence (real level array / advance-call; ≥2 distinct states), not a keyword.</td></tr>
       <tr class="nu"><td class="b">73 <span class="tag">NEW</span></td><td class="t">Plan-first gate</td><td class="d">A substantial multi-part task must be decomposed (task_write) before the first edit.</td></tr>
       <tr class="nu"><td class="b">74 <span class="tag">NEW</span></td><td class="t">Durable tests as a deliverable</td><td class="d">Prompt directive: write a committed regression test the user keeps, not just ephemeral gates.</td></tr>
@@ -510,7 +510,7 @@
       <bpmn:incoming>f31</bpmn:incoming>
       <bpmn:incoming>f34</bpmn:incoming>
       <bpmn:incoming>f37</bpmn:incoming>
-      <bpmn:incoming>f44</bpmn:incoming>
+      <bpmn:incoming>f42</bpmn:incoming>
       <bpmn:outgoing>f5</bpmn:outgoing>
     </bpmn:task>
     <bpmn:exclusiveGateway id="gwValid" name="Valid tool call?">
@@ -615,29 +615,21 @@
       <bpmn:incoming>f36</bpmn:incoming>
       <bpmn:outgoing>f38</bpmn:outgoing>
     </bpmn:task>
-    <bpmn:task id="fv" name="NEW FINAL VERIFY on exit: task + project checks — every exit (70)">
+    <bpmn:task id="fv" name="NEW FINAL VERIFY (task + project checks)">
       <bpmn:incoming>f38</bpmn:incoming>
       <bpmn:outgoing>f39</bpmn:outgoing>
     </bpmn:task>
-    <bpmn:exclusiveGateway id="gwV" name="NEW verifiedStatus? (70/75)">
+    <bpmn:exclusiveGateway id="gwV" name="NEW verification passed?">
       <bpmn:incoming>f39</bpmn:incoming>
       <bpmn:outgoing>f40</bpmn:outgoing>
       <bpmn:outgoing>f41</bpmn:outgoing>
-      <bpmn:outgoing>f42</bpmn:outgoing>
-      <bpmn:outgoing>f43</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:endEvent id="succ" name="SUCCESS — verified PASS (hard check)">
+    <bpmn:endEvent id="succ" name="SUCCESS — verified">
       <bpmn:incoming>f40</bpmn:incoming>
     </bpmn:endEvent>
-    <bpmn:endEvent id="softEnd" name="NEW DONE — SOFT verified by gates only (70/75)">
+    <bpmn:task id="remediate" name="NEW FAIL → detailed failures + GENERATE NEW CHECKLIST of fixes, same model (77)">
       <bpmn:incoming>f41</bpmn:incoming>
-    </bpmn:endEvent>
-    <bpmn:endEvent id="unvEnd" name="NEW DONE — UNVERIFIED, no hard check (70)">
-      <bpmn:incoming>f42</bpmn:incoming>
-    </bpmn:endEvent>
-    <bpmn:task id="escalate" name="NEW Checks FAILED → escalate strongModel + continue (71)">
-      <bpmn:incoming>f43</bpmn:incoming>
-      <bpmn:outgoing>f44</bpmn:outgoing>
+      <bpmn:outgoing>f42</bpmn:outgoing>
     </bpmn:task>
     <bpmn:sequenceFlow id="f0" sourceRef="start" targetRef="sess" />
     <bpmn:sequenceFlow id="f1" sourceRef="sess" targetRef="gwPF" />
@@ -680,10 +672,8 @@
     <bpmn:sequenceFlow id="f38" sourceRef="accept" targetRef="fv" />
     <bpmn:sequenceFlow id="f39" sourceRef="fv" targetRef="gwV" />
     <bpmn:sequenceFlow id="f40" sourceRef="gwV" targetRef="succ" name="pass" />
-    <bpmn:sequenceFlow id="f41" sourceRef="gwV" targetRef="softEnd" name="soft" />
-    <bpmn:sequenceFlow id="f42" sourceRef="gwV" targetRef="unvEnd" name="unverified" />
-    <bpmn:sequenceFlow id="f43" sourceRef="gwV" targetRef="escalate" name="fail" />
-    <bpmn:sequenceFlow id="f44" sourceRef="escalate" targetRef="model" />
+    <bpmn:sequenceFlow id="f41" sourceRef="gwV" targetRef="remediate" name="FAIL" />
+    <bpmn:sequenceFlow id="f42" sourceRef="remediate" targetRef="model" name="next iteration" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id="diagram">
     <bpmndi:BPMNPlane id="plane" bpmnElement="proov_agent">
@@ -780,13 +770,7 @@
       <bpmndi:BPMNShape id="di_succ" bpmnElement="succ">
         <dc:Bounds x="232" y="1728" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="di_softEnd" bpmnElement="softEnd">
-        <dc:Bounds x="562" y="1728" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="di_unvEnd" bpmnElement="unvEnd">
-        <dc:Bounds x="902" y="1728" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="di_escalate" bpmnElement="escalate">
+      <bpmndi:BPMNShape id="di_remediate" bpmnElement="remediate">
         <dc:Bounds x="1160" y="1600" width="200" height="72" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="di_f0" bpmnElement="f0">
@@ -954,18 +938,10 @@
         <di:waypoint x="250" y="1728" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="di_f41" bpmnElement="f41">
-        <di:waypoint x="250" y="1661" />
-        <di:waypoint x="580" y="1728" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f42" bpmnElement="f42">
-        <di:waypoint x="250" y="1661" />
-        <di:waypoint x="920" y="1728" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f43" bpmnElement="f43">
         <di:waypoint x="275" y="1636" />
         <di:waypoint x="1160" y="1636" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="di_f44" bpmnElement="f44">
+      <bpmndi:BPMNEdge id="di_f42" bpmnElement="f42">
         <di:waypoint x="1260" y="1600" />
         <di:waypoint x="250" y="462" />
       </bpmndi:BPMNEdge>

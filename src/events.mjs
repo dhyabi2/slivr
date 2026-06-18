@@ -24,8 +24,8 @@ export function stepFor(evt = {}) {
       return ({ plan: "gwPlan", "task-check": "g2", fidelity: "g3", visual: "g4", beyond: "g4", game: "g5", served: "g5", project: "g6", tasks: "g1" })[gate] || "g1";
     case "verify": return "fv";
     case "done":
-      return status === "fail" ? "escalate" : status === "soft" ? "softEnd" : status === "unverified" ? "unvEnd" : "succ";
-    case "stop": return "stopE";
+      return status === "fail" ? "remediate" : "succ";
+    case "stop": return status === "fail" ? "remediate" : "stopE";
     default: return "model";
   }
 }

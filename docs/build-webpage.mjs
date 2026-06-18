@@ -21,7 +21,7 @@ const ENH = [
   ["68", "Per-task acceptance checks (from DTP)", "task_write tasks carry an executable check; done blocked while any fails.", false],
   ["69", "see_page (visual) VERIFIES", "Vision model reports what's visible + goal match, not a passive screenshot.", false],
   ["70", "Honest verification + verify-on-exit", "Real checks on EVERY exit; verifiedStatus pass/fail/soft/unverified — a skipped gate never reads as success.", true],
-  ["71", "Quality-triggered escalation", "Strong model escalates on WEAK/failed results, not only on stuck.", true],
+  ["71→77", "Remediation loop (replaces model escalation)", "A FAILED verification feeds back the detailed failures + an instruction to GENERATE A NEW CHECKLIST of fixes for the next iteration — on the SAME model (no escalation).", true],
   ["72", "De-game beyond-the-frame", "Requires structural evidence (real level array / advance-call; ≥2 distinct states), not a keyword.", true],
   ["73", "Plan-first gate", "A substantial multi-part task must be decomposed (task_write) before the first edit.", true],
   ["74", "Durable tests as a deliverable", "Prompt directive: write a committed regression test the user keeps, not just ephemeral gates.", true],
@@ -76,8 +76,8 @@ const html = `<!doctype html>
 
   <h2>What the audit changed <span class="c">— the six fixes that move the ceiling</span></h2>
   <div class="grid">
-    <div class="card fix"><h3>70 · Honest verification</h3><p>Real checks run on <em>every</em> exit; a skipped/absent gate never reads as success. Status is <code>pass</code> / <code>fail</code> / <code>soft</code> / <code>unverified</code>.</p></div>
-    <div class="card fix"><h3>71 · Quality escalation</h3><p>The strong model now escalates on <em>weak/failed</em> results, not only when the agent is stuck.</p></div>
+    <div class="card fix"><h3>70 · Honest verification</h3><p>Real checks run on <em>every</em> exit; a skipped/absent gate never reads as success. Status is now <strong>binary</strong>: <code>pass</code> or <code>fail</code>.</p></div>
+    <div class="card fix"><h3>77 · Remediation (no escalation)</h3><p>A <em>failed</em> verification feeds back the detailed failures and has the <em>same</em> model generate a fresh checklist of fixes for the next iteration — no jump to a bigger model.</p></div>
     <div class="card fix"><h3>72 · De-gamed gates</h3><p>Beyond-the-frame needs real structure (a level array / advance-call, ≥2 states) — a lone keyword no longer passes.</p></div>
     <div class="card fix"><h3>73 · Plan-first</h3><p>A substantial multi-part task must be decomposed with <code>task_write</code> before the first edit.</p></div>
     <div class="card fix"><h3>74 · Durable tests</h3><p>Write a committed regression test the user keeps — not just proov's ephemeral run-time gates.</p></div>

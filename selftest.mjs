@@ -2484,25 +2484,26 @@ console.log("== 68. runUntilDone supervisor — drive a session to completion, n
   // a failing task-check → NOT success, verifiedStatus 'fail' (never silently "done")
   const rFail = await runUntilDone(mkV([doneA], { _verifyTaskChecks: () => ({ checked: 1, failures: [{ subject: "A", reason: "check failed" }] }) }), "build", { maxRounds: 4, noProgressStop: 3 });
   ok("verify-on-exit: a failing task-check → verifiedStatus 'fail', not 'success'", rFail.verifiedStatus === "fail" && rFail.verified === false && rFail.outcome !== "success");
-  // done with NO hard check → honest 'unverified' (success outcome, but not claimed verified)
+  // BINARY status (Block 77): no hard check failed → 'pass' (no 'unverified'/'soft' paths).
   const rNone = await runUntilDone(mkV([doneA], {}), "build", { maxRounds: 4 });
-  ok("verify-on-exit: done with NO hard check → 'unverified' (honest)", rNone.outcome === "success" && rNone.verifiedStatus === "unverified");
-  // a passing task-check → 'pass'
+  ok("verify-on-exit: done with nothing failing → 'pass' (binary)", rNone.outcome === "success" && rNone.verifiedStatus === "pass");
   const rPass = await runUntilDone(mkV([doneA], { _verifyTaskChecks: () => ({ checked: 1, failures: [] }) }), "build", { maxRounds: 4 });
-  ok("verify-on-exit: a passing task-check → verifiedStatus 'pass'", rPass.outcome === "success" && rPass.verifiedStatus === "pass" && rPass.verification.ran.includes("task-checks"));
-  // SOFT verification (Block 75): a game that passed its in-loop gates reports 'soft', not 'unverified'.
-  const rSoft = await runUntilDone(mkV([(t) => { t.length = 0; t.push({ status: "completed", subject: "A" }); return { done: true, verified: null, verifiedBy: ["game-gate", "visual-match"], trace: [] }; }], {}), "build", { maxRounds: 4 });
-  ok("verify-on-exit: in-loop gate passes → 'soft' (not 'unverified')", rSoft.outcome === "success" && rSoft.verifiedStatus === "soft" && rSoft.verifiedBy.includes("game-gate"));
+  ok("verify-on-exit: a passing task-check → 'pass'", rPass.outcome === "success" && rPass.verifiedStatus === "pass" && rPass.verification.ran.includes("task-checks"));
+  ok("verify-on-exit: status is ONLY 'pass' or 'fail' (no soft/unverified)", ["pass", "fail"].includes(rNone.verifiedStatus) && ["pass", "fail"].includes(rFail.verifiedStatus));
   // ABORT must NOT run finalVerify (Block 75 fix): a session whose checks would THROW still aborts cleanly.
   const sAbort = { tools: { tasks: [], _verifyTaskChecks: () => { throw new Error("should not run on abort"); } }, totals: () => ({ cost: 0 }), runTurn: async () => ({ aborted: true, trace: [] }) };
   const rAbort = await runUntilDone(sAbort, "build", { maxRounds: 4 });
   ok("verify-on-exit: aborted run does NOT run final checks", rAbort.outcome === "aborted" && rAbort.verification === null);
 
-  // QUALITY-TRIGGERED ESCALATION (Block 71): a FAILED verification escalates to strongModel (not just stuck)
-  let escalated = false;
-  const sEsc = { tools: { tasks: [] }, provider: { model: "cheap/x" }, totals: () => ({ cost: 0 }), runTurn: async () => ({ done: false, verified: false, stopped: "v", trace: [] }) };
-  await runUntilDone(sEsc, "build", { maxRounds: 3, noProgressStop: 9, strongModel: "strong/x", onRound: ({ escalateTo }) => { if (escalateTo) escalated = true; } });
-  ok("quality escalation: a FAILED verification escalates to the strong model", escalated);
+  // REMEDIATION, NOT ESCALATION (Block 77): a verification FAILURE feeds back detailed failures + "new
+  // checklist", on the SAME model — never swaps to strongModel.
+  const { remediationContinuation } = await import("./src/supervisor.mjs");
+  const rc = remediationContinuation({ status: "fail", failures: ["test failed: expected 5 got 4", "lint: 2 errors"] }, []);
+  ok("remediation: continuation lists the failures + asks for a NEW checklist of fixes", /VERIFICATION FAILED/.test(rc) && /expected 5 got 4/.test(rc) && /task_write/.test(rc) && /NEW (PLAN|checklist)/i.test(rc));
+  let swapped = false;
+  const sRem = { tools: { tasks: [], _verifyTaskChecks: () => ({ checked: 1, failures: [{ subject: "A", reason: "check failed" }] }) }, provider: { get model() { return "cheap/x"; }, set model(v) { swapped = true; } }, totals: () => ({ cost: 0 }), runTurn: async () => { sRem.tools.tasks = [{ status: "completed", subject: "A" }]; return { done: true, verified: null, trace: [] }; } };
+  await runUntilDone(sRem, "build", { maxRounds: 3, noProgressStop: 9, strongModel: "strong/x" });
+  ok("remediation: the model is NEVER swapped to the strong model (escalation removed)", swapped === false);
 
   // costCap:0 means NO cap (matches the REPL's untilDoneCostCap semantics) — must NOT stop after round 1.
   // Regression for the eval-harness bug: a bare `costCap ?? Infinity` treated 0 as a literal $0 cap.
@@ -2869,7 +2870,7 @@ console.log("== 68o. plan-first gate — decompose a substantial task before bui
 console.log("== 68p. workflow events — emit BPMN-step-tagged events to a sink (Block 76) ==");
 {
   const { stepFor, makeEmitter } = await import("./src/events.mjs");
-  ok("events: stepFor maps tool→exec, done→gwDone, gate→g*, verify→fv, status→end", stepFor({ type: "tool_result", tool: "edit_file" }) === "exec" && stepFor({ type: "tool_start", tool: "done" }) === "gwDone" && stepFor({ type: "gate", gate: "task-check" }) === "g2" && stepFor({ type: "gate", gate: "plan" }) === "gwPlan" && stepFor({ type: "verify" }) === "fv" && stepFor({ type: "done", status: "unverified" }) === "unvEnd" && stepFor({ type: "done", status: "soft" }) === "softEnd");
+  ok("events: stepFor maps tool→exec, done→gwDone, gate→g*, verify→fv, fail→remediate, pass→succ", stepFor({ type: "tool_result", tool: "edit_file" }) === "exec" && stepFor({ type: "tool_start", tool: "done" }) === "gwDone" && stepFor({ type: "gate", gate: "task-check" }) === "g2" && stepFor({ type: "gate", gate: "plan" }) === "gwPlan" && stepFor({ type: "verify" }) === "fv" && stepFor({ type: "done", status: "fail" }) === "remediate" && stepFor({ type: "done", status: "pass" }) === "succ");
   ok("events: no sink → disabled no-op", makeEmitter({}).enabled === false);
   const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "proov-ev-")), "ev.ndjson");
   const em = makeEmitter({ eventsFile: f, runId: "t1" });
@@ -2906,10 +2907,10 @@ console.log("== 69. animation-driver gate — a static 3D character is rejected 
   ok("web default: the system prompt makes a Node server the default web deliverable", /WEB DEFAULT/.test(sysPrompt) && /process\.env\.PORT/.test(sysPrompt) && /lone static|single HTML file|static page/i.test(sysPrompt));
 }
 
-console.log("== 70. strong-model escalation — cheap default, strong only when STUCK (~1%) (Block 50) ==");
+console.log("== 70. NO model escalation — same model always; remediation on failure (Block 77) ==");
 {
   const { runUntilDone } = await import("./src/supervisor.mjs");
-  // fake session whose provider.model is mutable; capture which model each turn ran on.
+  // Even with strongModel set and a STUCK run, the model must NEVER be swapped (escalation removed).
   const used = [];
   const tasks = [{ status: "in_progress", subject: "Y" }]; let i = 0;
   const session = {
@@ -2917,15 +2918,8 @@ console.log("== 70. strong-model escalation — cheap default, strong only when 
     runTurn: async () => { used.push(session.provider.model); i++; return { done: false, stopped: "x", trace: [{ failStop: "edit_file|NO_ANCHOR" }] }; },
   };
   const r = await runUntilDone(session, "build", { maxRounds: 20, noProgressStop: 3, strongModel: "STRONG" });
-  ok("escalation: a stuck round runs on the STRONG model, the rest on cheap", used[0] === "cheap" && used.includes("STRONG") && r.outcome === "dead_end");
-  ok("escalation: provider.model is reverted to the cheap default after the run", session.provider.model === "cheap");
-  // no strongModel → never escalates (stays cheap).
-  const used2 = []; const s2 = { tools: { tasks: [{ status: "in_progress", subject: "Z" }] }, provider: { model: "cheap" }, totals: () => ({ cost: 0 }), runTurn: async () => { used2.push(s2.provider.model); return { done: false, stopped: "x", trace: [{ failStop: "e" }] }; } };
-  await runUntilDone(s2, "build", { maxRounds: 4, noProgressStop: 3 });
-  ok("escalation: with no strongModel, every turn stays on the cheap model", used2.every((m) => m === "cheap"));
-  // config defaults expose strongModel.
-  const { DEFAULTS } = await import("./src/config.mjs");
-  ok("escalation: strongModel is a config key (default off)", "strongModel" in DEFAULTS && DEFAULTS.strongModel === "");
+  ok("no-escalation: EVERY round stays on the SAME model, even with strongModel set", used.length > 1 && used.every((m) => m === "cheap") && session.provider.model === "cheap");
+  ok("no-escalation: a stuck run still ends cleanly (dead_end), on the same model", r.outcome === "dead_end");
 }
 
 console.log("== 71. token-cost levers — cache accounting + TTL, truncate logs, downscale captures (Block 51) ==");

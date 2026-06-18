@@ -87,12 +87,10 @@ const N2 = [
   ["g6", "gw", "Project-checks fail? typecheck/lint/build/test", 11, 0],
   ["nProj", "task", "Feed failure back → repair (bounded)", 11, 1],
   ["accept", "task", "Accept done (inner gates passed)", 12, 0],
-  ["fv", "task", "NEW FINAL VERIFY on exit: task + project checks — every exit (70)", 13, 0],
-  ["gwV", "gw", "NEW verifiedStatus? (70/75)", 14, 0],
-  ["succ", "end", "SUCCESS — verified PASS (hard check)", 15, 0],
-  ["softEnd", "end", "NEW DONE — SOFT verified by gates only (70/75)", 15, 1],
-  ["unvEnd", "end", "NEW DONE — UNVERIFIED, no hard check (70)", 15, 2],
-  ["escalate", "task", "NEW Checks FAILED → escalate strongModel + continue (71)", 14, 3],
+  ["fv", "task", "NEW FINAL VERIFY (task + project checks)", 13, 0],
+  ["gwV", "gw", "NEW verification passed?", 14, 0],
+  ["succ", "end", "SUCCESS — verified", 15, 0],
+  ["remediate", "task", "NEW FAIL → detailed failures + GENERATE NEW CHECKLIST of fixes, same model (77)", 14, 3],
 ];
 const F2 = [
   ["start", "sess"], ["sess", "gwPF"],
@@ -110,7 +108,7 @@ const F2 = [
   ["g5", "nGame", "problem"], ["g5", "g6", "ok"], ["nGame", "model"],
   ["g6", "nProj", "fail"], ["g6", "accept", "pass/none"], ["nProj", "model"],
   ["accept", "fv"], ["fv", "gwV"],
-  ["gwV", "succ", "pass"], ["gwV", "softEnd", "soft"], ["gwV", "unvEnd", "unverified"], ["gwV", "escalate", "fail"], ["escalate", "model"],
+  ["gwV", "succ", "pass"], ["gwV", "remediate", "FAIL"], ["remediate", "model", "next iteration"],
 ];
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
