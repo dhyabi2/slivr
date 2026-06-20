@@ -3414,6 +3414,54 @@ console.log("== 56b. HARD context-fit — never exceed the model's window; learn
   ok("ctx: the loop records the fit + LEARNS the limit on the provider", rl.trace.some((t) => t.contextFit && t.contextFit.limit === 262144) && prov.contextLimit === 262144);
 }
 
+console.log("== 90. debug log — default-ON JSONL of raw requests/responses + tool calls, secrets redacted (Block 90) ==");
+{
+  const { configureDebug, debugLog, debugEnabled, defaultDebugFile } = await import("./src/debug.mjs");
+  const dbgDir = fs.mkdtempSync(path.join(os.tmpdir(), "dbg-"));
+  const dbgFile = path.join(dbgDir, "debug.log");
+  // default location is the home .proov dir.
+  ok("debug: default file is ~/.proov/debug.log", defaultDebugFile() === path.join(os.homedir(), ".proov", "debug.log"));
+  // enable → appends JSONL; each line is a parseable object with ts + event.
+  configureDebug({ enabled: true, file: dbgFile });
+  ok("debug: configure enables it", debugEnabled() === true);
+  debugLog("request", { url: "https://x/api", model: "m", body: { messages: [{ role: "user", content: "hi" }] } });
+  debugLog("response", { status: 200, body: { choices: [{ message: { content: "ok" } }] } });
+  const lines = fs.readFileSync(dbgFile, "utf8").trim().split("\n").filter((l) => l && !l.startsWith("#"));
+  const parsed = lines.map((l) => JSON.parse(l));
+  ok("debug: writes one parseable JSONL entry per event (with ts + event tag)", parsed.length === 2 && parsed[0].event === "request" && parsed[1].event === "response" && typeof parsed[0].ts === "string");
+  ok("debug: the RAW request body is captured", parsed[0].body && parsed[0].body.messages[0].content === "hi");
+  ok("debug: the RAW response body is captured", parsed[1].body.choices[0].message.content === "ok");
+  // SECRET REDACTION: Authorization headers, api-key fields, and sk-or- tokens are scrubbed.
+  debugLog("request", { headers: { Authorization: "Bearer sk-or-v1-abcdef123456", "content-type": "json" }, apiKey: "sk-or-secret999", note: "key is sk-or-deadbeefcafe in here" });
+  const last = JSON.parse(fs.readFileSync(dbgFile, "utf8").trim().split("\n").filter(Boolean).pop());
+  ok("debug: redacts Authorization, api-key fields, and inline sk-or- tokens", last.headers.Authorization === "***REDACTED***" && last.apiKey === "***REDACTED***" && /sk-or-\*\*\*REDACTED\*\*\*/.test(last.note) && !/deadbeefcafe|abcdef123456|secret999/.test(JSON.stringify(last)));
+  // DISABLED → no writes; a logging error never throws.
+  configureDebug({ enabled: false, file: dbgFile });
+  const sizeBefore = fs.statSync(dbgFile).size;
+  debugLog("request", { body: "should not be written" });
+  ok("debug: disabled → nothing is written", debugEnabled() === false && fs.statSync(dbgFile).size === sizeBefore);
+  ok("debug: never throws on bad input", (() => { try { configureDebug({ enabled: true, file: dbgFile }); debugLog("x", { c: (() => { const o = {}; o.self = o; return o; })() }); configureDebug({ enabled: false }); return true; } catch { return false; } })());
+
+  // PROVIDER integration: a real Provider.chat writes the RAW request + response, and the API key never appears.
+  const dbgFile2 = path.join(dbgDir, "prov.log");
+  configureDebug({ enabled: true, file: dbgFile2 });
+  const { Provider } = await import("./src/provider.mjs");
+  const origFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "hello back" } }], usage: { prompt_tokens: 5, completion_tokens: 2 } }) });
+    const prov = new Provider({ apiKey: "sk-or-v1-SUPERSECRETKEY", model: "test/model", maxRetries: 0 });
+    const resp = await prov.chat([{ role: "user", content: "ping the model" }]);
+    ok("debug: Provider.chat still returns normally with logging on", resp && resp.text === "hello back");
+    const blob = fs.readFileSync(dbgFile2, "utf8");
+    const evs = blob.trim().split("\n").filter((l) => l && !l.startsWith("#")).map((l) => JSON.parse(l));
+    ok("debug: provider logs the RAW request (messages) and response (model output)", evs.some((e) => e.event === "request" && JSON.stringify(e.body).includes("ping the model")) && evs.some((e) => e.event === "response" && JSON.stringify(e.body).includes("hello back")));
+    ok("debug: the API key NEVER appears anywhere in the log", !blob.includes("SUPERSECRETKEY"));
+  } finally { globalThis.fetch = origFetch; }
+
+  fs.rmSync(dbgDir, { recursive: true, force: true });
+  configureDebug({ enabled: false });   // leave debug OFF for the rest of the suite (no pollution)
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

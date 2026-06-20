@@ -15,6 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
 import { loadConfig, writeStarterConfig, parseMaxSteps } from "../src/config.mjs";
+import { configureDebug } from "../src/debug.mjs";
 import { Session, planGate } from "../src/agent.mjs";
 import { runBaseline } from "../src/baseline.mjs";
 import { startRepl } from "../src/repl.mjs";
@@ -308,6 +309,7 @@ async function runOneShot(task, dir, config, palette, { auto, plan, verify, repa
 // No prompts (auto), no MCP, no color. Returns the exit code (0 = done).
 async function runOneShotInProcess(task, dir, log) {
   const { config } = loadConfig({});
+  configureDebug({ enabled: config.debug, file: config.debugFile });   // Block 90: same default-on debug log
   const session = new Session(dir, {
     model: config.model, editModel: config.editModel, compress: config.compress, apiKey: config.apiKey, baseUrl: config.baseUrl,
     maxSteps: config.maxSteps, maxTokensPerTurn: config.maxTokensPerTurn,
@@ -510,6 +512,10 @@ async function main() {
   const { config, sources, paths, warnings } = loadConfig({ flags });
   // Tell the user when a config file/value was ignored, instead of silently falling back.
   for (const w of (warnings || [])) process.stderr.write(p.yellow(`config warning: ${w}\n`));
+  // DEBUG LOG (Block 90): ON by default — raw requests/responses + tool calls go to a file. Set debug:false (or
+  // PROOV_DEBUG=0) to disable. Tell the user where it is once, so it's discoverable.
+  const _debugPath = configureDebug({ enabled: config.debug, file: config.debugFile });
+  if (config.debug && config.debug !== false) process.stderr.write(p.gray(`debug log: ${_debugPath}\n`));
 
   if (subcommand === "config") {
     process.stdout.write(p.bold("resolved config") + p.dim("  (precedence: flags > local > home > env > defaults)") + "\n");

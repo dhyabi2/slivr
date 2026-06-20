@@ -7,6 +7,7 @@
 import fs from "node:fs";
 import { hasPdfInContext, PDF_PLUGIN } from "./multimodal.mjs";
 import { parseContextLimit } from "./compress.mjs";
+import { debugLog } from "./debug.mjs";
 
 // Portable key fallback: OPENROUTER_API_KEY env, then a .env / .env.local in the CURRENT dir.
 // (config.apiKey — resolved from env / flags / ~/.proov.json — is the primary path via opts.)
@@ -90,20 +91,26 @@ export class Provider {
       // chain the caller's abort signal (e.g. Ctrl-C in the REPL) into this request
       const onAbort = () => ctrl.abort();
       if (signal) { if (signal.aborted) ctrl.abort(); else signal.addEventListener("abort", onAbort, { once: true }); }
+      // Build the request body ONCE so the debug log records the EXACT bytes we send (Block 90). The API key
+      // lives only in the headers (redacted by the logger), never in the body.
+      const reqBody = {
+        model: useModel, temperature, max_tokens: this.maxTokens,
+        messages: applyPromptCache(messages, useModel, this.cacheTtl),   // cache the stable prefix — no text change
+        ...(pluginList.length ? { plugins: pluginList } : {}),
+      };
+      const url = this.baseUrl + "/chat/completions";
+      debugLog("request", { url, attempt: attempt + 1, model: useModel, body: reqBody });
       try {
-        const r = await fetch(this.baseUrl + "/chat/completions", {
+        const r = await fetch(url, {
           method: "POST",
           headers: { Authorization: "Bearer " + this.key, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: useModel, temperature, max_tokens: this.maxTokens,
-            messages: applyPromptCache(messages, useModel, this.cacheTtl),   // cache the stable prefix — no text change
-            ...(pluginList.length ? { plugins: pluginList } : {}),
-          }),
+          body: JSON.stringify(reqBody),
           signal: ctrl.signal,
         });
         clearTimeout(timer);
         if (signal) signal.removeEventListener?.("abort", onAbort);
         const d = await r.json();
+        debugLog("response", { url, attempt: attempt + 1, model: useModel, status: r.status, ok: r.ok, body: d });
         if (!r.ok) {
           lastErr = new Error(humanizeApiError(r.status, d));
           // CONTEXT OVERFLOW (Block 88): the API names the model's real window ("maximum context length is N
@@ -135,6 +142,7 @@ export class Provider {
       } catch (e) {
         clearTimeout(timer);
         if (signal) signal.removeEventListener?.("abort", onAbort);
+        debugLog("error", { url, attempt: attempt + 1, model: useModel, timedOut, aborted: !!signal?.aborted, message: String((e && e.message) || e).slice(0, 500) });
         // a caller abort (Ctrl-C) must propagate immediately, not retry
         if (signal?.aborted) { const a = new Error("aborted"); a.name = "AbortError"; throw a; }
         // OUR timeout fired (not a user abort): a distinct, clearly-worded, retryable failure so it

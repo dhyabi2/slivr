@@ -13,6 +13,7 @@ import { execSync } from "node:child_process";
 import { buildMultimodalContent } from "./multimodal.mjs";
 import { applyControl, controlToMessage } from "./bridge.mjs";
 import { compressContext, fitContext, parseContextLimit } from "./compress.mjs";
+import { debugLog } from "./debug.mjs";
 import { isWebGLPage, checkPageJs } from "./webcheck.mjs";
 import { analyzeStructure, wantsMinimal, assetSourceViolation, animationDriverViolation, bundleGameSource, beyondFrameViolation } from "./structure.mjs";
 
@@ -294,6 +295,20 @@ function clip(obj, max = 6000) {
   return s.length > max ? s.slice(0, max) + `\n…[truncated ${s.length - max} chars]` : s;
 }
 
+// Replace heavy/binary fields (multimodal data-URLs, long base64) in a tool result with a short marker so the
+// debug log stays readable — those exact bytes are already captured in the provider's raw request log (Block 90).
+function stripHeavy(result) {
+  if (!result || typeof result !== "object") return result;
+  try {
+    const clone = { ...result };
+    if (clone.multimodal) clone.multimodal = `[multimodal ${clone.multimodal.kind || "attachment"} omitted]`;
+    for (const k of ["dataUrl", "image", "png", "screenshot", "content"]) {
+      if (typeof clone[k] === "string" && clone[k].length > 4000) clone[k] = clone[k].slice(0, 4000) + `…[${clone[k].length - 4000} chars omitted]`;
+    }
+    return clone;
+  } catch { return result; }
+}
+
 // onStep({step,tool,args,result})            — called AFTER a tool runs (back-compat).
 // beforeTool({step,tool,args})               — optional async hook called BEFORE a tool runs.
 //   Return { deny:true, reason } to skip execution (the loop feeds the denial back to the model
@@ -471,6 +486,7 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     if (error) { break; }
     const call = extractJSON(resp.text);
     messages.push({ role: "assistant", content: resp.text });
+    debugLog("assistant", { step, turn: turns, text: resp.text, tool: call?.tool || null, args: call?.args });
 
     if (!call || !call.tool) {
       messages.push({ role: "user", content: 'Your message was not a valid JSON tool call. Respond with exactly one JSON object: {"tool":"...","args":{...}}.' });
@@ -830,6 +846,9 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     try { result = await fn(call.args || {}); }
     catch (e) { result = { ok: false, error: e.message }; }
     const elapsedMs = Date.now() - _t0;
+    // DEBUG (Block 90): record the tool call + its result. Heavy multimodal bytes (screenshots) are already in
+    // the provider's raw request log, so swap them for a marker here to keep the line readable.
+    debugLog("tool", { step, turn: turns, tool: call.tool, args: call.args, ok: result?.ok, ms: elapsedMs, result: stripHeavy(result) });
 
     if ((call.tool === "edit_file" || call.tool === "write_file") && result && result.ok === false) {
       editFailures++;
