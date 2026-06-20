@@ -3023,6 +3023,29 @@ console.log("== 68q. visual verification — deterministic lint + running/legibl
   const { Tools } = await import("./src/tools.mjs");
   ok("vlint: _visualLint is wired on Tools", typeof new Tools(os.tmpdir())._visualLint === "function");
 
+  // SINGLE-RENDER game probe (Block 91): render the game ONCE, reuse for BOTH lint + screenshot (the gate used
+  // to render it twice). gameProbe is exported; _renderGameProbe is wired + caches by file+mtime.
+  const { gameProbe } = await import("./src/visuallint.mjs");
+  ok("vlint: gameProbe + _renderGameProbe are wired", typeof gameProbe === "function" && typeof new Tools(os.tmpdir())._renderGameProbe === "function");
+  ok("vlint: _renderGameProbe degrades to null (no canvas/browser) without throwing", (() => { try { const t = new Tools(os.tmpdir()); const md = fs.mkdtempSync(path.join(os.tmpdir(), "gp-")); fs.writeFileSync(path.join(md, "x.html"), "<html><body>no canvas</body></html>"); const r = t._renderGameProbe("x.html"); fs.rmSync(md, { recursive: true, force: true }); return r === null || (r && Array.isArray(r.issues)); } catch { return false; } })());
+  const { findBrowser } = await import("./src/eye.mjs");
+  if (findBrowser()) {
+    const gd = fs.mkdtempSync(path.join(os.tmpdir(), "probe-"));
+    fs.writeFileSync(path.join(gd, "g.html"),
+      "<!doctype html><html><head></head><body><canvas id=c width=240 height=120></canvas><script>" +
+      "var ctx=document.getElementById('c').getContext('2d');function draw(){ctx.fillStyle='#123';ctx.fillRect(0,0,240,120);ctx.fillStyle='#fd0';ctx.fillRect(30,40,20,20);}draw();setInterval(draw,50);" +
+      "</script></body></html>");
+    const tg = new Tools(gd);
+    const probe = tg._renderGameProbe("g.html");
+    ok("vlint: gameProbe renders ONCE and returns BOTH the lint tally and a screenshot data-URL", probe && Array.isArray(probe.issues) && typeof probe.dataUrl === "string" && /^data:image\/png;base64,/.test(probe.dataUrl));
+    // the SAME object is returned on the second call (cached → no second render) until the file changes.
+    ok("vlint: the probe is CACHED by file+mtime (no re-render for the back-to-back lint + screenshot)", tg._renderGameProbe("g.html") === probe);
+    ok("vlint: _visualLint and _gameCanvasDataURL both draw from the single cached render", tg._gameCanvasDataURL("g.html") === probe.dataUrl && tg._renderGameProbe("g.html") === probe);
+    fs.rmSync(gd, { recursive: true, force: true });
+  } else {
+    ok("vlint: gameProbe (no browser installed — live render skipped)", true);
+  }
+
   // DOM lint (Block 81): non-game web UI — zero-size/off-screen block; low-contrast/overflow need a higher count.
   const { domLintInject, parseDomLint, domLintIssues } = await import("./src/visuallint.mjs");
   ok("vlint: domLintInject checks contrast/size/offscreen/overflow", /getComputedStyle/.test(domLintInject()) && /getBoundingClientRect/.test(domLintInject()) && /__proov_domlint/.test(domLintInject()));

@@ -5,7 +5,7 @@
 // nobody can see). Browser-executed (skipped with no Chrome); pure helpers are unit-testable.
 import fs from "node:fs";
 import path from "node:path";
-import { renderDomGL, renderDom } from "./eye.mjs";
+import { renderDomGL, renderDom, glCaptureInject } from "./eye.mjs";
 
 // Head-injected instrumentation. Wraps getContext('2d') so every later canvas wraps its draw ops; drives a
 // little input so the game actually renders frames; writes a JSON tally to a hidden <pre>.
@@ -68,6 +68,33 @@ export function visualLint(htmlAbs, { budget = 9000 } = {}) {
     const o = parseLint(dom.dom);
     if (!o) return { ran: false };
     return { ran: true, issues: lintIssues(o), raw: o };
+  } catch { return { ran: false }; }
+  finally { try { fs.unlinkSync(tmp); } catch { /* */ } }
+}
+
+// gameProbe (Block 91) — render a canvas game ONCE and extract BOTH signals the game gate needs: the visual-lint
+// tally AND a running screenshot data-URL. The gate used to render the game TWICE (visualLint ~9s + the canvas
+// capture ~11s); the cold-start is only ~5% of each — the per-run BUDGET dominates — so doing it in a single run
+// halves the gate's wall-clock. Injects the lint instrumentation (top of <head>, before the game's scripts) AND
+// the screenshot capture (before </body>) into one page. Returns { ran, issues, raw, dataUrl } or { ran:false }.
+export function gameProbe(htmlAbs, { budget = 11000, maxDim = 1024, keys = ["ArrowRight", "ArrowUp", "Space"] } = {}) {
+  let html = ""; try { html = fs.readFileSync(htmlAbs, "utf8"); } catch { return { ran: false }; }
+  const linti = lintInject(budget, keys);
+  const shoti = glCaptureInject(budget, maxDim, keys);
+  let out = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + linti) : linti + html;
+  out = /<\/body>/i.test(out) ? out.replace(/<\/body>/i, shoti + "</body>") : out + shoti;
+  const dir = path.dirname(htmlAbs);
+  const tmp = path.join(dir, `.proov-probe-${process.pid}-${Date.now()}.html`);
+  try {
+    fs.writeFileSync(tmp, out);
+    const dom = renderDomGL(tmp, budget);
+    if (!dom.ok) return { ran: false };
+    const tally = parseLint(dom.dom);
+    const m = String(dom.dom || "").match(/<pre id="__proov_shot"[^>]*>([\s\S]*?)<\/pre>/);
+    const shot = m ? m[1].trim() : "";
+    const dataUrl = (shot && shot.length > 200) ? shot : null;
+    if (!tally && !dataUrl) return { ran: false };
+    return { ran: true, issues: tally ? lintIssues(tally) : [], raw: tally || null, dataUrl };
   } catch { return { ran: false }; }
   finally { try { fs.unlinkSync(tmp); } catch { /* */ } }
 }

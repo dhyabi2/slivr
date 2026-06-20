@@ -24,7 +24,7 @@ import { parse as parseLevel, certify as certifyLevel, recheck as recheckLevel }
 import { startServer, stopServer, listServers } from "./server.mjs";
 import { analyzeStructure, wantsMinimal, assetSourceViolation, animationDriverViolation, bundleGameSource } from "./structure.mjs";
 import { collectWorkspaceCode, taskFidelityMisses } from "./fidelity.mjs";
-import { visualLint, domLint } from "./visuallint.mjs";
+import { visualLint, domLint, gameProbe } from "./visuallint.mjs";
 import { isDestructive } from "./safety.mjs";
 import { renderAsset } from "./asset.mjs";
 import * as bp from "./blueprint.mjs";
@@ -230,7 +230,24 @@ export class Tools {
   // critique fidelity-to-request. Returns "data:image/png;base64,…" or null if it couldn't render.
   // DETERMINISTIC visual lint (Block 80): off-canvas / zero-size / invisible-on-background draws — render-level
   // look bugs the LLM judge misses. Returns { ran, issues } or null. Browser-gated (no Chrome → null).
+  // SINGLE-RENDER game probe (Block 91): the static game gate needs the visual-lint tally AND a running canvas
+  // screenshot — both from rendering the SAME game. Render it ONCE and CACHE both signals keyed by file+mtime, so
+  // _visualLint and _gameCanvasDataURL (called back-to-back in the gate) share one ~11s run instead of two. The
+  // cache self-invalidates the moment the agent edits the file (mtime changes). Falls back to null on any failure.
+  _renderGameProbe(rel) {
+    let abs; try { abs = this._resolve(rel); } catch { return null; }
+    let mtime = 0; try { mtime = fs.statSync(abs).mtimeMs; } catch { return null; }
+    const key = `${abs}:${mtime}`;
+    if (this._gameProbeCache && this._gameProbeCache.key === key) return this._gameProbeCache.probe;
+    let probe = null;
+    try { const r = gameProbe(abs); if (r && r.ran) probe = r; } catch { probe = null; }
+    this._gameProbeCache = { key, probe };
+    return probe;
+  }
+
   _visualLint(rel) {
+    // fast path: reuse the single-render probe's lint tally; fall back to a dedicated lint render.
+    try { const p = this._renderGameProbe(rel); if (p && Array.isArray(p.issues)) return { ran: true, issues: p.issues, raw: p.raw }; } catch { /* */ }
     try { const r = visualLint(this._resolve(rel)); return (r && r.ran) ? r : null; } catch { return null; }
   }
 
@@ -241,6 +258,8 @@ export class Tools {
   }
 
   _gameCanvasDataURL(rel) {
+    // fast path: reuse the single-render probe's screenshot (same run as the lint above).
+    try { const p = this._renderGameProbe(rel); if (p && p.dataUrl) return p.dataUrl; } catch { /* */ }
     try {
       const abs = this._resolve(rel);
       const cap = path.join(os.tmpdir(), `proov-gameshot-${process.pid}-${Date.now()}.png`);

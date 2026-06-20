@@ -102,7 +102,7 @@ export function renderDomGL(htmlAbs, budget = 9000) {
 // real keyboard input each poll so the game actually PLAYS, and capture a LATE frame (after motion) instead of
 // the cold start frame — so the vision judge sees the game running, not its empty first frame. Higher maxDim
 // (e.g. 1024) keeps on-screen TEXT legible for the judge. 0 = no downscale.
-const glCaptureInject = (budget, maxDim = 768, keys = null) => {
+export const glCaptureInject = (budget, maxDim = 768, keys = null) => {
   const fire = keys
     ? `try{${JSON.stringify(keys)}.forEach(function(k){var c=(k==='Space')?' ':k,kc=(k==='ArrowRight')?39:(k==='ArrowUp')?38:(k==='ArrowLeft')?37:(k==='ArrowDown')?40:32;[document,window].forEach(function(tg){try{tg.dispatchEvent(new KeyboardEvent('keydown',{key:c,code:k,keyCode:kc,which:kc,bubbles:true}));}catch(e){}});});}catch(e){}`
     : "";
