@@ -2476,6 +2476,44 @@ console.log("== 66b. batch edits in one execute — edit_file accepts {edits:[�
   fs.rmSync(d, { recursive: true, force: true });
 }
 
+console.log("== 66c. parallel reads in one execute — read_many runs read-only tools concurrently (Block 89) ==");
+{
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "rmany-"));
+  fs.writeFileSync(path.join(d, "a.js"), "AAA");
+  fs.writeFileSync(path.join(d, "b.js"), "BBB");
+  // a SLOW read-only toolMap proves the reads overlap: 3×250ms run in ~250ms, not ~750ms.
+  const slowRead = (ms, val) => (a) => new Promise((res) => setTimeout(() => res({ ok: true, path: a.path, content: val }), ms));
+  const provReads = { model: "m", chat: (() => { let i = 0; const s = [
+    JSON.stringify({ tool: "read_many", args: { calls: [
+      { tool: "read_file", args: { path: "a.js" } }, { tool: "read_file", args: { path: "b.js" } }, { tool: "grep", args: { pattern: "x" } },
+    ] } }),
+    JSON.stringify({ tool: "done", args: {} }),
+  ]; return async () => ({ text: s[i++] ?? JSON.stringify({ tool: "done", args: {} }), usage: {}, raw: {} }); })(), totals: () => ({ cost: 0 }) };
+  const tm = { read_file: slowRead(250, "F"), grep: slowRead(250, "G") };
+  const _t0 = Date.now();
+  const rr = await runLoop({ provider: provReads, tools: { workdir: d, tasks: [] }, toolMap: tm, systemPrompt: "s", task: "x", maxSteps: 5, designFirst: false });
+  const _el = Date.now() - _t0;
+  ok("read_many: runs all read-only calls CONCURRENTLY (3×250ms finish well under 600ms)", rr.trace.some((x) => x.tool === "read_many" && x.count === 3) && _el < 600);
+  ok("read_many: combines every result into ONE message for the model", rr.messages.some((m) => typeof m.content === "string" && /RESULT \(read_many\): 3 reads run in parallel/.test(m.content)));
+
+  // non-read-only tools are filtered out; a fully-invalid batch gets guidance, not execution.
+  const provBad = { model: "m", chat: (() => { let i = 0; const s = [
+    JSON.stringify({ tool: "read_many", args: { calls: [{ tool: "edit_file", args: { path: "a.js", anchor: "AAA", replacement: "ZZZ" } }, { tool: "run_command", args: { command: "rm -rf /" } }] } }),
+    JSON.stringify({ tool: "done", args: {} }),
+  ]; return async () => ({ text: s[i++] ?? JSON.stringify({ tool: "done", args: {} }), usage: {}, raw: {} }); })(), totals: () => ({ cost: 0 }) };
+  const rbad = await runLoop({ provider: provBad, tools: { workdir: d, tasks: [] }, toolMap: { edit_file: () => ({ ok: true }), run_command: () => ({ ok: true }) }, systemPrompt: "s", task: "x", maxSteps: 5, designFirst: false });
+  ok("read_many: refuses non-read-only tools (no edits/commands run via the parallel path)", rbad.trace.some((x) => x.badReadMany) && fs.readFileSync(path.join(d, "a.js"), "utf8") === "AAA");
+
+  // {paths:[…]} shorthand expands to read_file calls.
+  const provPaths = { model: "m", chat: (() => { let i = 0; const s = [
+    JSON.stringify({ tool: "read_many", args: { paths: ["a.js", "b.js"] } }), JSON.stringify({ tool: "done", args: {} }),
+  ]; return async () => ({ text: s[i++] ?? JSON.stringify({ tool: "done", args: {} }), usage: {}, raw: {} }); })(), totals: () => ({ cost: 0 }) };
+  const tReal = new Tools(d);
+  const rp = await runLoop({ provider: provPaths, tools: tReal, toolMap: { read_file: (a) => tReal.read_file(a) }, systemPrompt: "s", task: "x", maxSteps: 5, designFirst: false });
+  ok("read_many: {paths:[…]} shorthand reads each file in parallel", rp.trace.some((x) => x.tool === "read_many" && x.count === 2) && rp.messages.some((m) => typeof m.content === "string" && /AAA[\s\S]*BBB/.test(m.content)));
+  fs.rmSync(d, { recursive: true, force: true });
+}
+
 console.log("== 67. syntax-error LOCATION — map to the file line + show node's code frame (Block 45) ==");
 {
   const { nodeCheckCode, extractScripts, checkPageJs } = await import("./src/webcheck.mjs");
@@ -3213,17 +3251,23 @@ console.log("== 73. project-checks done-gate — gate ALL code on its own tests/
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "pc-")); const t = new Tools(d);
   ok("project-checks: _hasProjectChecks false with no manifest, true with a test script", new Tools(fs.mkdtempSync(path.join(os.tmpdir(), "pc0-")))._hasProjectChecks() === false && (pj(d, 'node -e "process.exit(0)"'), t._hasProjectChecks() === true));
   pj(d, 'node -e "process.exit(1)"');
-  ok("project-checks: a FAILING test is reported as a failure", (() => { const r = t._verifyProjectChecks(); return r.ran === true && r.failures.length === 1 && r.failures[0].check === "test"; })());
+  ok("project-checks: a FAILING test is reported as a failure", await (async () => { const r = await t._verifyProjectChecks(); return r.ran === true && r.failures.length === 1 && r.failures[0].check === "test"; })());
   pj(d, 'node -e "process.exit(0)"');
-  ok("project-checks: a PASSING test → no failures", t._verifyProjectChecks().failures.length === 0);
+  ok("project-checks: a PASSING test → no failures", (await t._verifyProjectChecks()).failures.length === 0);
   pj(d, "some-nonexistent-tool-xyz-12345");
-  const sk = t._verifyProjectChecks();
+  const sk = await t._verifyProjectChecks();
   ok("project-checks: a missing toolchain is SKIPPED, not failed (degrade gracefully)", sk.failures.length === 0 && sk.skipped.length === 1);
   // FAIL-CLOSED (Block 78): a non-127 error that merely MENTIONS 'cannot find module' is a real FAILURE now
   // (deps not installed → run install_deps), not a swallowed skip.
   pj(d, 'node -e "throw new Error(\'Cannot find module foo\')"');
-  const cf = t._verifyProjectChecks();
+  const cf = await t._verifyProjectChecks();
   ok("project-checks: 'cannot find module' is a FAILURE, not a graceful skip (Block 78)", cf.ran && cf.failures.length === 1 && cf.skipped.length === 0 && /find module/i.test(cf.failures[0].output || ""));
+  // CONCURRENT BATTERY (Block 89): two slow checks run in PARALLEL → wall-clock ≈ slowest, not the sum.
+  fs.writeFileSync(path.join(d, "package.json"), JSON.stringify({ name: "x", version: "1.0.0", scripts: { build: 'node -e "setTimeout(()=>process.exit(0),700)"', test: 'node -e "setTimeout(()=>process.exit(0),700)"' } }));
+  const _t0 = Date.now(); const par = await t._verifyProjectChecks(); const _el = Date.now() - _t0;
+  // CONCURRENT: each check is wrapped as `npm run …` (~600ms npm startup) + a 700ms timer. Run together that's
+  // ~1.3s; run sequentially it would be ~2.6s. A threshold of 2000ms cleanly proves they overlapped.
+  ok("project-checks: the battery runs CONCURRENTLY (2 checks finish well under the sequential sum)", par.ran && par.failures.length === 0 && par.checked.includes("build") && par.checked.includes("test") && _el < 2000);
 
   // makeProjectVerify → the verify shape the done-gate consumes.
   pj(d, 'node -e "process.exit(1)"');

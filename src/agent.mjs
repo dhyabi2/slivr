@@ -31,6 +31,7 @@ wastes the turn). The JSON object looks like:
   {"tool":"list_dir","args":{"path":"."}}
   {"tool":"grep","args":{"pattern":"regex","path":"."}}
   {"tool":"glob","args":{"pattern":"src/**/*.js"}}
+  {"tool":"read_many","args":{"calls":[{"tool":"read_file","args":{"path":"a.js"}},{"tool":"grep","args":{"pattern":"foo"}},{"tool":"read_file","args":{"path":"b.js"}}]}}
   {"tool":"repo_map","args":{}}
   {"tool":"project_info","args":{}}
   {"tool":"house_style","args":{}}
@@ -102,6 +103,10 @@ EDIT PROTOCOL (important — this is how you keep edits cheap and correct):
   rules; edits to one file apply in order on the evolving buffer. If any edit fails, none apply and you get
   repair packets for the failing ones — fix those and resend the whole batch. Single edit_file is only for a
   lone one-off change. Don't spend a turn per edit when you can do them together.
+- READ IN PARALLEL — when you need to look at several things to orient, fetch them ALL in ONE turn with
+  read_many {"calls":[{tool,args},…]} (read-only tools: read_file, grep, glob, list_dir, repo_map,
+  find_symbol, find_refs, git_*; or shorthand {"paths":["a.js","b.js"]}). They run CONCURRENTLY and come
+  back together — one round-trip instead of one per file. Don't read files one-at-a-time across many turns.
 - git_* tools inspect the repo and can commit; proov NEVER pushes.
 - MATCH THE HOUSE STYLE: new/edited code must be indistinguishable from the surrounding code —
   indentation (tabs vs spaces + width), quote style, semicolons, and naming case. A HOUSE STYLE line

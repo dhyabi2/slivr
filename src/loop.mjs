@@ -41,6 +41,13 @@ export function detectGameFile(workdir) {
 // reference for a text-only job. Drives the design-first preflight (Block 67).
 // Tools that MUTATE the workspace — used by the plan-first gate (Block 73).
 const MUTATING_TOOLS = new Set(["edit_file", "edit_files", "edit_symbol", "create_file", "write_file"]);
+// READ-ONLY inspection tools — side-effect-free, so MANY can run CONCURRENTLY in one turn (Block 89, read_many)
+// without any of the per-call mutation gates (approval / plan / syntax / blast). Collapses N exploration
+// round-trips into one. Deliberately excludes anything that writes, runs commands, spawns a browser, or fetches.
+const READ_ONLY_TOOLS = new Set([
+  "read_file", "list_dir", "grep", "glob", "repo_map", "find_symbol", "find_refs",
+  "project_info", "house_style", "git_status", "git_diff", "git_log", "blueprint_status",
+]);
 // A SUBSTANTIAL task warrants an up-front plan: long, or multi-clause / lists several deliverables. A short
 // single-action task ("fix the typo on line 4") never trips the plan-first gate.
 export function isSubstantialTask(task) {
@@ -307,7 +314,7 @@ function clip(obj, max = 6000) {
 export function makeProjectVerify(tools) {
   return async () => {
     if (!tools || typeof tools._verifyProjectChecks !== "function") return { ok: true };
-    let res; try { res = tools._verifyProjectChecks(); } catch { return { ok: true }; }
+    let res; try { res = await tools._verifyProjectChecks(); } catch { return { ok: true }; }
     if (!res || !res.ran || !res.failures || !res.failures.length) return { ok: true };
     const detail = res.failures.slice(0, 3).map((f) => `✗ ${f.check} (\`${f.cmd}\`):\n${f.output}`).join("\n\n");
     return { ok: false, feedback: `the project's OWN checks FAILED — fix the CODE until they pass (do NOT delete, weaken, or skip the checks themselves):\n${detail}` };
@@ -735,9 +742,46 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
       call.args = { edits: call.args.edits.map((e) => ({ op: "replace", ...(e || {}), path: (e && e.path) || basePath })) };
     }
 
+    // PARALLEL READS IN ONE EXECUTE (Block 89): `read_many` runs several READ-ONLY inspections CONCURRENTLY in a
+    // single turn — collapsing N exploration round-trips into 1. Only side-effect-free tools are allowed, so it
+    // needs none of the per-call mutation gates. Results are concatenated for the model to read next turn.
+    if (call.tool === "read_many" || call.tool === "read_files") {
+      const raw = Array.isArray(call.args?.calls) ? call.args.calls
+        : Array.isArray(call.args?.reads) ? call.args.reads
+        : Array.isArray(call.args?.paths) ? call.args.paths.map((p) => ({ tool: "read_file", args: { path: p } }))
+        : [];
+      const valid = raw.map((c) => (c && typeof c === "object" && typeof c.tool === "string") ? c : null)
+        .filter((c) => c && READ_ONLY_TOOLS.has(c.tool) && typeof toolMap[c.tool] === "function").slice(0, 16);
+      const rejected = raw.length - valid.length;
+      if (!valid.length) {
+        messages.push({ role: "user", content: `read_many runs several READ-ONLY tools at once: {"calls":[{"tool":"read_file","args":{"path":"a.js"}},{"tool":"grep","args":{"pattern":"foo"}}, …]} (or {"paths":["a.js","b.js"]} for files). Allowed: ${[...READ_ONLY_TOOLS].join(", ")}. For edits use edit_files; run commands one at a time.` });
+        trace.push({ step, badReadMany: raw.length });
+        if (++noProgress >= NO_PROGRESS_CAP) { stopped = "the model kept calling read_many with no valid read-only calls"; break; }
+        continue;
+      }
+      noProgress = 0;
+      const _rt0 = Date.now();
+      const results = await Promise.all(valid.map(async (c) => {
+        try { return { tool: c.tool, args: c.args || {}, result: await toolMap[c.tool](c.args || {}) }; }
+        catch (e) { return { tool: c.tool, args: c.args || {}, result: { ok: false, error: String((e && e.message) || e).slice(0, 200) } }; }
+      }));
+      const elapsedMs = Date.now() - _rt0;
+      const okCount = results.filter((r) => r.result && r.result.ok !== false).length;
+      const combined = results.map(({ tool, args, result }) => {
+        const lbl = args && (args.path || args.pattern || args.name || args.query) ? ` ${args.path || args.pattern || args.name || args.query}` : "";
+        return `--- ${tool}${lbl} ---\n${clip(result, 3500)}`;
+      }).join("\n\n");
+      messages.push({ role: "user", content: `RESULT (read_many): ${valid.length} read${valid.length === 1 ? "" : "s"} run in parallel (${okCount} ok${rejected > 0 ? `, ${rejected} non-read-only skipped` : ""}):\n\n${combined}` });
+      if (onStep) onStep({ step, tool: "read_many", args: call.args, result: { ok: true, count: valid.length, okCount, results }, elapsedMs, reasoning });
+      trace.push({ step, tool: "read_many", ok: true, count: valid.length });
+      emit({ type: "tool_result", tool: "read_many", ok: true, step: undefined, note: `${valid.length} parallel reads`, turn: turns, ms: elapsedMs });
+      consecEdits = 0;
+      continue;
+    }
+
     const fn = toolMap[call.tool];
     if (!fn) {
-      messages.push({ role: "user", content: `Unknown tool "${call.tool}". Available: ${Object.keys(toolMap).join(", ")}, done.` });
+      messages.push({ role: "user", content: `Unknown tool "${call.tool}". Available: ${Object.keys(toolMap).join(", ")}, read_many, done.` });
       trace.push({ step, unknownTool: call.tool });
       if (++noProgress >= NO_PROGRESS_CAP) { stopped = `the model kept calling unknown tools (last: ${call.tool})`; break; }
       continue;

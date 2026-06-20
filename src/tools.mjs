@@ -11,7 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { execSync, execFileSync } from "node:child_process";
+import { execSync, execFileSync, execFile } from "node:child_process";
 import { applyEdit } from "./seal.mjs";
 import { localPdfText } from "./pdftext.mjs";
 import { costUSD } from "./provider.mjs";
@@ -435,7 +435,7 @@ export class Tools {
   // project's OWN ground truth — its detected typecheck / lint / build / test — and reporting real failures.
   // Degrades gracefully (the methodology's hard rule): a missing toolchain / missing script / timeout is
   // SKIPPED, never counted as a failure. Returns { ran, failures:[{check,cmd,output}], skipped, checked }.
-  _verifyProjectChecks({ timeoutMs = 120000 } = {}) {
+  async _verifyProjectChecks({ timeoutMs = 120000 } = {}) {
     let cmds; try { cmds = detectCommands(this.workdir); } catch { return { ran: false }; }
     const checks = [];
     // node: typecheck/lint scripts in package.json (detectCommands only covers test/build/run)
@@ -449,25 +449,26 @@ export class Tools {
     if (cmds.build && cmds.build.cmd) checks.push({ check: "build", cmd: cmds.build.cmd });
     if (cmds.test && cmds.test.cmd) checks.push({ check: "test", cmd: cmds.test.cmd });
     if (!checks.length) return { ran: false };
-    const failures = [], skipped = [];
-    for (const c of checks) {
-      try {
-        execSync(c.cmd, { cwd: this.workdir, timeout: timeoutMs, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], shell: "/bin/bash" });
-      } catch (e) {
-        const blob = `${e.stdout || ""}\n${e.stderr || ""}\n${e.message || ""}`;
+    // CONCURRENT BATTERY (Block 89): typecheck/lint/build/test are INDEPENDENT — run them all at once so the
+    // done-gate's wall-clock is the SLOWEST single check, not the SUM. Same fail-closed verdict per check (the
+    // pass/fail of one doesn't depend on another), so order-independence makes this a pure latency win.
+    const runOne = (c) => new Promise((resolve) => {
+      execFile("/bin/bash", ["-c", c.cmd], { cwd: this.workdir, timeout: timeoutMs, encoding: "utf8", maxBuffer: 8 << 20 }, (e, stdout, stderr) => {
+        if (!e) { resolve({ check: c.check }); return; }   // passed
+        const blob = `${stdout || ""}\n${stderr || ""}\n${e.message || ""}`;
         // FAIL-CLOSED (Block 78): SKIP only when the TOOL or npm SCRIPT itself is genuinely absent (exit 127 /
-        // "command not found" / "missing script") — that's not the code's fault and can't be verified here.
-        // EVERYTHING else is a real FAILURE we must surface: a TIMEOUT is a hang (a bug), "cannot find module"
-        // means deps aren't installed (run install_deps), and "ENOENT / no such file" inside a non-127 run is
-        // a genuine test failure. Previously these were swallowed as skips → false "pass".
-        if (e.status === 127 || /command not found|missing script|^\s*\/bin\/(ba)?sh:.*not found/im.test(blob)) {
-          skipped.push({ check: c.check, cmd: c.cmd, why: "toolchain/script absent" });
-          continue;
+        // "command not found" / "missing script") — not the code's fault. A TIMEOUT (execFile sets killed+signal)
+        // is a hang = failure; "cannot find module" = deps missing = failure; everything else = a real failure.
+        if (e.code === 127 || /command not found|missing script|^\s*\/bin\/(ba)?sh:.*not found/im.test(blob)) {
+          resolve({ check: c.check, cmd: c.cmd, skip: true, why: "toolchain/script absent" }); return;
         }
-        const why = e.code === "ETIMEDOUT" ? `TIMED OUT after ${Math.round(timeoutMs / 1000)}s (a hang is a failure, not a skip)\n` : "";
-        failures.push({ check: c.check, cmd: c.cmd, output: (why + `${e.stdout || ""}\n${e.stderr || ""}`).trim().slice(-1800) });
-      }
-    }
+        const why = (e.killed && e.signal) ? `TIMED OUT after ${Math.round(timeoutMs / 1000)}s (a hang is a failure, not a skip)\n` : "";
+        resolve({ check: c.check, cmd: c.cmd, fail: true, output: (why + `${stdout || ""}\n${stderr || ""}`).trim().slice(-1800) });
+      });
+    });
+    const results = await Promise.all(checks.map(runOne));
+    const failures = results.filter((r) => r.fail).map(({ check, cmd, output }) => ({ check, cmd, output }));
+    const skipped = results.filter((r) => r.skip).map(({ check, cmd, why }) => ({ check, cmd, why }));
     return { ran: true, failures, skipped, checked: checks.map((c) => c.check) };
   }
 
