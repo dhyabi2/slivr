@@ -21,6 +21,9 @@ export const DEFAULTS = {
   approval: "auto",
   // Rolling context compression (Block 34): elide old reconstructable tool results. true = on (saves tokens).
   compress: true,
+  // Model context window in tokens (Block 88). 0 = unknown → proov LEARNS it from the API's overflow error and
+  // trims-and-retries; set it to fit proactively from turn one (e.g. 262144 for a 256K model).
+  contextLimit: 0,
   // Prompt-cache TTL for the stable system prefix (Anthropic/Claude models). "" / "5m" = ephemeral 5-min
   // (cheapest write); "1h" = 1-hour cache so the big system prompt survives idle gaps between REPL turns.
   cacheTtl: "",
@@ -99,6 +102,7 @@ function fromEnv(env) {
   if (v("APPROVAL")) out.approval = v("APPROVAL");
   if (v("MAX_STEPS")) { const ms = parseMaxSteps(v("MAX_STEPS")); if (ms !== null) out.maxSteps = ms; }
   if (v("MAX_TOKENS")) out.maxTokensPerTurn = Number(v("MAX_TOKENS"));
+  if (v("CONTEXT_LIMIT")) { const n = Number(v("CONTEXT_LIMIT")); if (Number.isFinite(n) && n > 0) out.contextLimit = n; }
   if (v("TIMEOUT")) { const n = Number(v("TIMEOUT")); if (Number.isFinite(n) && n > 0) out.requestTimeoutMs = n; }
   return out;
 }

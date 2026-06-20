@@ -12,7 +12,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { buildMultimodalContent } from "./multimodal.mjs";
 import { applyControl, controlToMessage } from "./bridge.mjs";
-import { compressContext } from "./compress.mjs";
+import { compressContext, fitContext, parseContextLimit } from "./compress.mjs";
 import { isWebGLPage, checkPageJs } from "./webcheck.mjs";
 import { analyzeStructure, wantsMinimal, assetSourceViolation, animationDriverViolation, bundleGameSource, beyondFrameViolation } from "./structure.mjs";
 
@@ -418,25 +418,50 @@ export async function runLoop({ provider, tools, toolMap, systemPrompt, task, ma
     }
     turns++;
     let resp;
-    try {
-      // ROLLING COMPRESSION (Block 34): shrink the thread before sending — elide OLD reconstructable tool
-      // results + already-viewed images to stubs (the model re-calls the tool if it needs them). Lossless,
-      // any-prompt, stable (so prompt-cache hits survive). compress === false opts out.
-      if (compress !== false) compressContext(messages, typeof compress === "object" ? compress : undefined);
+    {
       const turnModel = (editModel && editPhase) ? editModel : undefined;   // undefined → provider's creator model
-      if (onThinking) { try { onThinking(true, turnModel); } catch { /* */ } }
-      try { resp = await provider.chat(messages, { signal, model: turnModel }); }
-      finally { if (onThinking) { try { onThinking(false); } catch { /* */ } } }
-    } catch (e) {
-      if (e.name === "AbortError" || signal?.aborted) { aborted = true; trace.push({ step, aborted: true }); break; }
-      // Surface the failure to the caller instead of swallowing it. A bare "NO_OPENROUTER_KEY"
-      // or "API 401/4xx" otherwise renders as a silent "1 turn · 0 tok" footer with no explanation.
-      error = e.message === "NO_OPENROUTER_KEY"
-        ? "no API key — set OPENROUTER_API_KEY (or apiKey in ~/.proov.json)"
-        : `provider error: ${e.message}`;
-      trace.push({ step, error: "PROVIDER_ERROR", detail: e.message });
-      break;
+      const outReserve = (provider && provider.maxTokens) || 8000;          // leave room for the model's reply
+      let fitRetries = 0;
+      for (;;) {
+        try {
+          // ROLLING COMPRESSION (Block 34): shrink the thread before sending — elide OLD reconstructable tool
+          // results + already-viewed images to stubs (the model re-calls the tool if it needs them). Lossless,
+          // any-prompt, stable (so prompt-cache hits survive). compress === false opts out.
+          if (compress !== false) compressContext(messages, typeof compress === "object" ? compress : undefined);
+          // PROACTIVE FIT (Block 88): once we've LEARNED the model's context window (from a prior 400), trim the
+          // thread to it BEFORE sending so we never hit the hard overflow again. Margin: output reservation + 2k.
+          if (provider && provider.contextLimit > 0) fitContext(messages, provider.contextLimit - outReserve - 2000);
+          if (onThinking) { try { onThinking(true, turnModel); } catch { /* */ } }
+          try { resp = await provider.chat(messages, { signal, model: turnModel }); }
+          finally { if (onThinking) { try { onThinking(false); } catch { /* */ } } }
+          break;   // got a response
+        } catch (e) {
+          if (e.name === "AbortError" || signal?.aborted) { aborted = true; trace.push({ step, aborted: true }); break; }
+          // CONTEXT OVERFLOW (Block 88): the request exceeded the model's window. The API told us the real limit —
+          // TRIM the thread to fit and RETRY this same turn (not a hard failure). Remember the limit (on the
+          // provider) so every later turn fits proactively. Bounded retries so a pathological case still surfaces.
+          const limit = e.contextLimit || parseContextLimit(e.message);
+          if (limit && fitRetries < 3) {
+            fitRetries++;
+            if (provider) provider.contextLimit = provider.contextLimit ? Math.min(provider.contextLimit, limit) : limit;
+            const r = fitContext(messages, limit - outReserve - 2000);
+            trace.push({ step, contextFit: { limit, tokens: r.tokens, dropped: r.dropped, retry: fitRetries } });
+            emit({ type: "context_fit", limit, tokens: r.tokens, retry: fitRetries });
+            if (provider && typeof provider.notify === "function") provider.notify(`context over ${limit} — trimmed to ~${r.tokens} tokens, retrying`);
+            continue;   // retry the chat with the trimmed thread
+          }
+          // Surface the failure to the caller instead of swallowing it. A bare "NO_OPENROUTER_KEY"
+          // or "API 401/4xx" otherwise renders as a silent "1 turn · 0 tok" footer with no explanation.
+          error = e.message === "NO_OPENROUTER_KEY"
+            ? "no API key — set OPENROUTER_API_KEY (or apiKey in ~/.proov.json)"
+            : `provider error: ${e.message}`;
+          trace.push({ step, error: "PROVIDER_ERROR", detail: e.message });
+          break;
+        }
+      }
     }
+    if (aborted) { break; }
+    if (error) { break; }
     const call = extractJSON(resp.text);
     messages.push({ role: "assistant", content: resp.text });
 

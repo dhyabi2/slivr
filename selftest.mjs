@@ -3330,6 +3330,46 @@ console.log("== 56. rolling context compression — elide old reconstructable re
   ok("compress: never touches the system prompt or the task", m2[0].content === "SYS" && m2[1].content === "TASK");
 }
 
+console.log("== 56b. HARD context-fit — never exceed the model's window; learn the limit + trim-and-retry (Block 88) ==");
+{
+  const { approxTokens, parseContextLimit, fitContext } = await import("./src/compress.mjs");
+  // parse the model's real window out of the exact API 400 the user hit.
+  ok("ctx: parseContextLimit reads the limit from the API overflow error", parseContextLimit("API 400: This endpoint's maximum context length is 262144 tokens. However, you requested about 265197 tokens (257197 of text input, 8000 in the output).") === 262144);
+  ok("ctx: parseContextLimit returns null when there's no limit in the message", parseContextLimit("some other 400 error") === null);
+  ok("ctx: approxTokens ≈ chars/4 over string + attachment payloads", approxTokens([{ role: "user", content: "x".repeat(4000) }]) === 1000);
+
+  // fitContext HARD-trims a bloated thread to fit a budget — guaranteed under the cap, system prompt + tail kept.
+  const big = (n) => "y".repeat(n);
+  const thread = [{ role: "system", content: "SYSTEM PROMPT" }, { role: "user", content: "TASK" }];
+  for (let i = 0; i < 30; i++) { thread.push({ role: "assistant", content: '{"tool":"read_file","args":{"path":"f' + i + '"}}' }); thread.push({ role: "user", content: `RESULT (read_file):\n` + big(40000) }); }
+  const beforeTok = approxTokens(thread);
+  const budget = 50000;
+  const res = fitContext(thread, budget);
+  ok("ctx: fitContext trims a bloated thread to UNDER the budget", beforeTok > budget && res.fitted === true && approxTokens(thread) <= budget);
+  ok("ctx: fitContext keeps the system prompt", thread[0].content === "SYSTEM PROMPT");
+  ok("ctx: fitContext keeps the live tail (last message present)", thread.length >= 2 && thread[thread.length - 1] && (typeof thread[thread.length - 1].content === "string"));
+  // a thread already under budget is left fitted (no needless dropping).
+  const small = [{ role: "system", content: "S" }, { role: "user", content: "hi" }];
+  const r2 = fitContext(small, 100000);
+  ok("ctx: a thread under budget is untouched (fitted, nothing dropped)", r2.fitted === true && r2.dropped === 0 && small.length === 2);
+
+  // the LOOP catches a context-overflow, trims, and RETRIES the same turn — completing instead of erroring; and
+  // it REMEMBERS the limit on the provider so later turns fit proactively.
+  let calls = 0;
+  const prov = {
+    model: "m", maxTokens: 8000, contextLimit: 0,
+    chat: async () => {
+      calls++;
+      if (calls === 1) { const e = new Error("API 400: This endpoint's maximum context length is 262144 tokens. However, you requested about 300000 tokens"); e.code = "CONTEXT_OVERFLOW"; e.contextLimit = 262144; throw e; }
+      return { text: JSON.stringify({ tool: "done", args: { summary: "ok" } }), usage: {}, raw: {} };
+    },
+    totals: () => ({ cost: 0 }),
+  };
+  const rl = await runLoop({ provider: prov, tools: { workdir: tmp, tasks: [] }, toolMap: {}, systemPrompt: "s", task: "x", maxSteps: 5, designFirst: false });
+  ok("ctx: the loop trims-and-RETRIES on overflow (completes, not errors)", rl.done === true && !rl.error && calls === 2);
+  ok("ctx: the loop records the fit + LEARNS the limit on the provider", rl.trace.some((t) => t.contextFit && t.contextFit.limit === 262144) && prov.contextLimit === 262144);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n== selftest: ${pass} passed, ${fail} failed ==`);
 process.exit(fail ? 1 : 0);

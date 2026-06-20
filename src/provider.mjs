@@ -6,6 +6,7 @@
 
 import fs from "node:fs";
 import { hasPdfInContext, PDF_PLUGIN } from "./multimodal.mjs";
+import { parseContextLimit } from "./compress.mjs";
 
 // Portable key fallback: OPENROUTER_API_KEY env, then a .env / .env.local in the CURRENT dir.
 // (config.apiKey — resolved from env / flags / ~/.proov.json — is the primary path via opts.)
@@ -54,6 +55,7 @@ export class Provider {
     this.maxRetries = opts.maxRetries ?? 2;
     this.maxTokens = opts.maxTokens ?? opts.maxTokensPerTurn ?? 4000;
     this.cacheTtl = opts.cacheTtl || "";   // "1h" → keep the system-prompt cache warm across idle REPL gaps
+    this.contextLimit = opts.contextLimit || 0;   // model's context window (Block 88); 0 = unknown → learned from a 400
     this.imageModel = opts.imageModel || "";   // image-OUTPUT model for design-first reference mockups (Block 65)
     // optional UI hook: called with a short string on transient events (retry/timeout) so the
     // user isn't staring at a silent hang. No-op by default.
@@ -104,6 +106,11 @@ export class Provider {
         const d = await r.json();
         if (!r.ok) {
           lastErr = new Error(humanizeApiError(r.status, d));
+          // CONTEXT OVERFLOW (Block 88): the API names the model's real window ("maximum context length is N
+          // tokens") — tag the error with it and remember it so the caller can trim-and-retry, and future turns
+          // fit proactively. (parseContextLimit handles the comma-formatted number.)
+          const climit = parseContextLimit(lastErr.message);
+          if (climit) { lastErr.code = "CONTEXT_OVERFLOW"; lastErr.contextLimit = climit; this.contextLimit = this.contextLimit ? Math.min(this.contextLimit, climit) : climit; }
           // 4xx (except 429) won't get better on retry
           if (r.status >= 400 && r.status < 500 && r.status !== 429) { lastErr.noRetry = true; throw lastErr; }
           if (attempt < this.maxRetries) this.notify(`model returned ${r.status}; retrying (${attempt + 2}/${this.maxRetries + 1})…`);
